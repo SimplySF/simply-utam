@@ -23,6 +23,8 @@ import {
   generateUtamConfig,
   generateWdioConfig,
   generateNamespaceMap,
+  generateHelloFeature,
+  generateHelloSteps,
   injectWireitConfiguration,
   checkMissingDependencies,
   scaffoldProject,
@@ -44,13 +46,15 @@ describe('scaffold service', () => {
   });
 
   describe('template loader', () => {
-    it('DEFAULT_TEMPLATES_DIR should exist and contain all 5 standard template files', () => {
+    it('DEFAULT_TEMPLATES_DIR should exist and contain all 7 standard template files', () => {
       expect(fs.existsSync(DEFAULT_TEMPLATES_DIR)).toBe(true);
       expect(fs.existsSync(path.join(DEFAULT_TEMPLATES_DIR, 'generator.config.json'))).toBe(true);
       expect(fs.existsSync(path.join(DEFAULT_TEMPLATES_DIR, 'utam.config.json'))).toBe(true);
       expect(fs.existsSync(path.join(DEFAULT_TEMPLATES_DIR, 'wdio.conf.mjs'))).toBe(true);
       expect(fs.existsSync(path.join(DEFAULT_TEMPLATES_DIR, 'namespace-map.json'))).toBe(true);
       expect(fs.existsSync(path.join(DEFAULT_TEMPLATES_DIR, 'wireit.json'))).toBe(true);
+      expect(fs.existsSync(path.join(DEFAULT_TEMPLATES_DIR, 'hello.feature'))).toBe(true);
+      expect(fs.existsSync(path.join(DEFAULT_TEMPLATES_DIR, 'hello.steps.mjs'))).toBe(true);
     });
 
     it('loadTemplate should perform token replacement', () => {
@@ -95,6 +99,20 @@ describe('scaffold service', () => {
     it('generateNamespaceMap should map application pageObjects to shared library', () => {
       const map = generateNamespaceMap('test-app');
       expect(map['test-app/pageObjects/shared']).toBe('shared-components-pageobjects/pageObjects/shared');
+    });
+
+    it('generateHelloFeature should produce valid starter Gherkin feature file', () => {
+      const feature = generateHelloFeature();
+      expect(feature).toContain('Feature: Salesforce UI Smoke Test');
+      expect(feature).toContain('Scenario: Log in and navigate to Salesforce Home');
+      expect(feature).toContain('Given I open the Salesforce application "Sales"');
+    });
+
+    it('generateHelloSteps should produce valid starter step definition script', () => {
+      const steps = generateHelloSteps();
+      expect(steps).toContain("import { Given } from '@wdio/cucumber-framework';");
+      expect(steps).toContain("import { goToApplication } from '@simplysf/simply-utam';");
+      expect(steps).toContain("Given('I open the Salesforce application {string}'");
     });
   });
 
@@ -155,7 +173,7 @@ describe('scaffold service', () => {
       const missing = checkMissingDependencies({});
       expect(missing).toContain('wireit');
       expect(missing).toContain('utam');
-      expect(missing).toContain('@cucumber/cucumber');
+      expect(missing).toContain('@wdio/cucumber-framework');
       expect(missing).toContain('chromedriver');
       expect(missing).toContain('@wdio/allure-reporter');
       expect(missing).toContain('allure-commandline');
@@ -182,7 +200,7 @@ describe('scaffold service', () => {
   });
 
   describe('scaffoldProject', () => {
-    it('should scaffold config files and inject wireit into package.json', async () => {
+    it('should scaffold config files and starter test files when test directory does not exist', async () => {
       const pkgPath = path.join(tempDir, 'package.json');
       fs.writeFileSync(pkgPath, JSON.stringify({ name: 'my-sfdx-project' }), 'utf-8');
 
@@ -191,22 +209,43 @@ describe('scaffold service', () => {
         sourceDir: 'force-app',
       });
 
-      expect(result.createdFiles).toHaveLength(4);
+      expect(result.createdFiles).toHaveLength(6);
       expect(result.createdFiles).toContain('generator.config.json');
       expect(result.createdFiles).toContain('utam.config.json');
       expect(result.createdFiles).toContain('wdio.conf.mjs');
       expect(result.createdFiles).toContain(path.join('.utam', 'namespace-map.json'));
+      expect(result.createdFiles).toContain(path.join('force-app', 'test', 'utam', 'features', 'hello.feature'));
+      expect(result.createdFiles).toContain(
+        path.join('force-app', 'test', 'utam', 'step_definitions', 'hello.steps.mjs'),
+      );
       expect(result.modifiedFiles).toContain('package.json');
 
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'utam.config.json'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'wdio.conf.mjs'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, '.utam', 'namespace-map.json'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(true);
+      expect(
+        fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'step_definitions', 'hello.steps.mjs')),
+      ).toBe(true);
 
       const updatedPkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
         scripts: Record<string, string>;
       };
       expect(updatedPkg.scripts['build:utam']).toBe('wireit');
+    });
+
+    it('should not scaffold hello world test if test/utam already exists', async () => {
+      const existingUtamDir = path.join(tempDir, 'force-app', 'test', 'utam');
+      fs.mkdirSync(existingUtamDir, { recursive: true });
+
+      const result = await scaffoldProject({
+        projectDir: tempDir,
+        sourceDir: 'force-app',
+      });
+
+      expect(result.createdFiles).toHaveLength(4);
+      expect(fs.existsSync(path.join(existingUtamDir, 'features', 'hello.feature'))).toBe(false);
     });
 
     it('should skip existing files unless force is true', async () => {
@@ -238,9 +277,10 @@ describe('scaffold service', () => {
         dryRun: true,
       });
 
-      expect(result.createdFiles).toHaveLength(4);
+      expect(result.createdFiles).toHaveLength(6);
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'utam.config.json'))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(false);
     });
   });
 });

@@ -39,7 +39,6 @@ export const DEFAULT_REQUIRED_DEV_DEPENDENCIES: string[] = [
   '@wdio/cli',
   '@wdio/local-runner',
   '@wdio/cucumber-framework',
-  '@cucumber/cucumber',
   '@wdio/spec-reporter',
   '@wdio/allure-reporter',
   'allure-commandline',
@@ -197,6 +196,34 @@ export function generateNamespaceMap(appName: string, templatesDir = DEFAULT_TEM
     appName,
   });
   return JSON.parse(raw) as Record<string, unknown>;
+}
+
+/**
+ * Generates the hello.feature starter Gherkin feature file content by loading its external template.
+ *
+ * @param templatesDir - Optional custom directory containing the template file.
+ * @returns Formatted Gherkin feature file text for hello.feature.
+ */
+export function generateHelloFeature(templatesDir = DEFAULT_TEMPLATES_DIR): string {
+  try {
+    return loadTemplate('hello.feature', templatesDir);
+  } catch {
+    return `Feature: Salesforce UI Smoke Test\n\n  Scenario: Log in and navigate to Salesforce Home\n    Given I open the Salesforce application "Sales"\n`;
+  }
+}
+
+/**
+ * Generates the hello.steps.mjs starter Cucumber step definition script content by loading its external template.
+ *
+ * @param templatesDir - Optional custom directory containing the template file.
+ * @returns Formatted JavaScript module text for hello.steps.mjs.
+ */
+export function generateHelloSteps(templatesDir = DEFAULT_TEMPLATES_DIR): string {
+  try {
+    return loadTemplate('hello.steps.mjs', templatesDir);
+  } catch {
+    return `import { Given } from '@wdio/cucumber-framework';\nimport { goToApplication } from '@simplysf/simply-utam';\n\nGiven('I open the Salesforce application {string}', async (appName) => {\n  // Authenticates via Salesforce CLI frontdoor URL and opens the application home page\n  await goToApplication(appName);\n});\n`;
+  }
 }
 
 /**
@@ -361,6 +388,27 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
       content: JSON.stringify(generateNamespaceMap(appName, templatesDir), null, 2) + '\n',
     },
   ];
+
+  const candidateUtamDirs = [
+    path.join(projectDir, sourceDir, 'test', 'utam'),
+    path.join(projectDir, sourceDir, 'tests', 'utam'),
+    path.join(projectDir, 'test', 'utam'),
+    path.join(projectDir, 'tests', 'utam'),
+  ];
+  const utamTestDirExists = candidateUtamDirs.some((dir) => fs.existsSync(dir));
+
+  if (!utamTestDirExists || force) {
+    filesToCreate.push(
+      {
+        relativePath: path.join(sourceDir, 'test', 'utam', 'features', 'hello.feature'),
+        content: generateHelloFeature(templatesDir),
+      },
+      {
+        relativePath: path.join(sourceDir, 'test', 'utam', 'step_definitions', 'hello.steps.mjs'),
+        content: generateHelloSteps(templatesDir),
+      },
+    );
+  }
 
   const { createdFiles, skippedFiles } = writeScaffoldFiles(projectDir, filesToCreate, force, dryRun);
   const modifiedFiles: string[] = [];

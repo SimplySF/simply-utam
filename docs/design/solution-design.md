@@ -13,7 +13,96 @@ The project is architected as an open-source TypeScript monorepo under the **Sim
 
 ---
 
-## 2. Package Architecture (Monorepo)
+## 2. System Architecture & End-to-End Workflow
+
+### 2.1 Conceptual Translation Flow
+
+SimplyUTAM bridges human-authored test requirements, declarative Salesforce UI components, generated UTAM page objects, and automated step implementations:
+
+```mermaid
+flowchart LR
+    classDef leftAlign text-align:left;
+
+    A["<div style='text-align: left;'><b>1. Manual QA Steps</b><br/>──────────────────────<br/>1. Log in to Salesforce<br/>2. Open 'Sales' app<br/>3. Click '+ New Account'<br/>4. Verify record is created</div>"]:::leftAlign
+    B["<div style='text-align: left;'><b>2. Gherkin Feature</b><br/>──────────────────────<br/><b>Scenario:</b> Create Account<br/>&nbsp;&nbsp;<b>Given</b> user is on Sales Home<br/>&nbsp;&nbsp;<b>When</b> user clicks '+ New Account'<br/>&nbsp;&nbsp;<b>And</b> completes required fields<br/>&nbsp;&nbsp;<b>Then</b> record is created</div>"]:::leftAlign
+    PO["<div style='text-align: left;'><b>3. UTAM Page Object</b><br/>──────────────────────<br/>{<br/>&nbsp;&nbsp;&quot;root&quot;: true,<br/>&nbsp;&nbsp;&quot;selector&quot;: { &quot;css&quot;: &quot;c-account-home&quot; },<br/>&nbsp;&nbsp;&quot;elements&quot;: [{<br/>&nbsp;&nbsp;&nbsp;&nbsp;&quot;name&quot;: &quot;newAccountBtn&quot;,<br/>&nbsp;&nbsp;&nbsp;&nbsp;&quot;selector&quot;: { &quot;css&quot;: &quot;button&quot; },<br/>&nbsp;&nbsp;&nbsp;&nbsp;&quot;public&quot;: true<br/>&nbsp;&nbsp;}]<br/>}</div>"]:::leftAlign
+    C["<div style='text-align: left;'><b>4. Cucumber &amp; UTAM Steps</b><br/>──────────────────────<br/>When('user clicks New Account', async () =&gt; {<br/>&nbsp;&nbsp;const home = await utam.load(AccountHome);<br/>&nbsp;&nbsp;await home.clickNewAccount();<br/>});</div>"]:::leftAlign
+
+    A -->|Feature Authoring| B
+    B -->|simply-utam steps| C
+    PO -->|simply-utam build| C
+    C -->|Automated Execution| C
+```
+
+---
+
+### 2.2 End-to-End Testing Lifecycle
+
+The diagram below outlines the complete lifecycle from capturing manual test requirements to executing automated tests against Salesforce:
+
+```mermaid
+flowchart TD
+    subgraph Ingestion ["1. Test Ingestion"]
+        A1["Manual Test Case / Requirement<br/><i>(User stories, QA test steps)</i>"]
+        A2["Gherkin Feature File<br/><i>(*.feature with Given / When / Then)</i>"]
+        A1 -->|Authored as| A2
+    end
+
+    subgraph Modeling ["2. UI Component Modeling"]
+        B1["Salesforce DX UI Source<br/><i>(LWC metadata &amp; *.js-meta.xml)</i>"]
+        B2["SimplyUTAM Build Pipeline<br/><i>(simply-utam build / wireit)</i>"]
+        B3["Compiled Page Objects<br/><i>(Reusable TypeScript/JavaScript models)</i>"]
+        B1 -->|Scanned &amp; transformed| B2
+        B2 -->|Compiles into pageObjects/| B3
+    end
+
+    subgraph Implementation ["3. Test Implementation"]
+        C1["Offline Step Generator<br/><i>(simply-utam steps)</i>"]
+        C2["Step Definitions<br/><i>(*.steps.mjs with @simplysf/simply-utam)</i>"]
+        C1 -->|Scaffolds missing step skeletons| C2
+    end
+
+    subgraph Execution ["4. Automated Execution &amp; Verification"]
+        D1["WebdriverIO Runner<br/><i>(npm run test:ui / wdio.conf.mjs)</i>"]
+        D2["Target Salesforce Org<br/><i>(Scratch org, sandbox, or dev org)</i>"]
+        D3["Test Reports &amp; Results<br/><i>(Spec reporter, Allure reports)</i>"]
+        D1 -->|Automates browser via UTAM_USERNAME| D2
+        D2 -->|Generates test results| D3
+    end
+
+    A2 -->|Feature scenarios| C1
+    B3 -->|Page object models| C2
+    C2 -->|Step definitions| D1
+    A2 -.->|Feature files| D1
+```
+
+---
+
+### 2.3 Multi-Stage Page Object Build Pipeline
+
+To support customizable and distributable page objects across complex multi-package repositories, the build system transforms metadata and schemas through a deterministic multi-stage pipeline:
+
+```mermaid
+flowchart TD
+    A["sfdx-project.json &amp; *.js-meta.xml"] --> B["1. simply-utam rules<br/><i>(Identifies root targets &amp; writes *.rules.json)</i>"]
+    B --> C["2. utam-generate<br/><i>(Generates draft __utam__/*.utam.json)</i>"]
+    D["*.utam-overrides.json"] --> E["3. simply-utam overrides<br/><i>(Deep AST merge of wait rules &amp; other config)</i>"]
+    C --> E
+    F[".utam/namespace-map.json"] --> G["4. simply-utam rewrite<br/><i>(Remaps cross-package namespace prefixes)</i>"]
+    E --> G
+    G --> H["5. utam compiler<br/><i>(Translates JSON AST to modern ESM classes)</i>"]
+    H --> I["pageObjects/ &amp; utils/<br/><i>(Ready-to-import Page Object classes)</i>"]
+```
+
+1. **Rules Generation (`simply-utam rules`)**: Scans LWC component directories for `*.js-meta.xml` files. Components targeting page-level layouts (`lightning__AppPage`, `lightning__HomePage`, `lightning__RecordPage`, `lightningCommunity__Page`) are marked as root page objects and assigned namespace-aware CSS selectors in `<component>.rules.json`.
+2. **Draft Schema Generation (`utam-generate`)**: Converts component HTML templates into draft UTAM JSON schemas in `__utam__/`.
+3. **AST Overrides Merging (`simply-utam overrides`)**: Traverses generated schemas and deep-merges developer-defined UTAM configuration from `*.utam-overrides.json` without destroying compiler-generated structures.
+4. **Namespace Rewriting (`simply-utam rewrite`)**: Resolves cross-package collisions by mapping component type prefixes according to `.utam/namespace-map.json`.
+5. **UTAM Compilation (`utam`)**: Translates finalized declarative JSON schemas and imperative JavaScript extensions into modern ES module page object classes in `pageObjects/`.
+
+---
+
+## 3. Package Architecture (Monorepo)
 
 The repository is managed using **pnpm workspaces** and **Lerna**, structured into two focused packages:
 
@@ -35,6 +124,7 @@ simply-utam/
 │   │   │   ├── runtime/          # TestEnvironment, loginAsUser, navigation
 │   │   │   ├── scaffold/         # Config templates & package.json mutator
 │   │   │   └── index.ts          # Public library exports
+│   │   ├── templates/            # Scaffolding templates
 │   │   ├── test/                 # Vitest unit & integration test suites
 │   │   ├── package.json
 │   │   └── tsconfig.json
@@ -67,9 +157,9 @@ simply-utam/
 
 ---
 
-## 3. Package Responsibilities & Boundaries
+## 4. Package Responsibilities & Boundaries
 
-### 3.1 `@simplysf/simply-utam-core`
+### 4.1 `@simplysf/simply-utam-core`
 
 The core library contains all the business logic, file transformations, environment abstractions, and step discovery mechanisms. It has **no CLI dependencies** (no `@oclif/core`, no inquirer, no console prompts, no direct process.exit, no stdout/stderr writes). It is a pure library designed for programmatic consumption.
 
@@ -91,7 +181,7 @@ The core library contains all the business logic, file transformations, environm
 3. **`overrides`**:
    - Discovers `*.utam-overrides.json` definition files across all discovered package directories (or explicit `--source`).
    - Walks generated UTAM JSON AST structures (supporting nested element hierarchies, shadow DOM roots).
-   - Deeply merges custom developer assertions, wait conditions, and visibility rules without destroying generated schema fields.
+   - Deeply merges custom developer wait conditions and visibility rules without destroying generated schema fields.
    - Preserves original file indentation (2-space, 4-space, tabs).
 
 4. **`namespaces`**:
@@ -102,7 +192,7 @@ The core library contains all the business logic, file transformations, environm
    - Resolves multi-package namespace collisions across distributed UTAM libraries.
 
 5. **`steps` (Step Generator Engine)**:
-   - Eliminates the legacy Node ESM loader hook hack (`register-loader.js` / `resolver-loader.mjs`).
+   - Eliminates legacy Node ESM loader hook hacks (`register-loader.js` / `resolver-loader.mjs`).
    - Operates as a 100% offline static AST and expression matching engine:
      - Parses Gherkin `.feature` files (scenarios, scenario outlines, backgrounds, and rules) using `@cucumber/gherkin`.
      - Statically extracts registered step patterns from existing step definition files (`*.steps.{js,mjs,ts}`).
@@ -110,7 +200,7 @@ The core library contains all the business logic, file transformations, environm
      - Matches each Gherkin scenario step against registered expressions to accurately detect true undefined steps without false positives on parameterized steps.
      - Deduplicates missing steps across all feature files.
      - Leverages `CucumberExpressionGenerator` to automatically generate standard Cucumber expressions with appropriate parameter types (`{string}`, `{int}`) and typed argument lists.
-     - Generates clean, typed step templates (`Given('...', async (...) => { ... });`).
+     - Generates clean, typed step templates using `@wdio/cucumber-framework` (`Given('...', async (...) => { ... });`).
      - Formats output using Prettier.
 
 6. **`runtime` (Test Environment, Navigation & Debug Helpers)**:
@@ -128,7 +218,7 @@ The core library contains all the business logic, file transformations, environm
        ```
        along with the org instance URL and optional `UTAM_ALLOWED_DOMAINS` wildcards.
      - Resolves Community / Experience Cloud Network IDs and secure site URLs.
-     - Constructs Frontdoor bypass URLs (`/secur/frontdoor.jsp?sid=...`) or single-access URLs.
+     - Constructs Frontdoor bypass URLs (`/secur/frontdoor.jsp?sid=...` or `/services/oauth2/singleaccess`).
    - **`navigation` & Debug Helpers**:
      - Provides first-class WebdriverIO typing against a lightweight `NavigableBrowser` interface (with ambient global `browser` or optional browser parameter defaulting to `globalThis.browser`), enabling isolated unit testing without a live browser session.
      - `goToLoginUrl(returnUrl?: string, browserInstance?: NavigableBrowser)`
@@ -143,20 +233,21 @@ The core library contains all the business logic, file transformations, environm
 
 7. **`scaffold`**:
    - Programmatically generates starter configs: `generator.config.json`, `utam.config.json`, `wdio.conf.mjs`, and `.utam/namespace-map.json`.
+   - Scaffolds a starter smoke test in `<sourceDir>/test/utam/` (`hello.feature` and `hello.steps.mjs`) unless an existing `test/utam` directory is present.
    - Modifies consumer `package.json` non-destructively to inject standard Wireit tasks, scripts, and verify required devDependencies.
 
 ---
 
-### 3.2 `@simplysf/simply-utam` (CLI)
+### 4.2 `@simplysf/simply-utam` (CLI)
 
 The CLI wraps `@simplysf/simply-utam-core` into a modern developer command-line tool and re-exports runtime helpers.
 
 #### Command Suite:
 
 - **`simply-utam init`**:
-  - Interactive or auto-detected scaffolding of a Salesforce project for UTAM.
+  - Auto-detected scaffolding of a Salesforce project for UTAM.
   - Inspects `sfdx-project.json` to customize paths in generated configs.
-  - Scaffolds config files, sets up Wireit pipelines, and verifies devDependencies.
+  - Scaffolds config files, starter tests, sets up Wireit pipelines, and verifies devDependencies.
 - **`simply-utam rules`**:
   - Executes the rules generator.
   - Options: `-s, --source <paths...>` (defaults to all discovered package directories), `-d, --dry-run`, `-v, --verbose`.
@@ -187,7 +278,7 @@ The CLI wraps `@simplysf/simply-utam-core` into a modern developer command-line 
 
 ---
 
-### 3.3 Subpath Exports Configuration (`@simplysf/simply-utam-core`)
+### 4.3 Subpath Exports Configuration (`@simplysf/simply-utam-core`)
 
 `@simplysf/simply-utam-core` provides fine-grained package subpath exports in `package.json`:
 
@@ -229,7 +320,7 @@ The CLI wraps `@simplysf/simply-utam-core` into a modern developer command-line 
 
 ---
 
-## 4. Technical Stack & Conventions
+## 5. Technical Stack & Conventions
 
 Following [SimplySF/simply-atlassian](https://github.com/SimplySF/simply-atlassian):
 
@@ -240,14 +331,14 @@ Following [SimplySF/simply-atlassian](https://github.com/SimplySF/simply-atlassi
 | **Language**             | TypeScript 5+ (`Node16` module resolution, strict mode)   |
 | **Package Manager**      | `pnpm` (v11+) with workspaces                             |
 | **Monorepo Manager**     | Lerna v10 (independent versioning)                        |
-| **Testing**              | Vitest with coverage and global setup mocks               |
+| **Testing**              | Vitest with coverage and isolated mocks                   |
 | **Linting & Formatting** | ESLint 10+ (Flat Config), Prettier 3+                     |
 | **Git Quality Gates**    | Husky, lint-staged, Commitlint (Conventional Commits)     |
 | **CLI Framework**        | [oclif](https://oclif.io/) (`@oclif/core`)                |
 
 ---
 
-## 5. Consumer Integration Pattern
+## 6. Consumer Integration Pattern
 
 When consumed in a Salesforce project, the consumer workflow is clean and automated:
 
@@ -296,7 +387,68 @@ Step definitions import directly from either package:
 ```javascript
 // Directly from core:
 import { loginAsUser, goToExperiencePage } from '@simplysf/simply-utam-core';
+import { Given, When, Then } from '@wdio/cucumber-framework';
 
 // Or from the top-level CLI package re-export:
 import { loginAsUser, goToExperiencePage } from '@simplysf/simply-utam';
+import { Given, When, Then } from '@wdio/cucumber-framework';
 ```
+
+---
+
+## 7. Test Runner Architecture & Salesforce Compatibility
+
+### 7.1 Classic WebDriver Protocol vs. BiDi Protocol
+
+Modern WebdriverIO (v9+) defaults to the WebDriver BiDi (Bidirectional) protocol for supported browsers. However, Salesforce Lightning applications utilize deeply nested Shadow DOM trees, dynamic LWC custom elements, and asynchronous portal containers (such as combobox dropdowns, modal dialogs, and popovers).
+
+When inspecting element collections across custom Salesforce shadow roots, the BiDi protocol can trigger serialization exceptions with certain UTAM page object loaders. SimplyUTAM configures the runner to explicitly enforce the classic WebDriver protocol:
+
+```javascript
+// wdio.conf.mjs
+capabilities: [
+  {
+    browserName: 'chrome',
+    'wdio:enforceWebDriverClassic': true,
+  },
+],
+```
+
+### 7.2 `UtamWdioService` Configuration
+
+The runner coordinates browser page objects using `wdio-utam-service`:
+1. **Disable Implicit Timeouts:** `implicitTimeout: 0` is set to ensure that UTAM's explicit polling and wait conditions manage timeouts rather than native driver polling, avoiding browser thread hangs.
+2. **Global Platform Page Objects:** Injects Salesforce standard global components (`salesforce-pageobjects/ui-global-components.config.json`) so standard platform chrome (headers, app launcher, navigation bars, toasts) is accessible out of the box.
+
+```javascript
+services: [
+  [
+    UtamWdioService,
+    {
+      implicitTimeout: 0,
+      injectionConfigs: ['salesforce-pageobjects/ui-global-components.config.json'],
+    },
+  ],
+],
+```
+
+### 7.3 Headless Authentication Flow
+
+Instead of hardcoding user passwords or automating the platform login page with brittle UI steps, SimplyUTAM authenticates via the Salesforce CLI local credential store:
+1. `TestEnvironment` resolves the authenticated org from the `UTAM_USERNAME` environment variable.
+2. Constructs a single-access frontdoor URL (`/secur/frontdoor.jsp?sid=...` or `/services/oauth2/singleaccess`).
+3. The test runner navigates the browser directly to the frontdoor URL, achieving authenticated session state instantly without manual user credentials in test suites.
+
+### 7.4 Step Implementation Lifecycle
+
+Authoring end-to-end steps follows a clean iterative lifecycle:
+1. **Scaffold:** Run `simply-utam steps` to detect undefined scenario steps and append typed skeleton definitions (`*.steps.mjs`).
+2. **Load Page Objects:** In the step definition, load the compiled UTAM page object:
+   ```javascript
+   const home = await utam.load(AccountHome);
+   ```
+3. **Interact & Assert:** Invoke public page object interaction methods, wait conditions, and assertions:
+   ```javascript
+   await home.clickNewAccount();
+   ```
+4. **Run & Verify:** Execute `npm run test:ui` (with `UTAM_USERNAME` configured) to observe automated execution against your target Salesforce org.

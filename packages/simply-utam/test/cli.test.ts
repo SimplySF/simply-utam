@@ -47,19 +47,24 @@ describe('CLI command execution', () => {
 
       const result = await Init.run(['--project-dir', tempDir, '--source-dir', 'force-app'], runOpts);
 
-      expect(result.createdFiles).toHaveLength(4);
+      expect(result.createdFiles).toHaveLength(6);
       expect(result.modifiedFiles).toContain('package.json');
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'utam.config.json'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'wdio.conf.mjs'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, '.utam', 'namespace-map.json'))).toBe(true);
+      expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(true);
+      expect(
+        fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'step_definitions', 'hello.steps.mjs')),
+      ).toBe(true);
     });
 
     it('should respect --dry-run without creating files on disk', async () => {
       const result = await Init.run(['--project-dir', tempDir, '--dry-run'], runOpts);
 
-      expect(result.createdFiles).toHaveLength(4);
+      expect(result.createdFiles).toHaveLength(6);
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(false);
     });
   });
 

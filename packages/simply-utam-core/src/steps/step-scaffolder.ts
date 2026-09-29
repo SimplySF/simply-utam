@@ -146,7 +146,7 @@ async function writeScaffoldedSnippets(
 
   let fileContent = fs.existsSync(targetOutput)
     ? fs.readFileSync(targetOutput, 'utf-8').trim() + '\n\n'
-    : "import { Given, When, Then } from '@cucumber/cucumber';\n\n";
+    : "import { Given, When, Then } from '@wdio/cucumber-framework';\n\n";
 
   for (const snippet of uniqueSnippets) {
     fileContent += snippet.fullText + '\n\n';

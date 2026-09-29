@@ -179,6 +179,8 @@ internal.
 | `generateUtamConfig(templatesDir?)`          | Generates parsed `utam.config.json` content.                                          |
 | `generateWdioConfig(sourceDir, dir?)`        | Generates formatted `wdio.conf.mjs` content.                                          |
 | `generateNamespaceMap(appName, dir?)`        | Generates parsed `namespace-map.json` content.                                        |
+| `generateHelloFeature(dir?)`                 | Generates formatted `hello.feature` starter smoke test content.                       |
+| `generateHelloSteps(dir?)`                   | Generates formatted `hello.steps.mjs` starter step definition content.                |
 | `DEFAULT_TEMPLATES_DIR`                      | Path to starter config templates directory.                                           |
 | `DEFAULT_REQUIRED_DEV_DEPENDENCIES`          | List of standard recommended UTAM devDependencies.                                    |
 

@@ -221,7 +221,7 @@ Feature: Feature 2
       // Verify output file was written and formatted
       expect(fs.existsSync(outputFile)).toBe(true);
       const outputContent = fs.readFileSync(outputFile, 'utf-8');
-      expect(outputContent).toContain("import { Given, When, Then } from '@cucumber/cucumber';");
+      expect(outputContent).toContain("import { Given, When, Then } from '@wdio/cucumber-framework';");
       expect(outputContent).toContain('user clicks {string}');
       expect(outputContent).toContain('record is created');
       expect(outputContent).toContain('email notification is sent');

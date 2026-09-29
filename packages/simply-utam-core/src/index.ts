@@ -127,6 +127,8 @@ export {
   generateUtamConfig,
   generateWdioConfig,
   generateNamespaceMap,
+  generateHelloFeature,
+  generateHelloSteps,
   injectWireitConfiguration,
   checkMissingDependencies,
   scaffoldProject,

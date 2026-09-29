@@ -103,6 +103,8 @@ describe('@simplysf/simply-utam-core', () => {
         'DEFAULT_TEMPLATES_DIR',
         'checkMissingDependencies',
         'generateGeneratorConfig',
+        'generateHelloFeature',
+        'generateHelloSteps',
         'generateNamespaceMap',
         'generateUtamConfig',
         'generateWdioConfig',
