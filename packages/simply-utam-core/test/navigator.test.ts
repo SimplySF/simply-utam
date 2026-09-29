@@ -15,7 +15,21 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LightningNavigator, type FrontdoorUrlSource, type NavigableBrowser } from '../src/navigator.js';
+import {
+  LightningNavigator,
+  goToLoginUrl,
+  goToExperiencePage,
+  loginAsUser,
+  loginAsExperienceUser,
+  goToApplication,
+  goToCreateNewRecord,
+  goToRecord,
+  goToRelatedList,
+  resolveBrowser,
+  type FrontdoorUrlSource,
+  type NavigableBrowser,
+} from '../src/navigator.js';
+import { TestEnvironment } from '../src/test-environment.js';
 
 const environment: FrontdoorUrlSource = {
   buildFrontdoorUrl: (returnUrl) => Promise.resolve(`https://example.my.salesforce.com/frontdoor?ret=${returnUrl}`),
@@ -86,5 +100,59 @@ describe('LightningNavigator', () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it('navigates to experience page and performs impersonation', async () => {
+    const browser = fakeBrowser();
+    const mockEnv: FrontdoorUrlSource = {
+      buildFrontdoorUrl: vi.fn().mockResolvedValue('https://example.my.salesforce.com/frontdoor'),
+      buildExperienceFrontdoorUrl: vi.fn().mockResolvedValue('https://community.site.com/frontdoor?retURL=%2Fs%2Fhome'),
+      getOrgId: vi.fn().mockResolvedValue('00D000000000001AAA'),
+      getUserIdByUsername: vi.fn().mockResolvedValue('005000000000001AAA'),
+      getInstanceUrl: vi.fn().mockResolvedValue('https://example.my.salesforce.com'),
+      getNetworkIdByPrefix: vi.fn().mockResolvedValue('0DB000000000001'),
+      buildExperienceUrl: vi.fn().mockResolvedValue('https://community.site.com/s/home'),
+    };
+
+    const navigator = new LightningNavigator({ environment: mockEnv, browser });
+
+    await navigator.goToExperiencePage('portal', 'home');
+    expect(browser.visited).toContain('https://community.site.com/frontdoor?retURL=%2Fs%2Fhome');
+
+    await navigator.loginAsUser('target@example.com', '/lightning/page/home');
+    expect(browser.visited).toContain(
+      'https://example.my.salesforce.com/servlet/servlet.su?oid=00D000000000001AAA&suorgadminid=005000000000001AAA&targetURL=%2Flightning%2Fpage%2Fhome',
+    );
+
+    await navigator.loginAsExperienceUser('target@example.com', 'portal', 'home');
+    expect(browser.visited).toContain('https://community.site.com/s/home');
+  });
+
+  describe('functional navigation helpers', () => {
+    it('supports standalone function calls', async () => {
+      const browser = fakeBrowser();
+      const mockEnv = {
+        buildFrontdoorUrl: vi.fn((ret?: string) => Promise.resolve(`https://example.my.salesforce.com/frontdoor?ret=${ret}`)),
+        buildExperienceFrontdoorUrl: vi.fn().mockResolvedValue('https://community.site.com/frontdoor?retURL=%2Fs%2Fhome'),
+        getOrgId: vi.fn().mockResolvedValue('00D000000000001AAA'),
+        getUserIdByUsername: vi.fn().mockResolvedValue('005000000000001AAA'),
+        getInstanceUrl: vi.fn().mockResolvedValue('https://example.my.salesforce.com'),
+        getNetworkIdByPrefix: vi.fn().mockResolvedValue('0DB000000000001'),
+        buildExperienceUrl: vi.fn().mockResolvedValue('https://community.site.com/s/home'),
+      } as unknown as TestEnvironment;
+
+      expect(resolveBrowser(browser)).toBe(browser);
+
+      await goToLoginUrl('/custom', browser, mockEnv);
+      await goToExperiencePage('portal', 'home', browser, mockEnv);
+      await loginAsUser('target@example.com', '/lightning', browser, mockEnv);
+      await loginAsExperienceUser('target@example.com', 'portal', 'home', browser, mockEnv);
+      await goToApplication('MyApp', browser, mockEnv);
+      await goToCreateNewRecord('MyApp', 'Account', browser, mockEnv);
+      await goToRecord('MyApp', '001000000000001AAA', browser, mockEnv);
+      await goToRelatedList('MyApp', '001000000000001AAA', 'Contacts', browser, mockEnv);
+
+      expect(browser.visited.length).toBeGreaterThanOrEqual(8);
+    });
   });
 });

@@ -30,20 +30,85 @@ describe('@simplysf/simply-utam-core', () => {
   it('exports the expected set of runtime values', () => {
     expect(Object.keys(api).sort()).toStrictEqual(
       [
-        // org authentication
+        // org authentication & environment
+        'DEFAULT_ALLOWED_HOST_PATTERNS',
         'TestEnvironment',
         'USERNAME_ENV',
+        'getTestEnvironment',
+        'isHostAllowed',
+        'resetTestEnvironment',
+        'setTestEnvironment',
+        'validateAndParseSecureUrl',
+
         // Lightning paths and navigation
         'LightningNavigator',
         'applicationPath',
+        'goToApplication',
+        'goToCreateNewRecord',
+        'goToExperiencePage',
+        'goToLoginUrl',
+        'goToRecord',
+        'goToRelatedList',
         'lightningAppName',
+        'loginAsExperienceUser',
+        'loginAsUser',
         'newRecordPath',
         'recordPath',
         'relatedListPath',
+        'resolveBrowser',
+
         // debugging
         'formatUtamHtml',
         'getUtamHtml',
         'logUtamHtml',
+
+        // discovery
+        'discoverComponentsInPackageDir',
+        'discoverProject',
+        'findLwcDirectories',
+
+        // rules
+        'ROOT_TARGETS',
+        'convertLwcNameToHtml',
+        'generateLwcRules',
+        'getTargetsFromMeta',
+
+        // overrides
+        'applyUtamOverrides',
+        'detectIndentation',
+        'findUtamOverridesFiles',
+        'mergeElements',
+        'walkElements',
+
+        // namespaces
+        'findUtamJsonFiles',
+        'rewriteUtamNamespaces',
+        'updateValueWithMappings',
+
+        // steps
+        'compileStepExpressions',
+        'extractStepExpressionsFromContent',
+        'extractStepsFromGherkin',
+        'formatCode',
+        'formatParameterNames',
+        'generateCucumberSteps',
+        'generateStepSnippet',
+        'matchStepAgainstExpressions',
+        'normalizeExpression',
+        'parseGherkinDocument',
+        'resolveGlobs',
+
+        // scaffold
+        'DEFAULT_REQUIRED_DEV_DEPENDENCIES',
+        'DEFAULT_TEMPLATES_DIR',
+        'checkMissingDependencies',
+        'generateGeneratorConfig',
+        'generateNamespaceMap',
+        'generateUtamConfig',
+        'generateWdioConfig',
+        'injectWireitConfiguration',
+        'loadTemplate',
+        'scaffoldProject',
       ].sort(),
     );
   });

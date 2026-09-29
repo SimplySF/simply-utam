@@ -14,7 +14,8 @@
     "node": ">=22.0.0"
   },
   "files": [
-    "/lib"
+    "/lib",
+    "/templates"
   ],
   "keywords": [
     "utam",
@@ -31,10 +32,38 @@
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
+    },
+    "./discovery": {
+      "types": "./lib/discovery/index.d.ts",
+      "default": "./lib/discovery/index.js"
+    },
+    "./rules": {
+      "types": "./lib/rules/index.d.ts",
+      "default": "./lib/rules/index.js"
+    },
+    "./overrides": {
+      "types": "./lib/overrides/index.d.ts",
+      "default": "./lib/overrides/index.js"
+    },
+    "./namespaces": {
+      "types": "./lib/namespaces/index.d.ts",
+      "default": "./lib/namespaces/index.js"
+    },
+    "./steps": {
+      "types": "./lib/steps/index.d.ts",
+      "default": "./lib/steps/index.js"
+    },
+    "./scaffold": {
+      "types": "./lib/scaffold/index.d.ts",
+      "default": "./lib/scaffold/index.js"
     }
   },
   "dependencies": {
-    "@salesforce/core": "^9.1.7"
+    "@cucumber/cucumber-expressions": "^20.1.0",
+    "@cucumber/gherkin": "^42.0.1",
+    "@cucumber/messages": "^34.2.1",
+    "@salesforce/core": "^9.2.0",
+    "prettier": "^3.9.6"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.10",

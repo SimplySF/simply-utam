@@ -1,0 +1,9 @@
+{
+  "pageObjectsRootDir": "./",
+  "pageObjectsFileMask": ["**/__utam__/**/*.utam.json"],
+  "extensionsFileMask": ["**/__utam__/**/*.utam.js"],
+  "pageObjectsOutputDir": "pageObjects",
+  "extensionsOutputDir": "utils",
+  "moduleTarget": "module",
+  "skipCommonJs": true
+}

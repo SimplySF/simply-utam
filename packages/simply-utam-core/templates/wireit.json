@@ -1,0 +1,37 @@
+{
+  "scripts": {
+    "build:utam-rules": "wireit",
+    "build:utam-generate": "wireit",
+    "build:utam-overrides": "wireit",
+    "build:utam-rewrite-namespaces": "wireit",
+    "build:utam": "wireit",
+    "test:ui": "wireit"
+  },
+  "wireit": {
+    "build:utam-rules": {
+      "command": "simply-utam rules"
+    },
+    "build:utam-generate": {
+      "command": "utam-generate -c generator.config.json",
+      "dependencies": ["build:utam-rules"]
+    },
+    "build:utam-overrides": {
+      "command": "simply-utam overrides",
+      "dependencies": ["build:utam-generate"]
+    },
+    "build:utam-rewrite-namespaces": {
+      "command": "simply-utam rewrite -c .utam/namespace-map.json",
+      "dependencies": ["build:utam-overrides"]
+    },
+    "build:utam": {
+      "command": "utam -c utam.config.json",
+      "files": ["**/__utam__/**/*.utam.json", "**/__utam__/**/*.utam.js"],
+      "output": ["pageObjects"],
+      "dependencies": ["build:utam-rewrite-namespaces"]
+    },
+    "test:ui": {
+      "command": "wdio run wdio.conf.mjs",
+      "dependencies": ["build:utam"]
+    }
+  }
+}
