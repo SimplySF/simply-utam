@@ -96,6 +96,7 @@ describe('@simplysf/simply-utam-core', () => {
         'matchStepAgainstExpressions',
         'normalizeExpression',
         'parseGherkinDocument',
+        'resolveDefaultTargetOutput',
         'resolveGlobs',
 
         // scaffold

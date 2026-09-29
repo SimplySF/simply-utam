@@ -95,7 +95,7 @@ export function generateStepSnippet(
   const parameters = formatParameterNames(rawParamNames, step.hasDataTable, step.hasDocString);
   const escapedExpression = expressionSource.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
-  const fullText = `${step.keyword}('${escapedExpression}', async (${parameters.join(', ')}): Promise<void> => {\n  // Write code here that turns the phrase above into concrete actions\n  throw new Error('Step not implemented');\n});`;
+  const fullText = `${step.keyword}('${escapedExpression}', async (${parameters.join(', ')}) => {\n  // TODO: Implement step logic\n  console.warn('[STEP NOT IMPLEMENTED]: ${escapedExpression}');\n});`;
 
   return {
     keyword: step.keyword,

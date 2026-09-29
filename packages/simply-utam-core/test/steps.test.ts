@@ -26,6 +26,7 @@ import {
   formatParameterNames,
   generateStepSnippet,
   generateCucumberSteps,
+  resolveDefaultTargetOutput,
   resolveGlobs,
 } from '../src/steps/index.js';
 
@@ -163,9 +164,9 @@ Feature: Account Management
       expect(snippet.keyword).toBe('When');
       expect(snippet.expression).toBe('user enters {string} and {string}');
       expect(snippet.parameters).toEqual(['string', 'string2']);
-      expect(snippet.fullText).toContain(
-        "When('user enters {string} and {string}', async (string, string2): Promise<void> => {",
-      );
+      expect(snippet.fullText).toContain("When('user enters {string} and {string}', async (string, string2) => {");
+      expect(snippet.fullText).toContain("console.warn('[STEP NOT IMPLEMENTED]: user enters {string} and {string}');");
+      expect(snippet.fullText).not.toContain('throw new Error');
     });
   });
 
@@ -266,6 +267,59 @@ Feature: Dry Run Test
     it('resolves glob patterns and direct file paths', () => {
       const resolved = resolveGlobs([path.join(tempDir, '**/*.feature')], tempDir);
       expect(Array.isArray(resolved)).toBe(true);
+    });
+
+    it('resolveDefaultTargetOutput places output alongside discovered step files', () => {
+      const stepFile = path.join(tempDir, 'force-app', 'test', 'utam', 'step_definitions', 'hello.steps.mjs');
+      fs.mkdirSync(path.dirname(stepFile), { recursive: true });
+      fs.writeFileSync(stepFile, '// step file');
+
+      const resolved = resolveDefaultTargetOutput(tempDir, [stepFile]);
+      expect(resolved).toBe(path.join(tempDir, 'force-app', 'test', 'utam', 'step_definitions', 'generated.steps.mjs'));
+    });
+
+    it('resolveDefaultTargetOutput falls back to discovered package directory if no step files exist', () => {
+      const sfdxProject = {
+        packageDirectories: [{ path: 'sfdx-source/my-pkg', default: true }],
+      };
+      fs.writeFileSync(path.join(tempDir, 'sfdx-project.json'), JSON.stringify(sfdxProject));
+
+      const utamDir = path.join(tempDir, 'sfdx-source', 'my-pkg', 'test', 'utam');
+      fs.mkdirSync(utamDir, { recursive: true });
+
+      const resolved = resolveDefaultTargetOutput(tempDir, []);
+      expect(resolved).toBe(
+        path.join(tempDir, 'sfdx-source', 'my-pkg', 'test', 'utam', 'step_definitions', 'generated.steps.mjs'),
+      );
+    });
+
+    it('generateCucumberSteps defaults targetOutput to existing step file directory when outputFile is omitted', async () => {
+      const sfdxDir = path.join(tempDir, 'sfdx-source', 'app', 'test', 'utam');
+      const featDir = path.join(sfdxDir, 'features');
+      const stepDir = path.join(sfdxDir, 'step_definitions');
+      fs.mkdirSync(featDir, { recursive: true });
+      fs.mkdirSync(stepDir, { recursive: true });
+
+      fs.writeFileSync(path.join(stepDir, 'hello.steps.mjs'), "import { Given } from '@wdio/cucumber-framework';");
+      fs.writeFileSync(
+        path.join(featDir, 'sample.feature'),
+        'Feature: Sample\n  Scenario: S\n    Given user triggers automated action\n',
+      );
+
+      const result = await generateCucumberSteps({
+        rootDir: tempDir,
+      });
+
+      expect(result.outputFile).toBe(path.join(stepDir, 'generated.steps.mjs'));
+      expect(fs.existsSync(result.outputFile)).toBe(true);
+
+      const content = fs.readFileSync(result.outputFile, 'utf-8');
+      expect(content).toContain("import { Given, When, Then } from '@wdio/cucumber-framework';");
+      expect(content).toContain("Given('user triggers automated action', async () => {");
+      expect(content).toContain("console.warn('[STEP NOT IMPLEMENTED]: user triggers automated action');");
+      expect(content).not.toContain('throw new Error');
+      // Verify no TypeScript type annotations in JavaScript file
+      expect(content).not.toContain(': Promise');
     });
   });
 });

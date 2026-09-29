@@ -109,6 +109,7 @@ export {
   generateStepSnippet,
   formatCode,
   resolveGlobs,
+  resolveDefaultTargetOutput,
   generateCucumberSteps,
   type StepSemanticKeyword,
   type ParsedGherkinStep,

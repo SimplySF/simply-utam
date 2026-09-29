@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ParameterTypeRegistry } from '@cucumber/cucumber-expressions';
+import { discoverProject } from '../discovery/index.js';
 import { extractStepsFromGherkin, ParsedGherkinStep } from './gherkin-parser.js';
 import {
   extractStepExpressionsFromContent,
@@ -166,6 +167,49 @@ async function writeScaffoldedSnippets(
 }
 
 /**
+ * Determines the default output target file path for scaffolded step definitions.
+ *
+ * If existing step definition files are found, places generated.steps.mjs in the same directory.
+ * Otherwise, inspects project discovery for package directories (e.g. sfdx-source, force-app)
+ * and checks candidate test/utam directory locations.
+ *
+ * @param rootDir - Root directory of the project.
+ * @param stepFiles - List of resolved existing step definition file paths.
+ * @returns Absolute path to target generated.steps.mjs file.
+ */
+export function resolveDefaultTargetOutput(rootDir: string, stepFiles: readonly string[] = []): string {
+  if (stepFiles.length > 0) {
+    const primaryDir = path.dirname(stepFiles[0]);
+    return path.join(primaryDir, 'generated.steps.mjs');
+  }
+
+  const discovery = discoverProject(rootDir);
+  const sourceDir = discovery.defaultPackageDirectory ?? discovery.packageDirectories[0] ?? 'force-app';
+
+  const candidateDirs = [
+    path.join(rootDir, sourceDir, 'test', 'utam', 'step_definitions'),
+    path.join(rootDir, sourceDir, 'tests', 'utam', 'step_definitions'),
+    path.join(rootDir, sourceDir, 'test', 'utam'),
+    path.join(rootDir, sourceDir, 'tests', 'utam'),
+    path.join(rootDir, 'test', 'utam', 'step_definitions'),
+    path.join(rootDir, 'tests', 'utam', 'step_definitions'),
+    path.join(rootDir, 'test', 'utam'),
+    path.join(rootDir, 'tests', 'utam'),
+  ];
+
+  for (const dir of candidateDirs) {
+    if (fs.existsSync(dir)) {
+      if (dir.endsWith('step_definitions')) {
+        return path.join(dir, 'generated.steps.mjs');
+      }
+      return path.join(dir, 'step_definitions', 'generated.steps.mjs');
+    }
+  }
+
+  return path.resolve(rootDir, sourceDir, 'test/utam/step_definitions/generated.steps.mjs');
+}
+
+/**
  * Scans feature files, discovers undefined Gherkin steps against existing step definition files,
  * deduplicates snippets by expression, and non-destructively scaffolds new step definitions.
  *
@@ -187,14 +231,15 @@ export async function generateCucumberSteps(options: GenerateStepsOptions = {}):
     'force-app/**/*.steps.{js,mjs,ts}',
     'test/**/*.steps.{js,mjs,ts}',
   ];
+
+  const featureFiles = resolveGlobs(featurePatterns, rootDir).filter((f) => f.endsWith('.feature'));
+  const stepFiles = resolveGlobs(stepPatterns, rootDir);
+
   const targetOutput = options.outputFile
     ? path.isAbsolute(options.outputFile)
       ? options.outputFile
       : path.resolve(rootDir, options.outputFile)
-    : path.resolve(rootDir, 'test/utam/step_definitions/generated.steps.mjs');
-
-  const featureFiles = resolveGlobs(featurePatterns, rootDir).filter((f) => f.endsWith('.feature'));
-  const stepFiles = resolveGlobs(stepPatterns, rootDir);
+    : resolveDefaultTargetOutput(rootDir, stepFiles);
 
   const { compiledExpressions, existingNormalizedExpressions, registry } = collectExistingExpressions(
     stepFiles,
