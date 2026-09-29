@@ -47,7 +47,7 @@ const compat = new FlatCompat({
 });
 
 // All published packages; every one carries the same Apache-2.0 header.
-const allPackages = ['packages/simply-utam-core'];
+const allPackages = ['packages/simply-utam-core', 'packages/simply-utam'];
 
 // The library package is imported into test runners: it is never a CLI and never spawns a
 // process. Enforced here rather than by convention, because a package boundary is what makes the
