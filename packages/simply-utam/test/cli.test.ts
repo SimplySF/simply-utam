@@ -45,10 +45,7 @@ describe('CLI command execution', () => {
       const pkgPath = path.join(tempDir, 'package.json');
       fs.writeFileSync(pkgPath, JSON.stringify({ name: 'cli-test-project' }), 'utf-8');
 
-      const result = await Init.run(
-        ['--project-dir', tempDir, '--source-dir', 'force-app'],
-        runOpts,
-      );
+      const result = await Init.run(['--project-dir', tempDir, '--source-dir', 'force-app'], runOpts);
 
       expect(result.createdFiles).toHaveLength(4);
       expect(result.modifiedFiles).toContain('package.json');
@@ -81,10 +78,7 @@ describe('CLI command execution', () => {
         'utf-8',
       );
 
-      const result = await Rules.run(
-        ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app')],
-        runOpts,
-      );
+      const result = await Rules.run(['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app')], runOpts);
 
       expect(result.totalComponentsScanned).toBe(1);
       expect(result.rootComponentsIdentified).toBe(1);
@@ -166,11 +160,7 @@ describe('CLI command execution', () => {
       fs.writeFileSync(utamPath, JSON.stringify({ elements: [{ name: 'button' }] }), 'utf-8');
 
       const overridePath = path.join(compDir, 'myComp.utam-overrides.json');
-      fs.writeFileSync(
-        overridePath,
-        JSON.stringify([{ name: 'button', element: { shadow: {} } }]),
-        'utf-8',
-      );
+      fs.writeFileSync(overridePath, JSON.stringify([{ name: 'button', element: { shadow: {} } }]), 'utf-8');
 
       const result = await Overrides.run(
         ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app'), '--dry-run'],
@@ -224,14 +214,7 @@ describe('CLI command execution', () => {
       );
 
       const result = await Rewrite.run(
-        [
-          '--project-dir',
-          tempDir,
-          '--source',
-          path.join(tempDir, 'force-app'),
-          '--config',
-          mapPath,
-        ],
+        ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app'), '--config', mapPath],
         runOpts,
       );
 
@@ -275,16 +258,7 @@ Given('user navigates to the login page', async () => {});
 
       const outputPath = path.join(testDir, 'generated.steps.mjs');
       const result = await Steps.run(
-        [
-          '--project-dir',
-          tempDir,
-          '--features',
-          featurePath,
-          '--steps',
-          stepsPath,
-          '--output',
-          outputPath,
-        ],
+        ['--project-dir', tempDir, '--features', featurePath, '--steps', stepsPath, '--output', outputPath],
         runOpts,
       );
 

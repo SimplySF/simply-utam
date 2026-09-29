@@ -21,8 +21,7 @@ import { applyUtamOverrides, type ApplyOverridesResult } from '@simplysf/simply-
  * CLI command to merge *.utam-overrides.json files into generated UTAM schemas.
  */
 export default class Overrides extends Command {
-  public static override summary =
-    'Merge *.utam-overrides.json files into generated UTAM page object schemas.';
+  public static override summary = 'Merge *.utam-overrides.json files into generated UTAM page object schemas.';
 
   public static override description =
     'Recursively searches source directories for *.utam-overrides.json files, locates corresponding compiled *.utam.json schemas, and performs deep AST merging while preserving JSON indentation.';
@@ -38,8 +37,7 @@ export default class Overrides extends Command {
   public static override flags = {
     source: Flags.string({
       char: 's',
-      summary:
-        'Specific source directory or directories to scan (defaults to discovered package directories).',
+      summary: 'Specific source directory or directories to scan (defaults to discovered package directories).',
       multiple: true,
     }),
     'project-dir': Flags.string({

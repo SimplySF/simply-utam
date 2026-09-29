@@ -20,8 +20,4 @@
  */
 
 export * from '@simplysf/simply-utam-core';
-export {
-  executeBuildPipeline,
-  type BuildPipelineOptions,
-  type BuildPipelineResult,
-} from './pipeline-runner.js';
+export { executeBuildPipeline, type BuildPipelineOptions, type BuildPipelineResult } from './pipeline-runner.js';

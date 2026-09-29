@@ -166,12 +166,14 @@ export class LightningNavigator {
     await this.goToLoginUrl('/');
     const env = this.#environment;
     const orgId = typeof env.getOrgId === 'function' ? await env.getOrgId() : await getTestEnvironment().getOrgId();
-    const userId = typeof env.getUserIdByUsername === 'function'
-      ? await env.getUserIdByUsername(username)
-      : await getTestEnvironment().getUserIdByUsername(username);
-    const instanceUrl = typeof env.getInstanceUrl === 'function'
-      ? await env.getInstanceUrl()
-      : await getTestEnvironment().getInstanceUrl();
+    const userId =
+      typeof env.getUserIdByUsername === 'function'
+        ? await env.getUserIdByUsername(username)
+        : await getTestEnvironment().getUserIdByUsername(username);
+    const instanceUrl =
+      typeof env.getInstanceUrl === 'function'
+        ? await env.getInstanceUrl()
+        : await getTestEnvironment().getInstanceUrl();
     const loginAsUrl = `${instanceUrl}/servlet/servlet.su?oid=${orgId}&suorgadminid=${userId}&targetURL=${encodeURIComponent(returnUrl)}`;
     await browserTarget.navigateTo(loginAsUrl);
     return loginAsUrl;
@@ -185,26 +187,25 @@ export class LightningNavigator {
    * @param pageName - The Experience page name (relative to /s/).
    * @returns The resolved Experience site page URL.
    */
-  public async loginAsExperienceUser(
-    username: string,
-    sitePrefix: string,
-    pageName: string,
-  ): Promise<string> {
+  public async loginAsExperienceUser(username: string, sitePrefix: string, pageName: string): Promise<string> {
     const browserTarget = this.resolveBrowser();
     await this.loginAsUser(username, '/');
     const env = this.#environment;
-    const networkId = typeof env.getNetworkIdByPrefix === 'function'
-      ? await env.getNetworkIdByPrefix(sitePrefix)
-      : await getTestEnvironment().getNetworkIdByPrefix(sitePrefix);
-    const instanceUrl = typeof env.getInstanceUrl === 'function'
-      ? await env.getInstanceUrl()
-      : await getTestEnvironment().getInstanceUrl();
+    const networkId =
+      typeof env.getNetworkIdByPrefix === 'function'
+        ? await env.getNetworkIdByPrefix(sitePrefix)
+        : await getTestEnvironment().getNetworkIdByPrefix(sitePrefix);
+    const instanceUrl =
+      typeof env.getInstanceUrl === 'function'
+        ? await env.getInstanceUrl()
+        : await getTestEnvironment().getInstanceUrl();
     const networkSwitchUrl = `${instanceUrl}/servlet/networks/switch?networkId=${networkId}`;
     await browserTarget.navigateTo(networkSwitchUrl);
     const cleanPageName = pageName.startsWith('/') ? pageName.slice(1) : pageName;
-    const experienceUrl = typeof env.buildExperienceUrl === 'function'
-      ? await env.buildExperienceUrl(sitePrefix, `/s/${cleanPageName}`)
-      : await getTestEnvironment().buildExperienceUrl(sitePrefix, `/s/${cleanPageName}`);
+    const experienceUrl =
+      typeof env.buildExperienceUrl === 'function'
+        ? await env.buildExperienceUrl(sitePrefix, `/s/${cleanPageName}`)
+        : await getTestEnvironment().buildExperienceUrl(sitePrefix, `/s/${cleanPageName}`);
     await browserTarget.navigateTo(experienceUrl);
     return experienceUrl;
   }

@@ -36,11 +36,7 @@ export interface BuildPipelineOptions {
     args: string[],
     cwd: string,
   ) => Promise<{ code: number; stdout: string; stderr: string }>;
-  onStage?: (
-    stage: string,
-    status: 'start' | 'success' | 'skip' | 'error',
-    message?: string,
-  ) => void;
+  onStage?: (stage: string, status: 'start' | 'success' | 'skip' | 'error', message?: string) => void;
 }
 
 export interface BuildPipelineResult {
@@ -59,11 +55,7 @@ type CommandRunner = (
   cwd: string,
 ) => Promise<{ code: number; stdout: string; stderr: string }>;
 
-type StageLogger = (
-  stage: string,
-  status: 'start' | 'success' | 'skip' | 'error',
-  message?: string,
-) => void;
+type StageLogger = (stage: string, status: 'start' | 'success' | 'skip' | 'error', message?: string) => void;
 
 function defaultSpawn(
   command: string,
@@ -264,9 +256,7 @@ async function executeCompilerStage(
  * @param options - Build pipeline execution options.
  * @returns Summary of execution results across all pipeline stages.
  */
-export async function executeBuildPipeline(
-  options?: BuildPipelineOptions,
-): Promise<BuildPipelineResult> {
+export async function executeBuildPipeline(options?: BuildPipelineOptions): Promise<BuildPipelineResult> {
   const projectDir = path.resolve(options?.projectDir ?? process.cwd());
   const dryRun = options?.dryRun ?? false;
   const runner = options?.spawnCommand ?? defaultSpawn;

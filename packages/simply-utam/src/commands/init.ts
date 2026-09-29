@@ -43,8 +43,7 @@ export default class Init extends Command {
     }),
     'source-dir': Flags.string({
       char: 's',
-      summary:
-        'Primary Salesforce source directory (auto-detected from sfdx-project.json if omitted).',
+      summary: 'Primary Salesforce source directory (auto-detected from sfdx-project.json if omitted).',
     }),
     'app-name': Flags.string({
       char: 'a',
@@ -98,9 +97,7 @@ export default class Init extends Command {
         this.log(`Created files: ${result.createdFiles.join(', ')}`);
       }
       if (result.skippedFiles.length > 0) {
-        this.log(
-          `Skipped existing files (use --force to overwrite): ${result.skippedFiles.join(', ')}`,
-        );
+        this.log(`Skipped existing files (use --force to overwrite): ${result.skippedFiles.join(', ')}`);
       }
       if (result.modifiedFiles.length > 0) {
         this.log(`Updated files: ${result.modifiedFiles.join(', ')}`);

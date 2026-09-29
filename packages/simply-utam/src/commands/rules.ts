@@ -37,8 +37,7 @@ export default class Rules extends Command {
   public static override flags = {
     source: Flags.string({
       char: 's',
-      summary:
-        'Specific source directory or directories to scan (defaults to discovered package directories).',
+      summary: 'Specific source directory or directories to scan (defaults to discovered package directories).',
       multiple: true,
     }),
     namespace: Flags.string({

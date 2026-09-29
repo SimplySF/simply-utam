@@ -106,10 +106,7 @@ export function findUtamOverridesFiles(dirPath: string): string[] {
  * @param node - Current AST node.
  * @param callback - Function invoked for each element object encountered.
  */
-export function walkElements(
-  node: unknown,
-  callback: (element: Record<string, unknown>) => void,
-): void {
+export function walkElements(node: unknown, callback: (element: Record<string, unknown>) => void): void {
   if (!node || typeof node !== 'object') {
     return;
   }
@@ -155,10 +152,7 @@ export function walkElements(
  * @param target - Target AST element node to mutate.
  * @param source - Override properties to merge into target.
  */
-export function mergeElements(
-  target: Record<string, unknown>,
-  source: Record<string, unknown>,
-): void {
+export function mergeElements(target: Record<string, unknown>, source: Record<string, unknown>): void {
   for (const [key, val] of Object.entries(source)) {
     if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
       if (typeof target[key] !== 'object' || target[key] === null || Array.isArray(target[key])) {
@@ -176,10 +170,7 @@ interface ProcessOverrideResult {
   appliedCount: number;
 }
 
-function applyItemsToUtam(
-  utamJson: unknown,
-  overrides: unknown[],
-): { changes: OverrideChange[]; count: number } {
+function applyItemsToUtam(utamJson: unknown, overrides: unknown[]): { changes: OverrideChange[]; count: number } {
   const changes: OverrideChange[] = [];
   let count = 0;
 
@@ -190,12 +181,7 @@ function applyItemsToUtam(
     const overrideItem = item as UtamOverrideItem;
     const { name, element } = overrideItem;
 
-    if (
-      typeof name !== 'string' ||
-      !element ||
-      typeof element !== 'object' ||
-      Array.isArray(element)
-    ) {
+    if (typeof name !== 'string' || !element || typeof element !== 'object' || Array.isArray(element)) {
       continue;
     }
 
@@ -216,10 +202,7 @@ function applyItemsToUtam(
   return { changes, count };
 }
 
-function processSingleOverrideFile(
-  overrideFile: string,
-  dryRun: boolean,
-): ProcessOverrideResult {
+function processSingleOverrideFile(overrideFile: string, dryRun: boolean): ProcessOverrideResult {
   let overrides: unknown;
   try {
     overrides = JSON.parse(fs.readFileSync(overrideFile, 'utf-8'));
@@ -332,15 +315,12 @@ export function applyUtamOverrides(options: ApplyOverridesOptions = {}): ApplyOv
   let sourceDirs = options.sourceDirs;
   if (!sourceDirs || sourceDirs.length === 0) {
     const discovered = discoverProject(rootDir);
-    sourceDirs =
-      discovered.packageDirectories.length > 0 ? discovered.packageDirectories : ['./sfdx-source'];
+    sourceDirs = discovered.packageDirectories.length > 0 ? discovered.packageDirectories : ['./sfdx-source'];
   }
 
   const allOverrideFiles: string[] = [];
   for (const sourceDir of sourceDirs) {
-    const resolvedSource = path.isAbsolute(sourceDir)
-      ? sourceDir
-      : path.resolve(rootDir, sourceDir);
+    const resolvedSource = path.isAbsolute(sourceDir) ? sourceDir : path.resolve(rootDir, sourceDir);
     allOverrideFiles.push(...findUtamOverridesFiles(resolvedSource));
   }
 

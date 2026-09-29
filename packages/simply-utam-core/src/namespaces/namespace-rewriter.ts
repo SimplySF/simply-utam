@@ -173,8 +173,7 @@ function resolveMappings(
   }
 
   const mappingEntries = Object.entries(rawMappings).filter(
-    ([prefix, replacement]) =>
-      typeof prefix === 'string' && prefix.trim() && typeof replacement === 'string',
+    ([prefix, replacement]) => typeof prefix === 'string' && prefix.trim() && typeof replacement === 'string',
   );
 
   if (mappingEntries.length === 0) {
@@ -244,9 +243,7 @@ function processSingleUtamFile(
  * @param options - Namespace rewriting options.
  * @returns Summary of files scanned and namespace replacements made.
  */
-export function rewriteUtamNamespaces(
-  options: RewriteNamespacesOptions = {},
-): RewriteNamespacesResult {
+export function rewriteUtamNamespaces(options: RewriteNamespacesOptions = {}): RewriteNamespacesResult {
   const rootDir = path.resolve(options.rootDir ?? process.cwd());
   const dryRun = Boolean(options.dryRun);
 
@@ -266,15 +263,12 @@ export function rewriteUtamNamespaces(
   let sourceDirs = options.sourceDirs;
   if (!sourceDirs || sourceDirs.length === 0) {
     const discovered = discoverProject(rootDir);
-    sourceDirs =
-      discovered.packageDirectories.length > 0 ? discovered.packageDirectories : ['./sfdx-source'];
+    sourceDirs = discovered.packageDirectories.length > 0 ? discovered.packageDirectories : ['./sfdx-source'];
   }
 
   const allUtamFiles: string[] = [];
   for (const sourceDir of sourceDirs) {
-    const resolvedSource = path.isAbsolute(sourceDir)
-      ? sourceDir
-      : path.resolve(rootDir, sourceDir);
+    const resolvedSource = path.isAbsolute(sourceDir) ? sourceDir : path.resolve(rootDir, sourceDir);
     allUtamFiles.push(...findUtamJsonFiles(resolvedSource));
   }
 

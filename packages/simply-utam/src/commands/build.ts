@@ -37,8 +37,7 @@ export default class Build extends Command {
   public static override flags = {
     source: Flags.string({
       char: 's',
-      summary:
-        'Specific source directory or directories to process (defaults to discovered package directories).',
+      summary: 'Specific source directory or directories to process (defaults to discovered package directories).',
       multiple: true,
     }),
     'project-dir': Flags.string({
@@ -82,8 +81,7 @@ export default class Build extends Command {
       namespaceMapPath: flags['namespace-map'],
       dryRun: flags['dry-run'],
       onStage: (stage, status, message) => {
-        const symbol =
-          status === 'success' ? '✓' : status === 'skip' ? '○' : status === 'error' ? '✗' : '►';
+        const symbol = status === 'success' ? '✓' : status === 'skip' ? '○' : status === 'error' ? '✗' : '►';
         const msgSuffix = message ? `: ${message}` : '';
         this.log(`  ${symbol} [${stage}] ${status}${msgSuffix}`);
       },

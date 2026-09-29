@@ -70,10 +70,7 @@ export function parseGherkinDocument(content: string): ReturnType<Parser<unknown
  * @param filePath - Path to the feature file for error and location reporting.
  * @returns Extracted steps with normalized semantic keywords.
  */
-export function extractStepsFromGherkin(
-  content: string,
-  filePath: string = 'unknown.feature',
-): ParsedGherkinStep[] {
+export function extractStepsFromGherkin(content: string, filePath: string = 'unknown.feature'): ParsedGherkinStep[] {
   let gherkinDocument: ParsedGherkinDocument | undefined;
   try {
     gherkinDocument = parseGherkinDocument(content) as ParsedGherkinDocument;

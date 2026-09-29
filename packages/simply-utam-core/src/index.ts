@@ -35,13 +35,7 @@ export {
   type TestEnvironmentOptions,
 } from './test-environment.js';
 
-export {
-  applicationPath,
-  lightningAppName,
-  newRecordPath,
-  recordPath,
-  relatedListPath,
-} from './lightning-paths.js';
+export { applicationPath, lightningAppName, newRecordPath, recordPath, relatedListPath } from './lightning-paths.js';
 
 export {
   LightningNavigator,
@@ -59,13 +53,7 @@ export {
   type NavigableBrowser,
 } from './navigator.js';
 
-export {
-  formatUtamHtml,
-  getUtamHtml,
-  logUtamHtml,
-  type UtamElementLike,
-  type UtamHtml,
-} from './utam-html.js';
+export { formatUtamHtml, getUtamHtml, logUtamHtml, type UtamElementLike, type UtamHtml } from './utam-html.js';
 
 export {
   findLwcDirectories,

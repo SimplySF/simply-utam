@@ -21,8 +21,7 @@ import { generateCucumberSteps, type GenerateStepsResult } from '@simplysf/simpl
  * CLI command to detect missing Cucumber steps and scaffold definition templates.
  */
 export default class Steps extends Command {
-  public static override summary =
-    'Scaffold missing Cucumber step definitions based on Gherkin feature files.';
+  public static override summary = 'Scaffold missing Cucumber step definitions based on Gherkin feature files.';
 
   public static override description =
     'Parses Gherkin .feature files, compiles registered step expressions from existing step definition files, detects true missing steps without false positives, and appends formatted snippet templates.';
@@ -85,18 +84,14 @@ export default class Steps extends Command {
       this.log('[dry-run] Step scaffolding preview:');
     }
 
-    this.log(
-      `Scanned ${result.featureFilesScanned} feature files and ${result.stepFilesScanned} step files.`,
-    );
+    this.log(`Scanned ${result.featureFilesScanned} feature files and ${result.stepFilesScanned} step files.`);
 
     if (result.undefinedStepsCount === 0) {
       this.log('All steps have matching definitions. No new step snippets needed.');
       return result;
     }
 
-    this.log(
-      `Detected ${result.undefinedStepsCount} undefined step(s). Target: ${result.outputFile}`,
-    );
+    this.log(`Detected ${result.undefinedStepsCount} undefined step(s). Target: ${result.outputFile}`);
 
     if ((flags.verbose || flags['dry-run']) && result.generatedCode) {
       this.log('\n--- Generated Snippets ---');

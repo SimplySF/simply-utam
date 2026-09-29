@@ -132,8 +132,12 @@ describe('LightningNavigator', () => {
     it('supports standalone function calls', async () => {
       const browser = fakeBrowser();
       const mockEnv = {
-        buildFrontdoorUrl: vi.fn((ret?: string) => Promise.resolve(`https://example.my.salesforce.com/frontdoor?ret=${ret}`)),
-        buildExperienceFrontdoorUrl: vi.fn().mockResolvedValue('https://community.site.com/frontdoor?retURL=%2Fs%2Fhome'),
+        buildFrontdoorUrl: vi.fn((ret?: string) =>
+          Promise.resolve(`https://example.my.salesforce.com/frontdoor?ret=${ret}`),
+        ),
+        buildExperienceFrontdoorUrl: vi
+          .fn()
+          .mockResolvedValue('https://community.site.com/frontdoor?retURL=%2Fs%2Fhome'),
         getOrgId: vi.fn().mockResolvedValue('00D000000000001AAA'),
         getUserIdByUsername: vi.fn().mockResolvedValue('005000000000001AAA'),
         getInstanceUrl: vi.fn().mockResolvedValue('https://example.my.salesforce.com'),

@@ -104,7 +104,9 @@ describe('TestEnvironment', () => {
     });
 
     it('retries authentication after a failure instead of caching it', async () => {
-      create.mockRejectedValueOnce(new Error('No authorization information found')).mockResolvedValueOnce(fakeOrg().org);
+      create
+        .mockRejectedValueOnce(new Error('No authorization information found'))
+        .mockResolvedValueOnce(fakeOrg().org);
       const environment = new TestEnvironment({ username: 'qa@example.com' });
 
       await expect(environment.init()).rejects.toThrow(/No authorization/);
@@ -229,9 +231,7 @@ describe('TestEnvironment', () => {
       const env = new TestEnvironment({ username: 'qa@example.com' });
       const frontdoor = await env.buildExperienceFrontdoorUrl('portal', 'home');
 
-      expect(frontdoor).toBe(
-        'https://community.my.site.com/portal/secur/frontdoor.jsp?sid=token&retURL=%2Fhome',
-      );
+      expect(frontdoor).toBe('https://community.my.site.com/portal/secur/frontdoor.jsp?sid=token&retURL=%2Fhome');
     });
   });
 

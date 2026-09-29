@@ -18,11 +18,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
-  findUtamJsonFiles,
-  updateValueWithMappings,
-  rewriteUtamNamespaces,
-} from '../src/namespaces/index.js';
+import { findUtamJsonFiles, updateValueWithMappings, rewriteUtamNamespaces } from '../src/namespaces/index.js';
 
 describe('Namespace Rewriter Service', () => {
   let tempDir: string;
@@ -188,12 +184,8 @@ describe('Namespace Rewriter Service', () => {
       }
 
       const updated = JSON.parse(content) as RewrittenUtam;
-      expect(updated.elements[0].type).toBe(
-        'shared-components-pageobjects/pageObjects/shared/modal',
-      );
-      expect(updated.methods[0].compose[0].apply).toBe(
-        'shared-components-pageobjects/pageObjects/shared/modal',
-      );
+      expect(updated.elements[0].type).toBe('shared-components-pageobjects/pageObjects/shared/modal');
+      expect(updated.methods[0].compose[0].apply).toBe('shared-components-pageobjects/pageObjects/shared/modal');
     });
 
     it('respects dryRun without altering files on disk', () => {

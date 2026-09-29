@@ -63,9 +63,7 @@ describe('scaffold service', () => {
     });
 
     it('loadTemplate should throw when template file does not exist', () => {
-      expect(() => loadTemplate('missing-template.json', tempDir)).toThrow(
-        "Scaffold template not found: '",
-      );
+      expect(() => loadTemplate('missing-template.json', tempDir)).toThrow("Scaffold template not found: '");
     });
   });
 
@@ -96,9 +94,7 @@ describe('scaffold service', () => {
 
     it('generateNamespaceMap should map application pageObjects to shared library', () => {
       const map = generateNamespaceMap('test-app');
-      expect(map['test-app/pageObjects/shared']).toBe(
-        'shared-components-pageobjects/pageObjects/shared',
-      );
+      expect(map['test-app/pageObjects/shared']).toBe('shared-components-pageobjects/pageObjects/shared');
     });
   });
 

@@ -273,9 +273,7 @@ export class TestEnvironment {
     };
 
     if (!siteResult.records || siteResult.records.length === 0) {
-      throw new Error(
-        `Unable to find an Experience Cloud site with prefix '${sitePrefix ?? 'none'}'`,
-      );
+      throw new Error(`Unable to find an Experience Cloud site with prefix '${sitePrefix ?? 'none'}'`);
     }
 
     const siteId15 = siteResult.records[0].Id.substring(0, 15);
@@ -323,9 +321,10 @@ export class TestEnvironment {
       body: '',
     });
 
-    const responseData = typeof responseRaw === 'string'
-      ? (JSON.parse(responseRaw) as { frontdoor_uri?: string })
-      : (responseRaw as { frontdoor_uri?: string } | null | undefined);
+    const responseData =
+      typeof responseRaw === 'string'
+        ? (JSON.parse(responseRaw) as { frontdoor_uri?: string })
+        : (responseRaw as { frontdoor_uri?: string } | null | undefined);
     const frontdoorUrl = responseData?.frontdoor_uri;
 
     if (!frontdoorUrl) {
@@ -363,9 +362,7 @@ export class TestEnvironment {
   public async getUserIdByUsername(username: string): Promise<string> {
     const connection = await this.getConnection();
     const safeUsername = username.replace(/'/g, "\\'");
-    const userResult = (await connection.query(
-      `SELECT Id FROM User WHERE Username = '${safeUsername}' LIMIT 1`,
-    )) as {
+    const userResult = (await connection.query(`SELECT Id FROM User WHERE Username = '${safeUsername}' LIMIT 1`)) as {
       records?: Array<{ Id: string }>;
     };
     if (!userResult.records || userResult.records.length === 0) {
@@ -390,9 +387,7 @@ export class TestEnvironment {
     };
 
     if (!networkResult.records || networkResult.records.length === 0) {
-      throw new Error(
-        `Unable to find a Network (Experience Site) with prefix '${sitePrefix ?? 'none'}'`,
-      );
+      throw new Error(`Unable to find a Network (Experience Site) with prefix '${sitePrefix ?? 'none'}'`);
     }
 
     return networkResult.records[0].Id.substring(0, 15);

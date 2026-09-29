@@ -11,12 +11,15 @@ locator actually resolved to.
 
 | Package                                                   | Description                                                          |
 | --------------------------------------------------------- | -------------------------------------------------------------------- |
+| [`@simplysf/simply-utam`](packages/simply-utam)           | Developer CLI executable and convenience re-exports                  |
 | [`@simplysf/simply-utam-core`](packages/simply-utam-core) | Org authentication, Lightning navigation, and UTAM debugging helpers |
 
 ## Installation
 
 ```sh
 npm install --save-dev @simplysf/simply-utam-core
+# or for the developer CLI:
+npm install --save-dev @simplysf/simply-utam
 ```
 
 Requires Node.js 22 or later. See the [package README](packages/simply-utam-core/README.md) for usage

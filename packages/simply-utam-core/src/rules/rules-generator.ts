@@ -136,9 +136,7 @@ function processComponentRules(
   }
 
   const targets = getTargetsFromMeta(xmlContent);
-  const isRoot = targets.some((target) =>
-    (ROOT_TARGETS as readonly string[]).includes(target),
-  );
+  const isRoot = targets.some((target) => (ROOT_TARGETS as readonly string[]).includes(target));
 
   if (!isRoot) {
     return {
@@ -207,12 +205,7 @@ function scanLwcDirRules(
     }
     result.totalComponentsScanned++;
 
-    const action = processComponentRules(
-      path.join(lwcDir, componentName),
-      componentName,
-      namespace,
-      dryRun,
-    );
+    const action = processComponentRules(path.join(lwcDir, componentName), componentName, namespace, dryRun);
 
     if (action.action === 'created') {
       result.rootComponentsIdentified++;
@@ -243,10 +236,7 @@ export function generateLwcRules(options: GenerateRulesOptions = {}): GenerateRu
   if (!sourceDirs || sourceDirs.length === 0 || namespace === undefined) {
     const discovered = discoverProject(rootDir);
     if (!sourceDirs || sourceDirs.length === 0) {
-      sourceDirs =
-        discovered.packageDirectories.length > 0
-          ? discovered.packageDirectories
-          : ['./sfdx-source'];
+      sourceDirs = discovered.packageDirectories.length > 0 ? discovered.packageDirectories : ['./sfdx-source'];
     }
     namespace ??= discovered.namespace ?? undefined;
   }
@@ -261,9 +251,7 @@ export function generateLwcRules(options: GenerateRulesOptions = {}): GenerateRu
   };
 
   for (const sourceDir of sourceDirs) {
-    const resolvedSource = path.isAbsolute(sourceDir)
-      ? sourceDir
-      : path.resolve(rootDir, sourceDir);
+    const resolvedSource = path.isAbsolute(sourceDir) ? sourceDir : path.resolve(rootDir, sourceDir);
 
     if (!fs.existsSync(resolvedSource)) {
       continue;

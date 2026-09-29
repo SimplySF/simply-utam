@@ -64,8 +64,7 @@ export function extractStepExpressionsFromContent(content: string): RawExtracted
   }
 
   // Match RegExp step definitions: Given(/^...$/, ...), When(/.../i, ...)
-  const regexRegex =
-    /(?:Given|When|Then|Step|DefineStep)\s*\(\s*\/((?:\\\/|[^/\r\n])+)\/([a-z]*)\s*,/g;
+  const regexRegex = /(?:Given|When|Then|Step|DefineStep)\s*\(\s*\/((?:\\\/|[^/\r\n])+)\/([a-z]*)\s*,/g;
   while ((match = regexRegex.exec(content)) !== null) {
     expressions.push({
       pattern: match[1],
@@ -123,10 +122,7 @@ export function compileStepExpressions(
  * @param compiledExpressions - Compiled step expressions to test against.
  * @returns True if a match is found, false otherwise.
  */
-export function matchStepAgainstExpressions(
-  stepText: string,
-  compiledExpressions: CompiledStepExpression[],
-): boolean {
+export function matchStepAgainstExpressions(stepText: string, compiledExpressions: CompiledStepExpression[]): boolean {
   for (const item of compiledExpressions) {
     const args = item.expression.match(stepText);
     if (args !== null) {

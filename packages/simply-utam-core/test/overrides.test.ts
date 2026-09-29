@@ -18,12 +18,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
-  detectIndentation,
-  walkElements,
-  mergeElements,
-  applyUtamOverrides,
-} from '../src/overrides/index.js';
+import { detectIndentation, walkElements, mergeElements, applyUtamOverrides } from '../src/overrides/index.js';
 
 describe('Overrides Merger Service', () => {
   let tempDir: string;
@@ -231,19 +226,11 @@ describe('Overrides Merger Service', () => {
     it('gracefully handles malformed overrides, non-array overrides, and missing UTAM files', () => {
       const comp1 = path.join(tempDir, 'force-app', 'lwc', 'malformedJsonComp');
       fs.mkdirSync(comp1, { recursive: true });
-      fs.writeFileSync(
-        path.join(comp1, 'malformedJsonComp.utam-overrides.json'),
-        'INVALID{',
-        'utf-8',
-      );
+      fs.writeFileSync(path.join(comp1, 'malformedJsonComp.utam-overrides.json'), 'INVALID{', 'utf-8');
 
       const comp2 = path.join(tempDir, 'force-app', 'lwc', 'notArrayComp');
       fs.mkdirSync(comp2, { recursive: true });
-      fs.writeFileSync(
-        path.join(comp2, 'notArrayComp.utam-overrides.json'),
-        '{"not": "array"}',
-        'utf-8',
-      );
+      fs.writeFileSync(path.join(comp2, 'notArrayComp.utam-overrides.json'), '{"not": "array"}', 'utf-8');
 
       const comp3 = path.join(tempDir, 'force-app', 'lwc', 'missingUtamComp');
       fs.mkdirSync(comp3, { recursive: true });
@@ -266,16 +253,10 @@ describe('Overrides Merger Service', () => {
 
       expect(result.scannedFilesCount).toBe(4);
       expect(result.modifiedFilesCount).toBe(0);
-      expect(result.results.some((r) => r.error?.includes('Failed to parse overrides file'))).toBe(
-        true,
-      );
+      expect(result.results.some((r) => r.error?.includes('Failed to parse overrides file'))).toBe(true);
       expect(result.results.some((r) => r.error?.includes('not a JSON array'))).toBe(true);
-      expect(
-        result.results.some((r) => r.error?.includes('Target generated UTAM file does not exist')),
-      ).toBe(true);
-      expect(
-        result.results.some((r) => r.error?.includes('Failed to parse target UTAM JSON')),
-      ).toBe(true);
+      expect(result.results.some((r) => r.error?.includes('Target generated UTAM file does not exist'))).toBe(true);
+      expect(result.results.some((r) => r.error?.includes('Failed to parse target UTAM JSON'))).toBe(true);
     });
   });
 });

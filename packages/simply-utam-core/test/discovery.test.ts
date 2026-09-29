@@ -18,11 +18,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
-  discoverProject,
-  findLwcDirectories,
-  discoverComponentsInPackageDir,
-} from '../src/discovery/index.js';
+import { discoverProject, findLwcDirectories, discoverComponentsInPackageDir } from '../src/discovery/index.js';
 
 describe('Project Discovery Service', () => {
   let tempDir: string;
@@ -45,11 +41,7 @@ describe('Project Discovery Service', () => {
       sfdcLoginUrl: 'https://login.salesforce.com',
       sourceApiVersion: '62.0',
     };
-    fs.writeFileSync(
-      path.join(tempDir, 'sfdx-project.json'),
-      JSON.stringify(sfdxConfig, null, 2),
-      'utf-8',
-    );
+    fs.writeFileSync(path.join(tempDir, 'sfdx-project.json'), JSON.stringify(sfdxConfig, null, 2), 'utf-8');
 
     const pkgJson = {
       name: 'test-consumer-app',

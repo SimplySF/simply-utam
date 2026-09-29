@@ -19,6 +19,7 @@ CLI or a WebdriverIO service) are expected to be added on top of it. Every packa
 
 | Package                                                   | Description                                                          |
 | --------------------------------------------------------- | -------------------------------------------------------------------- |
+| [`@simplysf/simply-utam`](packages/simply-utam)           | Developer CLI executable and convenience re-exports                  |
 | [`@simplysf/simply-utam-core`](packages/simply-utam-core) | Org authentication, Lightning navigation, and UTAM debugging helpers |
 
 Tooling:

@@ -87,10 +87,7 @@ interface StepExpressionIndex {
   registry: ParameterTypeRegistry;
 }
 
-function collectExistingExpressions(
-  stepFiles: string[],
-  targetOutput: string,
-): StepExpressionIndex {
+function collectExistingExpressions(stepFiles: string[], targetOutput: string): StepExpressionIndex {
   const rawExpressions: RawExtractedExpression[] = [];
 
   for (const stepFile of stepFiles) {
@@ -175,9 +172,7 @@ async function writeScaffoldedSnippets(
  * @param options - Step generation configuration options.
  * @returns Summary of scanned features, matched steps, and generated snippet definitions.
  */
-export async function generateCucumberSteps(
-  options: GenerateStepsOptions = {},
-): Promise<GenerateStepsResult> {
+export async function generateCucumberSteps(options: GenerateStepsOptions = {}): Promise<GenerateStepsResult> {
   const rootDir = path.resolve(options.rootDir ?? process.cwd());
   const dryRun = Boolean(options.dryRun);
 
@@ -201,8 +196,10 @@ export async function generateCucumberSteps(
   const featureFiles = resolveGlobs(featurePatterns, rootDir).filter((f) => f.endsWith('.feature'));
   const stepFiles = resolveGlobs(stepPatterns, rootDir);
 
-  const { compiledExpressions, existingNormalizedExpressions, registry } =
-    collectExistingExpressions(stepFiles, targetOutput);
+  const { compiledExpressions, existingNormalizedExpressions, registry } = collectExistingExpressions(
+    stepFiles,
+    targetOutput,
+  );
 
   const allParsedSteps = collectStepsFromFeatures(featureFiles, rootDir);
 

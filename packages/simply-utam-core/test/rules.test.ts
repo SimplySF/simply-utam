@@ -135,9 +135,11 @@ describe('Rules Generator Service', () => {
       expect(result.filesCreated.length).toBe(0);
 
       // Read updated rules file
-      const updatedRules = JSON.parse(
-        fs.readFileSync(path.join(rootCompDir, 'rootWidget.rules.json'), 'utf-8'),
-      ) as { root: boolean; selector: { css: string }; customField: string };
+      const updatedRules = JSON.parse(fs.readFileSync(path.join(rootCompDir, 'rootWidget.rules.json'), 'utf-8')) as {
+        root: boolean;
+        selector: { css: string };
+        customField: string;
+      };
       expect(updatedRules.root).toBe(true);
       expect(updatedRules.selector.css).toBe('app-root-widget');
       expect(updatedRules.customField).toBe('keepMe');
@@ -157,11 +159,7 @@ describe('Rules Generator Service', () => {
         `<LightningComponentBundle><targets><target>lightning__RecordPage</target></targets></LightningComponentBundle>`,
         'utf-8',
       );
-      fs.writeFileSync(
-        path.join(invalidRulesComp, 'invalidRulesComp.rules.json'),
-        'INVALID_JSON{',
-        'utf-8',
-      );
+      fs.writeFileSync(path.join(invalidRulesComp, 'invalidRulesComp.rules.json'), 'INVALID_JSON{', 'utf-8');
 
       const result = generateLwcRules({
         rootDir: tempDir,

@@ -178,10 +178,7 @@ export function generateUtamConfig(templatesDir = DEFAULT_TEMPLATES_DIR): Record
  * @param templatesDir - Optional custom directory containing the template file.
  * @returns Formatted JavaScript module text for wdio.conf.mjs.
  */
-export function generateWdioConfig(
-  sourceDir: string,
-  templatesDir = DEFAULT_TEMPLATES_DIR,
-): string {
+export function generateWdioConfig(sourceDir: string, templatesDir = DEFAULT_TEMPLATES_DIR): string {
   const normalizedSource = sourceDir.replace(/^[./\\]+/, '').replace(/\\/g, '/');
   return loadTemplate('wdio.conf.mjs', templatesDir, {
     sourceDir: normalizedSource,
@@ -195,10 +192,7 @@ export function generateWdioConfig(
  * @param templatesDir - Optional custom directory containing the template file.
  * @returns Parsed JSON object for namespace-map.json.
  */
-export function generateNamespaceMap(
-  appName: string,
-  templatesDir = DEFAULT_TEMPLATES_DIR,
-): Record<string, unknown> {
+export function generateNamespaceMap(appName: string, templatesDir = DEFAULT_TEMPLATES_DIR): Record<string, unknown> {
   const raw = loadTemplate('namespace-map.json', templatesDir, {
     appName,
   });
@@ -341,10 +335,7 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
   let packageJsonData: Record<string, unknown> | null = null;
   if (fs.existsSync(packageJsonPath)) {
     try {
-      packageJsonData = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8')) as Record<
-        string,
-        unknown
-      >;
+      packageJsonData = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8')) as Record<string, unknown>;
     } catch {
       // Continue on read error
     }
@@ -355,8 +346,7 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
   const filesToCreate = [
     {
       relativePath: 'generator.config.json',
-      content:
-        JSON.stringify(generateGeneratorConfig(sourceDir, appName, templatesDir), null, 2) + '\n',
+      content: JSON.stringify(generateGeneratorConfig(sourceDir, appName, templatesDir), null, 2) + '\n',
     },
     {
       relativePath: 'utam.config.json',
@@ -382,11 +372,7 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
       modifiedFiles.push('package.json');
       updatedPackageJson = injection.packageJson;
       if (!dryRun) {
-        fs.writeFileSync(
-          packageJsonPath,
-          JSON.stringify(injection.packageJson, null, 2) + '\n',
-          'utf-8',
-        );
+        fs.writeFileSync(packageJsonPath, JSON.stringify(injection.packageJson, null, 2) + '\n', 'utf-8');
       }
     }
   }

@@ -97,14 +97,9 @@ export function findLwcDirectories(dirPath: string): string[] {
  * @param rootDir - Root directory of the project.
  * @returns Array of discovered LWC components with metadata.
  */
-export function discoverComponentsInPackageDir(
-  packageDirPath: string,
-  rootDir: string,
-): DiscoveredLwcComponent[] {
+export function discoverComponentsInPackageDir(packageDirPath: string, rootDir: string): DiscoveredLwcComponent[] {
   const components: DiscoveredLwcComponent[] = [];
-  const absolutePkgDir = path.isAbsolute(packageDirPath)
-    ? packageDirPath
-    : path.resolve(rootDir, packageDirPath);
+  const absolutePkgDir = path.isAbsolute(packageDirPath) ? packageDirPath : path.resolve(rootDir, packageDirPath);
 
   if (!fs.existsSync(absolutePkgDir)) {
     return components;
