@@ -47,6 +47,7 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.10",
     "oclif": "^6.0.2",
+    "shx": "^0.4.0",
     "vitest": "^4.1.10"
   },
   "publishConfig": {
@@ -58,7 +59,8 @@
     "fix-license": "eslint src test --fix --rule \"header/header: [2]\"",
     "format": "wireit",
     "lint": "wireit",
-    "manifest": "wireit",
+    "postpack": "shx rm -f oclif.manifest.json",
+    "prepack": "pnpm run compile && oclif manifest",
     "test": "wireit",
     "test:coverage": "vitest run --coverage --project simply-utam",
     "test:only": "wireit",
@@ -76,7 +78,6 @@
     "build": {
       "dependencies": [
         "compile",
-        "manifest",
         "lint"
       ]
     },
@@ -92,18 +93,6 @@
         "*.tsbuildinfo"
       ],
       "clean": "if-file-deleted"
-    },
-    "manifest": {
-      "command": "oclif manifest",
-      "dependencies": [
-        "compile"
-      ],
-      "files": [
-        "lib/commands/**/*.js"
-      ],
-      "output": [
-        "oclif.manifest.json"
-      ]
     },
     "format": {
       "command": "prettier --write \"+(src|test)/**/*.+(ts|js|json)\"",
