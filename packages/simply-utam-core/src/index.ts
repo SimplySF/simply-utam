@@ -22,12 +22,117 @@
 // Nothing here depends on WebdriverIO or UTAM at runtime: the browser and UTAM objects are typed
 // structurally, so consumers bring whichever versions their test project already uses.
 
-export { TestEnvironment, USERNAME_ENV, type EnvLike, type TestEnvironmentOptions } from './test-environment.js';
+export {
+  TestEnvironment,
+  USERNAME_ENV,
+  DEFAULT_ALLOWED_HOST_PATTERNS,
+  isHostAllowed,
+  validateAndParseSecureUrl,
+  getTestEnvironment,
+  setTestEnvironment,
+  resetTestEnvironment,
+  type EnvLike,
+  type TestEnvironmentOptions,
+} from './test-environment.js';
+
 export { applicationPath, lightningAppName, newRecordPath, recordPath, relatedListPath } from './lightning-paths.js';
+
 export {
   LightningNavigator,
+  goToLoginUrl,
+  goToExperiencePage,
+  loginAsUser,
+  loginAsExperienceUser,
+  goToApplication,
+  goToCreateNewRecord,
+  goToRecord,
+  goToRelatedList,
+  resolveBrowser,
   type FrontdoorUrlSource,
   type LightningNavigatorOptions,
   type NavigableBrowser,
 } from './navigator.js';
+
 export { formatUtamHtml, getUtamHtml, logUtamHtml, type UtamElementLike, type UtamHtml } from './utam-html.js';
+
+export {
+  findLwcDirectories,
+  discoverComponentsInPackageDir,
+  discoverProject,
+  type SfdxPackageDirectory,
+  type SfdxProjectConfig,
+  type DiscoveredLwcComponent,
+  type DiscoveredProject,
+} from './discovery/index.js';
+
+export {
+  ROOT_TARGETS,
+  convertLwcNameToHtml,
+  getTargetsFromMeta,
+  generateLwcRules,
+  type GenerateRulesOptions,
+  type RuleAction,
+  type GenerateRulesResult,
+} from './rules/index.js';
+
+export {
+  detectIndentation,
+  findUtamOverridesFiles,
+  walkElements,
+  mergeElements,
+  applyUtamOverrides,
+  type ApplyOverridesOptions,
+  type OverrideChange,
+  type FileOverrideResult,
+  type ApplyOverridesResult,
+  type UtamOverrideItem,
+} from './overrides/index.js';
+
+export {
+  findUtamJsonFiles,
+  updateValueWithMappings,
+  rewriteUtamNamespaces,
+  type RewriteNamespacesOptions,
+  type NamespaceReplacement,
+  type FileRewriteResult,
+  type RewriteNamespacesResult,
+} from './namespaces/index.js';
+
+export {
+  parseGherkinDocument,
+  extractStepsFromGherkin,
+  normalizeExpression,
+  extractStepExpressionsFromContent,
+  compileStepExpressions,
+  matchStepAgainstExpressions,
+  formatParameterNames,
+  generateStepSnippet,
+  formatCode,
+  resolveGlobs,
+  resolveDefaultTargetOutput,
+  generateCucumberSteps,
+  type StepSemanticKeyword,
+  type ParsedGherkinStep,
+  type RawExtractedExpression,
+  type CompiledStepExpression,
+  type GeneratedStepSnippet,
+  type GenerateStepsOptions,
+  type GenerateStepsResult,
+} from './steps/index.js';
+
+export {
+  DEFAULT_TEMPLATES_DIR,
+  DEFAULT_REQUIRED_DEV_DEPENDENCIES,
+  loadTemplate,
+  generateGeneratorConfig,
+  generateUtamConfig,
+  generateWdioConfig,
+  generateNamespaceMap,
+  generateHelloFeature,
+  generateHelloSteps,
+  injectWireitConfiguration,
+  checkMissingDependencies,
+  scaffoldProject,
+  type ScaffoldOptions,
+  type ScaffoldResult,
+} from './scaffold/index.js';

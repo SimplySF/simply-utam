@@ -1,0 +1,13 @@
+{
+  "inputRootDir": "./{{sourceDir}}",
+  "ignore": ["**/node_modules/**"],
+  "outputDir": "__utam__",
+  "relativeOutputDir": true,
+  "outputFileExtension": ".utam.json",
+  "overrideExisting": true,
+  "rulesFileMask": ["**/*.rules.json"],
+  "namespaces": {
+    "lightning": "salesforce-pageobjects/lightning/pageObjects/",
+    "c": "{{appName}}/pageObjects/"
+  }
+}

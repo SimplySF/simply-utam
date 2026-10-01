@@ -1,0 +1,468 @@
+{
+  "commands": {
+    "build": {
+      "aliases": [],
+      "args": {},
+      "description": "Standalone convenience runner executing all transformation and compilation stages sequentially. Note: Wireit tasks (configured via simply-utam init) remain the recommended mechanism for granular caching in everyday developer workflows.",
+      "examples": [
+        "<%= config.bin %> <%= command.id %>",
+        "<%= config.bin %> <%= command.id %> --dry-run"
+      ],
+      "flags": {
+        "json": {
+          "description": "Format output as json.",
+          "helpGroup": "GLOBAL",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "source": {
+          "char": "s",
+          "name": "source",
+          "summary": "Specific source directory or directories to process (defaults to discovered package directories).",
+          "hasDynamicHelp": false,
+          "multiple": true,
+          "type": "option"
+        },
+        "project-dir": {
+          "name": "project-dir",
+          "summary": "Root directory of the project.",
+          "default": ".",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "generator-config": {
+          "name": "generator-config",
+          "summary": "Path to generator.config.json.",
+          "default": "generator.config.json",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "utam-config": {
+          "name": "utam-config",
+          "summary": "Path to utam.config.json.",
+          "default": "utam.config.json",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "namespace-map": {
+          "name": "namespace-map",
+          "summary": "Path to namespace-map.json.",
+          "default": ".utam/namespace-map.json",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "dry-run": {
+          "char": "d",
+          "name": "dry-run",
+          "summary": "Preview pipeline execution without invoking compilers or modifying files.",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "name": "verbose",
+          "summary": "Enable detailed output.",
+          "allowNo": false,
+          "type": "boolean"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "build",
+      "pluginAlias": "@simplysf/simply-utam",
+      "pluginName": "@simplysf/simply-utam",
+      "pluginType": "core",
+      "strict": true,
+      "summary": "Run the end-to-end SimplyUTAM build pipeline (rules -> utam-generate -> overrides -> rewrite -> utam).",
+      "enableJsonFlag": true,
+      "isESM": true,
+      "relativePath": [
+        "lib",
+        "commands",
+        "build.js"
+      ]
+    },
+    "init": {
+      "aliases": [],
+      "args": {},
+      "description": "Inspects the target project, generates generator.config.json, utam.config.json, wdio.conf.mjs, and .utam/namespace-map.json, and non-destructively injects standard Wireit tasks into package.json.",
+      "examples": [
+        "<%= config.bin %> <%= command.id %>",
+        "<%= config.bin %> <%= command.id %> --source-dir force-app --app-name my-app",
+        "<%= config.bin %> <%= command.id %> --dry-run"
+      ],
+      "flags": {
+        "json": {
+          "description": "Format output as json.",
+          "helpGroup": "GLOBAL",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "project-dir": {
+          "name": "project-dir",
+          "summary": "Root directory of the consumer project.",
+          "default": ".",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "source-dir": {
+          "char": "s",
+          "name": "source-dir",
+          "summary": "Primary Salesforce source directory (auto-detected from sfdx-project.json if omitted).",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "app-name": {
+          "char": "a",
+          "name": "app-name",
+          "summary": "Application name for UTAM namespaces (defaults to package.json name).",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "force": {
+          "char": "f",
+          "name": "force",
+          "summary": "Overwrite existing configuration files.",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "dry-run": {
+          "char": "d",
+          "name": "dry-run",
+          "summary": "Preview modifications without writing to disk.",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "name": "verbose",
+          "summary": "Enable detailed output.",
+          "allowNo": false,
+          "type": "boolean"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "init",
+      "pluginAlias": "@simplysf/simply-utam",
+      "pluginName": "@simplysf/simply-utam",
+      "pluginType": "core",
+      "strict": true,
+      "summary": "Scaffold UTAM configurations, Wireit tasks, and namespace maps in a Salesforce project.",
+      "enableJsonFlag": true,
+      "isESM": true,
+      "relativePath": [
+        "lib",
+        "commands",
+        "init.js"
+      ]
+    },
+    "overrides": {
+      "aliases": [],
+      "args": {},
+      "description": "Recursively searches source directories for *.utam-overrides.json files, locates corresponding compiled *.utam.json schemas, and performs deep AST merging while preserving JSON indentation.",
+      "examples": [
+        "<%= config.bin %> <%= command.id %>",
+        "<%= config.bin %> <%= command.id %> --source force-app",
+        "<%= config.bin %> <%= command.id %> --dry-run"
+      ],
+      "flags": {
+        "json": {
+          "description": "Format output as json.",
+          "helpGroup": "GLOBAL",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "source": {
+          "char": "s",
+          "name": "source",
+          "summary": "Specific source directory or directories to scan (defaults to discovered package directories).",
+          "hasDynamicHelp": false,
+          "multiple": true,
+          "type": "option"
+        },
+        "project-dir": {
+          "name": "project-dir",
+          "summary": "Root directory of the project.",
+          "default": ".",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "dry-run": {
+          "char": "d",
+          "name": "dry-run",
+          "summary": "Preview overrides without modifying files on disk.",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "name": "verbose",
+          "summary": "Enable detailed output.",
+          "allowNo": false,
+          "type": "boolean"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "overrides",
+      "pluginAlias": "@simplysf/simply-utam",
+      "pluginName": "@simplysf/simply-utam",
+      "pluginType": "core",
+      "strict": true,
+      "summary": "Merge *.utam-overrides.json files into generated UTAM page object schemas.",
+      "enableJsonFlag": true,
+      "isESM": true,
+      "relativePath": [
+        "lib",
+        "commands",
+        "overrides.js"
+      ]
+    },
+    "rewrite": {
+      "aliases": [],
+      "args": {},
+      "description": "Reads namespace mappings from a configuration file (or defaults to .utam/namespace-map.json) and replaces target component namespaces in *.utam.json schemas.",
+      "examples": [
+        "<%= config.bin %> <%= command.id %>",
+        "<%= config.bin %> <%= command.id %> --config .utam/namespace-map.json",
+        "<%= config.bin %> <%= command.id %> --dry-run"
+      ],
+      "flags": {
+        "json": {
+          "description": "Format output as json.",
+          "helpGroup": "GLOBAL",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "source": {
+          "char": "s",
+          "name": "source",
+          "summary": "Specific source directory or directories to scan (defaults to discovered package directories).",
+          "hasDynamicHelp": false,
+          "multiple": true,
+          "type": "option"
+        },
+        "config": {
+          "char": "c",
+          "name": "config",
+          "summary": "Path to namespace mapping configuration file.",
+          "default": ".utam/namespace-map.json",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "project-dir": {
+          "name": "project-dir",
+          "summary": "Root directory of the project.",
+          "default": ".",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "dry-run": {
+          "char": "d",
+          "name": "dry-run",
+          "summary": "Preview namespace rewrites without modifying files on disk.",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "name": "verbose",
+          "summary": "Enable detailed output.",
+          "allowNo": false,
+          "type": "boolean"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "rewrite",
+      "pluginAlias": "@simplysf/simply-utam",
+      "pluginName": "@simplysf/simply-utam",
+      "pluginType": "core",
+      "strict": true,
+      "summary": "Rewrite namespace prefixes across generated UTAM page object schemas.",
+      "enableJsonFlag": true,
+      "isESM": true,
+      "relativePath": [
+        "lib",
+        "commands",
+        "rewrite.js"
+      ]
+    },
+    "rules": {
+      "aliases": [],
+      "args": {},
+      "description": "Discovers root components in package directories matching target page types and generates or updates corresponding *.rules.json schemas.",
+      "examples": [
+        "<%= config.bin %> <%= command.id %>",
+        "<%= config.bin %> <%= command.id %> --source force-app/main/default/lwc",
+        "<%= config.bin %> <%= command.id %> --dry-run"
+      ],
+      "flags": {
+        "json": {
+          "description": "Format output as json.",
+          "helpGroup": "GLOBAL",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "source": {
+          "char": "s",
+          "name": "source",
+          "summary": "Specific source directory or directories to scan (defaults to discovered package directories).",
+          "hasDynamicHelp": false,
+          "multiple": true,
+          "type": "option"
+        },
+        "namespace": {
+          "char": "n",
+          "name": "namespace",
+          "summary": "LWC namespace prefix for selector generation (defaults to c).",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "project-dir": {
+          "name": "project-dir",
+          "summary": "Root directory of the project.",
+          "default": ".",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "dry-run": {
+          "char": "d",
+          "name": "dry-run",
+          "summary": "Preview generated rules without writing to disk.",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "name": "verbose",
+          "summary": "Enable detailed output.",
+          "allowNo": false,
+          "type": "boolean"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "rules",
+      "pluginAlias": "@simplysf/simply-utam",
+      "pluginName": "@simplysf/simply-utam",
+      "pluginType": "core",
+      "strict": true,
+      "summary": "Scan LWC component definitions and generate UTAM .rules.json files.",
+      "enableJsonFlag": true,
+      "isESM": true,
+      "relativePath": [
+        "lib",
+        "commands",
+        "rules.js"
+      ]
+    },
+    "steps": {
+      "aliases": [],
+      "args": {},
+      "description": "Parses Gherkin .feature files, compiles registered step expressions from existing step definition files, detects true missing steps without false positives, and appends formatted snippet templates.",
+      "examples": [
+        "<%= config.bin %> <%= command.id %>",
+        "<%= config.bin %> <%= command.id %> --features \"tests/**/*.feature\" --steps \"tests/**/*.steps.ts\"",
+        "<%= config.bin %> <%= command.id %> --dry-run"
+      ],
+      "flags": {
+        "json": {
+          "description": "Format output as json.",
+          "helpGroup": "GLOBAL",
+          "name": "json",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "features": {
+          "char": "f",
+          "name": "features",
+          "summary": "Glob pattern(s) for Gherkin feature files.",
+          "default": [
+            "**/test/*.feature",
+            "**/test/**/*.feature"
+          ],
+          "hasDynamicHelp": false,
+          "multiple": true,
+          "type": "option"
+        },
+        "steps": {
+          "char": "s",
+          "name": "steps",
+          "summary": "Glob pattern(s) for existing Cucumber step definitions.",
+          "default": [
+            "**/test/*.steps.{js,mjs,ts}",
+            "**/test/**/*.steps.{js,mjs,ts}"
+          ],
+          "hasDynamicHelp": false,
+          "multiple": true,
+          "type": "option"
+        },
+        "output": {
+          "char": "o",
+          "name": "output",
+          "summary": "Target file path for scaffolded step definitions (defaults to first matched step file or new generated.steps.mjs).",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "project-dir": {
+          "name": "project-dir",
+          "summary": "Root directory of the project.",
+          "default": ".",
+          "hasDynamicHelp": false,
+          "multiple": false,
+          "type": "option"
+        },
+        "dry-run": {
+          "char": "d",
+          "name": "dry-run",
+          "summary": "Preview generated step snippets without modifying files on disk.",
+          "allowNo": false,
+          "type": "boolean"
+        },
+        "verbose": {
+          "char": "v",
+          "name": "verbose",
+          "summary": "Enable detailed output.",
+          "allowNo": false,
+          "type": "boolean"
+        }
+      },
+      "hasDynamicHelp": false,
+      "hiddenAliases": [],
+      "id": "steps",
+      "pluginAlias": "@simplysf/simply-utam",
+      "pluginName": "@simplysf/simply-utam",
+      "pluginType": "core",
+      "strict": true,
+      "summary": "Scaffold missing Cucumber step definitions based on Gherkin feature files.",
+      "enableJsonFlag": true,
+      "isESM": true,
+      "relativePath": [
+        "lib",
+        "commands",
+        "steps.js"
+      ]
+    }
+  },
+  "version": "0.0.0"
+}

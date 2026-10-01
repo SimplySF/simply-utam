@@ -1,6 +1,6 @@
 {
-  "name": "@simplysf/simply-utam-core",
-  "description": "Org authentication, Lightning navigation, and debugging helpers for UTAM UI tests against Salesforce",
+  "name": "@simplysf/simply-utam",
+  "description": "Salesforce UTAM UI testing and build automation CLI",
   "version": "0.0.0",
   "author": "@ClayChipps",
   "homepage": "https://github.com/SimplySF/simply-utam",
@@ -8,20 +8,26 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/SimplySF/simply-utam",
-    "directory": "packages/simply-utam-core"
+    "directory": "packages/simply-utam"
   },
   "engines": {
     "node": ">=22.0.0"
   },
+  "bin": {
+    "simply-utam": "./bin/run.js"
+  },
   "files": [
+    "/bin",
     "/lib",
-    "/templates"
+    "README.md",
+    "oclif.manifest.json"
   ],
   "keywords": [
     "utam",
     "salesforce",
     "webdriverio",
     "ui-testing",
+    "cli",
     "simply"
   ],
   "license": "Apache-2.0",
@@ -32,41 +38,15 @@
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
-    },
-    "./discovery": {
-      "types": "./lib/discovery/index.d.ts",
-      "default": "./lib/discovery/index.js"
-    },
-    "./rules": {
-      "types": "./lib/rules/index.d.ts",
-      "default": "./lib/rules/index.js"
-    },
-    "./overrides": {
-      "types": "./lib/overrides/index.d.ts",
-      "default": "./lib/overrides/index.js"
-    },
-    "./namespaces": {
-      "types": "./lib/namespaces/index.d.ts",
-      "default": "./lib/namespaces/index.js"
-    },
-    "./steps": {
-      "types": "./lib/steps/index.d.ts",
-      "default": "./lib/steps/index.js"
-    },
-    "./scaffold": {
-      "types": "./lib/scaffold/index.d.ts",
-      "default": "./lib/scaffold/index.js"
     }
   },
   "dependencies": {
-    "@cucumber/cucumber-expressions": "^20.1.0",
-    "@cucumber/gherkin": "^42.0.1",
-    "@cucumber/messages": "^34.2.1",
-    "@salesforce/core": "^9.2.0",
-    "prettier": "^3.9.6"
+    "@oclif/core": "^5.1.2",
+    "@simplysf/simply-utam-core": "workspace:*"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.10",
+    "oclif": "^6.0.2",
     "vitest": "^4.1.10"
   },
   "publishConfig": {
@@ -78,15 +58,25 @@
     "fix-license": "eslint src test --fix --rule \"header/header: [2]\"",
     "format": "wireit",
     "lint": "wireit",
+    "manifest": "wireit",
     "test": "wireit",
-    "test:coverage": "vitest run --coverage --project simply-utam-core",
+    "test:coverage": "vitest run --coverage --project simply-utam",
     "test:only": "wireit",
-    "test:watch": "vitest watch --project simply-utam-core"
+    "test:watch": "vitest watch --project simply-utam"
+  },
+  "oclif": {
+    "bin": "simply-utam",
+    "dirname": "simply-utam",
+    "commands": "./lib/commands",
+    "topicSeparator": " ",
+    "plugins": [],
+    "devPlugins": []
   },
   "wireit": {
     "build": {
       "dependencies": [
         "compile",
+        "manifest",
         "lint"
       ]
     },
@@ -102,6 +92,18 @@
         "*.tsbuildinfo"
       ],
       "clean": "if-file-deleted"
+    },
+    "manifest": {
+      "command": "oclif manifest",
+      "dependencies": [
+        "compile"
+      ],
+      "files": [
+        "lib/commands/**/*.js"
+      ],
+      "output": [
+        "oclif.manifest.json"
+      ]
     },
     "format": {
       "command": "prettier --write \"+(src|test)/**/*.+(ts|js|json)\"",
@@ -141,7 +143,7 @@
       "output": []
     },
     "test:only": {
-      "command": "vitest run --project simply-utam-core",
+      "command": "vitest run --project simply-utam",
       "env": {
         "FORCE_COLOR": "2"
       },
