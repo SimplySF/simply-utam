@@ -1,7 +1,7 @@
 {
   "name": "@simplysf/simply-utam-core",
   "description": "Org authentication, Lightning navigation, and debugging helpers for UTAM UI tests against Salesforce",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "author": "@ClayChipps",
   "homepage": "https://github.com/SimplySF/simply-utam",
   "bugs": "https://github.com/SimplySF/simply-utam/issues",
