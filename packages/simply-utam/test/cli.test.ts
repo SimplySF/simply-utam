@@ -17,7 +17,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { Config } from '@oclif/core';
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import Init from '../src/commands/init.js';
 import Rules from '../src/commands/rules.js';
 import Overrides from '../src/commands/overrides.js';
@@ -27,8 +29,15 @@ import Build from '../src/commands/build.js';
 
 describe('CLI command execution', () => {
   let tempDir: string;
-  const pkgRoot = path.resolve('packages/simply-utam');
-  const runOpts = { root: pkgRoot };
+  let config: Config;
+
+  // Load the oclif config once, with its own timeout. Without an oclif.manifest.json (it is only
+  // generated at pack time), oclif discovers commands by importing every lib/commands module,
+  // which can take several seconds on a cold Windows runner. Doing that inside the first test
+  // made it exceed Vitest's 5s default.
+  beforeAll(async () => {
+    config = await Config.load(fileURLToPath(new URL('..', import.meta.url)));
+  }, 60_000);
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'simply-utam-cli-test-'));
@@ -45,7 +54,7 @@ describe('CLI command execution', () => {
       const pkgPath = path.join(tempDir, 'package.json');
       fs.writeFileSync(pkgPath, JSON.stringify({ name: 'cli-test-project' }), 'utf-8');
 
-      const result = await Init.run(['--project-dir', tempDir, '--source-dir', 'force-app'], runOpts);
+      const result = await Init.run(['--project-dir', tempDir, '--source-dir', 'force-app'], config);
 
       expect(result.createdFiles).toHaveLength(6);
       expect(result.modifiedFiles).toContain('package.json');
@@ -60,7 +69,7 @@ describe('CLI command execution', () => {
     });
 
     it('should respect --dry-run without creating files on disk', async () => {
-      const result = await Init.run(['--project-dir', tempDir, '--dry-run'], runOpts);
+      const result = await Init.run(['--project-dir', tempDir, '--dry-run'], config);
 
       expect(result.createdFiles).toHaveLength(6);
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(false);
@@ -83,7 +92,7 @@ describe('CLI command execution', () => {
         'utf-8',
       );
 
-      const result = await Rules.run(['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app')], runOpts);
+      const result = await Rules.run(['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app')], config);
 
       expect(result.totalComponentsScanned).toBe(1);
       expect(result.rootComponentsIdentified).toBe(1);
@@ -105,7 +114,7 @@ describe('CLI command execution', () => {
 
       const result = await Rules.run(
         ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app'), '--dry-run'],
-        runOpts,
+        config,
       );
 
       expect(result.filesCreated).toHaveLength(1);
@@ -142,7 +151,7 @@ describe('CLI command execution', () => {
 
       const result = await Overrides.run(
         ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app')],
-        runOpts,
+        config,
       );
 
       expect(result.modifiedFilesCount).toBe(1);
@@ -169,7 +178,7 @@ describe('CLI command execution', () => {
 
       const result = await Overrides.run(
         ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app'), '--dry-run'],
-        runOpts,
+        config,
       );
 
       expect(result.modifiedFilesCount).toBe(1);
@@ -185,7 +194,7 @@ describe('CLI command execution', () => {
     it('should gracefully handle missing or empty namespace map configuration', async () => {
       const result = await Rewrite.run(
         ['--project-dir', tempDir, '--config', path.join(tempDir, 'nonexistent-map.json')],
-        runOpts,
+        config,
       );
 
       expect(result.configMissingOrEmpty).toBe(true);
@@ -220,7 +229,7 @@ describe('CLI command execution', () => {
 
       const result = await Rewrite.run(
         ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app'), '--config', mapPath],
-        runOpts,
+        config,
       );
 
       expect(result.filesModified).toBe(1);
@@ -264,7 +273,7 @@ Given('user navigates to the login page', async () => {});
       const outputPath = path.join(testDir, 'generated.steps.mjs');
       const result = await Steps.run(
         ['--project-dir', tempDir, '--features', featurePath, '--steps', stepsPath, '--output', outputPath],
-        runOpts,
+        config,
       );
 
       expect(result.featureFilesScanned).toBe(1);
@@ -302,7 +311,7 @@ Given('step is defined', async () => {});
 
       const result = await Steps.run(
         ['--project-dir', tempDir, '--features', featurePath, '--steps', stepsPath],
-        runOpts,
+        config,
       );
 
       expect(result.undefinedStepsCount).toBe(0);
@@ -311,7 +320,7 @@ Given('step is defined', async () => {});
 
   describe('Build command', () => {
     it('should run build pipeline with --dry-run without spawning processes', async () => {
-      const result = await Build.run(['--project-dir', tempDir, '--dry-run'], runOpts);
+      const result = await Build.run(['--project-dir', tempDir, '--dry-run'], config);
 
       expect(result.success).toBe(true);
       expect(result.errors).toHaveLength(0);
