@@ -62,7 +62,7 @@
     "@cucumber/cucumber-expressions": "^20.1.0",
     "@cucumber/gherkin": "^42.0.1",
     "@cucumber/messages": "^34.2.1",
-    "@salesforce/core": "^9.2.0",
+    "@salesforce/core": "^9.2.2",
     "prettier": "^3.9.6"
   },
   "devDependencies": {
