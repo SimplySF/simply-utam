@@ -43,7 +43,7 @@
     "minimatch": "^10.2.6",
     "prettier": "^3.9.6",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.68.0",
+    "typescript-eslint": "^8.71.0",
     "wireit": "^0.14.13"
   }
 }
