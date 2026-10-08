@@ -17,7 +17,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { discoverProject } from '../discovery/index.js';
+import { parseSfdxProject, type SfdxProjectDetails } from '../discovery/sfdx-project.js';
+import { isAbsoluteOnAnyPlatform, toPosixRelative } from '../path-utils.js';
+import {
+  SIMPLY_UTAM_FORCEIGNORE_RULES,
+  ensureForceignore,
+  resolveUtamTestIgnoreRules,
+  type ForceignoreResult,
+} from '../forceignore/index.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -76,9 +83,25 @@ export interface ScaffoldOptions {
   dryRun?: boolean;
 
   /**
-   * If true, forces overwriting of existing config files.
+   * If true, forces overwriting of existing config files. Does not affect .forceignore, which is only
+   * ever added to.
    */
   force?: boolean;
+
+  /**
+   * If false, leaves .forceignore untouched. Defaults to true.
+   */
+  forceignore?: boolean;
+
+  /**
+   * Exact line that starts the .forceignore customization region. Defaults to '# -- START CUSTOMIZATION'.
+   */
+  forceignoreRegionStart?: string;
+
+  /**
+   * Exact line that ends the .forceignore customization region. Defaults to '# -- END CUSTOMIZATION'.
+   */
+  forceignoreRegionEnd?: string;
 }
 
 /**
@@ -109,6 +132,11 @@ export interface ScaffoldResult {
    * List of recommended devDependencies missing from the consumer's package.json.
    */
   missingDependencies: string[];
+
+  /**
+   * What happened to .forceignore. Absent when the forceignore option is false.
+   */
+  forceignore?: ForceignoreResult;
 }
 
 /**
@@ -151,12 +179,18 @@ export function generateGeneratorConfig(
   appName: string,
   templatesDir = DEFAULT_TEMPLATES_DIR,
 ): Record<string, unknown> {
-  const normalizedSource = sourceDir.replace(/^[./\\]+/, '').replace(/\\/g, '/');
+  const source = toPosixRelative(sourceDir);
   const raw = loadTemplate('generator.config.json', templatesDir, {
-    sourceDir: normalizedSource,
+    sourceDir: source,
     appName,
   });
-  return JSON.parse(raw) as Record<string, unknown>;
+  const config = JSON.parse(raw) as Record<string, unknown>;
+  // The template prefixes the source with './', which is wrong for an absolute path, such as a source
+  // folder on another Windows drive than the project.
+  if (isAbsoluteOnAnyPlatform(source) && 'inputRootDir' in config) {
+    config['inputRootDir'] = source;
+  }
+  return config;
 }
 
 /**
@@ -178,9 +212,8 @@ export function generateUtamConfig(templatesDir = DEFAULT_TEMPLATES_DIR): Record
  * @returns Formatted JavaScript module text for wdio.conf.mjs.
  */
 export function generateWdioConfig(sourceDir: string, templatesDir = DEFAULT_TEMPLATES_DIR): string {
-  const normalizedSource = sourceDir.replace(/^[./\\]+/, '').replace(/\\/g, '/');
   return loadTemplate('wdio.conf.mjs', templatesDir, {
-    sourceDir: normalizedSource,
+    sourceDir: toPosixRelative(sourceDir) || '.',
   });
 }
 
@@ -295,16 +328,15 @@ export function checkMissingDependencies(
   return requiredDependencies.filter((dep) => !devDeps[dep] && !deps[dep]);
 }
 
-function resolveSourceDir(projectDir: string, explicitSourceDir?: string): string {
+function resolveSourceDir(sfdxProject: SfdxProjectDetails, explicitSourceDir?: string): string {
   if (explicitSourceDir) {
     return explicitSourceDir;
   }
-  const discovery = discoverProject(projectDir);
-  if (discovery.sfdxProjectFile && discovery.packageDirectories.length > 0) {
-    return discovery.defaultPackageDirectory ?? discovery.packageDirectories[0];
+  if (sfdxProject.sfdxProjectFile && sfdxProject.packageDirectories.length > 0) {
+    return sfdxProject.defaultPackageDirectory ?? sfdxProject.packageDirectories[0];
   }
-  if (discovery.packageDirectories.length > 0) {
-    return discovery.packageDirectories[0];
+  if (sfdxProject.packageDirectories.length > 0) {
+    return sfdxProject.packageDirectories[0];
   }
   return 'force-app';
 }
@@ -345,7 +377,78 @@ function writeScaffoldFiles(
 }
 
 /**
- * Scaffolds standard UTAM configurations, Wireit tasks, and namespace maps in a project directory.
+ * Plans the hello-world test files and lists the UTAM test folders the project will have.
+ * The starter files are only scaffolded when no UTAM test folder exists yet, unless forced.
+ */
+function planUtamTests(
+  projectDir: string,
+  sourceDir: string,
+  templatesDir: string,
+  force: boolean,
+): { files: Array<{ relativePath: string; content: string }>; testDirs: string[] } {
+  const scaffoldDir = path.join(sourceDir, 'test', 'utam');
+  const candidateUtamDirs = [
+    scaffoldDir,
+    path.join(sourceDir, 'tests', 'utam'),
+    path.join('test', 'utam'),
+    path.join('tests', 'utam'),
+  ];
+  const existingUtamDirs = candidateUtamDirs.filter((dir) => fs.existsSync(path.resolve(projectDir, dir)));
+
+  if (existingUtamDirs.length > 0 && !force) {
+    return { files: [], testDirs: existingUtamDirs };
+  }
+
+  return {
+    files: [
+      {
+        relativePath: path.join(scaffoldDir, 'features', 'hello.feature'),
+        content: generateHelloFeature(templatesDir),
+      },
+      {
+        relativePath: path.join(scaffoldDir, 'step_definitions', 'hello.steps.mjs'),
+        content: generateHelloSteps(templatesDir),
+      },
+    ],
+    testDirs: [...existingUtamDirs, scaffoldDir],
+  };
+}
+
+function recordForceignore(
+  forceignore: ForceignoreResult | undefined,
+  createdFiles: string[],
+  modifiedFiles: string[],
+): void {
+  if (forceignore?.action === 'created') {
+    createdFiles.push(forceignore.path);
+  } else if (forceignore?.action === 'appended' || forceignore?.action === 'inserted') {
+    modifiedFiles.push(forceignore.path);
+  }
+}
+
+function updateForceignore(
+  projectDir: string,
+  sourceDir: string,
+  testDirs: string[],
+  sfdxProject: SfdxProjectDetails,
+  options?: ScaffoldOptions,
+): ForceignoreResult | undefined {
+  if (options?.forceignore === false) {
+    return undefined;
+  }
+  const packageDirectories = [...sfdxProject.packageDirectories, sourceDir];
+  return ensureForceignore({
+    projectDir,
+    rules: [...SIMPLY_UTAM_FORCEIGNORE_RULES, ...resolveUtamTestIgnoreRules(testDirs, packageDirectories)],
+    regionStart: options?.forceignoreRegionStart,
+    regionEnd: options?.forceignoreRegionEnd,
+    dryRun: options?.dryRun,
+  });
+}
+
+/**
+ * Scaffolds standard UTAM configurations, Wireit tasks, and namespace maps in a project directory, and adds
+ * the .forceignore rules that keep UTAM artifacts out of Salesforce deploys.
  *
  * @param options - Scaffolding options.
  * @returns Results describing created, skipped, and modified files.
@@ -356,7 +459,13 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
   const dryRun = options?.dryRun ?? false;
   const force = options?.force ?? false;
 
-  const sourceDir = resolveSourceDir(projectDir, options?.sourceDir);
+  // Reads sfdx-project.json only; no source folders are scanned.
+  const sfdxProject = parseSfdxProject(projectDir);
+
+  // Project-relative from here on, so an absolute --source-dir lands in the right place on disk and in
+  // .forceignore.
+  const sourceDir =
+    path.relative(projectDir, path.resolve(projectDir, resolveSourceDir(sfdxProject, options?.sourceDir))) || '.';
 
   const packageJsonPath = path.join(projectDir, 'package.json');
   let packageJsonData: Record<string, unknown> | null = null;
@@ -389,30 +498,15 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     },
   ];
 
-  const candidateUtamDirs = [
-    path.join(projectDir, sourceDir, 'test', 'utam'),
-    path.join(projectDir, sourceDir, 'tests', 'utam'),
-    path.join(projectDir, 'test', 'utam'),
-    path.join(projectDir, 'tests', 'utam'),
-  ];
-  const utamTestDirExists = candidateUtamDirs.some((dir) => fs.existsSync(dir));
-
-  if (!utamTestDirExists || force) {
-    filesToCreate.push(
-      {
-        relativePath: path.join(sourceDir, 'test', 'utam', 'features', 'hello.feature'),
-        content: generateHelloFeature(templatesDir),
-      },
-      {
-        relativePath: path.join(sourceDir, 'test', 'utam', 'step_definitions', 'hello.steps.mjs'),
-        content: generateHelloSteps(templatesDir),
-      },
-    );
-  }
+  const utamTests = planUtamTests(projectDir, sourceDir, templatesDir, force);
+  filesToCreate.push(...utamTests.files);
 
   const { createdFiles, skippedFiles } = writeScaffoldFiles(projectDir, filesToCreate, force, dryRun);
   const modifiedFiles: string[] = [];
   let updatedPackageJson: Record<string, unknown> | undefined;
+
+  const forceignore = updateForceignore(projectDir, sourceDir, utamTests.testDirs, sfdxProject, options);
+  recordForceignore(forceignore, createdFiles, modifiedFiles);
 
   if (packageJsonData) {
     const injection = injectWireitConfiguration(packageJsonData, templatesDir);
@@ -435,5 +529,6 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     modifiedFiles,
     updatedPackageJson,
     missingDependencies,
+    forceignore,
   });
 }

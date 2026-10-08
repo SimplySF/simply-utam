@@ -17,6 +17,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { Config } from '@oclif/core';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Init from '../src/commands/init.js';
 import Rules from '../src/commands/rules.js';
@@ -65,6 +66,81 @@ describe('CLI command execution', () => {
       expect(result.createdFiles).toHaveLength(6);
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(false);
+    });
+
+    it('should add UTAM rules to .forceignore inside the given customization region', async () => {
+      fs.writeFileSync(
+        path.join(tempDir, 'sfdx-project.json'),
+        JSON.stringify({ packageDirectories: [{ path: 'force-app', default: true }] }),
+        'utf-8',
+      );
+      fs.writeFileSync(path.join(tempDir, '.forceignore'), '# BEGIN LOCAL\nteam/\n# END LOCAL\n', 'utf-8');
+
+      const result = await Init.run(
+        [
+          '--project-dir',
+          tempDir,
+          '--forceignore-region-start',
+          '# BEGIN LOCAL',
+          '--forceignore-region-end',
+          '# END LOCAL',
+        ],
+        runOpts,
+      );
+
+      expect(result.modifiedFiles).toContain('.forceignore');
+      expect(result.forceignore?.placement).toBe('region');
+      expect(fs.readFileSync(path.join(tempDir, '.forceignore'), 'utf-8')).toBe(
+        [
+          '# BEGIN LOCAL',
+          'team/',
+          '',
+          '# Ignore UTAM',
+          '**/__utam__/**',
+          '**/lwc/**/*.rules.json',
+          '**/*.utam-overrides.json',
+          'force-app/test/utam/',
+          '# END LOCAL',
+          '',
+        ].join('\n'),
+      );
+    });
+
+    it('should report a created .forceignore without a placement', async () => {
+      fs.writeFileSync(path.join(tempDir, 'sfdx-project.json'), JSON.stringify({ packageDirectories: [] }), 'utf-8');
+      const output: string[] = [];
+      const command = new Init(['--project-dir', tempDir], await Config.load(pkgRoot));
+      command.log = (message?: string): void => {
+        output.push(message ?? '');
+      };
+
+      await command.run();
+
+      const line = output.find((message) => message.startsWith('Created .forceignore'));
+      expect(line).toBeDefined();
+      expect(line).not.toContain('(');
+    });
+
+    it('should explain when .forceignore is skipped', async () => {
+      const output: string[] = [];
+      const command = new Init(['--project-dir', tempDir], await Config.load(pkgRoot));
+      command.log = (message?: string): void => {
+        output.push(message ?? '');
+      };
+
+      const result = await command.run();
+
+      expect(result.forceignore?.action).toBe('skipped');
+      expect(output.some((message) => message.startsWith('Skipped .forceignore'))).toBe(true);
+    });
+
+    it('should leave .forceignore alone with --no-forceignore', async () => {
+      fs.writeFileSync(path.join(tempDir, 'sfdx-project.json'), JSON.stringify({ packageDirectories: [] }), 'utf-8');
+
+      const result = await Init.run(['--project-dir', tempDir, '--no-forceignore'], runOpts);
+
+      expect(result.forceignore).toBeUndefined();
+      expect(fs.existsSync(path.join(tempDir, '.forceignore'))).toBe(false);
     });
   });
 

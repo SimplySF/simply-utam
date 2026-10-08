@@ -66,6 +66,22 @@ export {
 } from './discovery/index.js';
 
 export {
+  FORCEIGNORE_FILE,
+  FORCEIGNORE_HEADER,
+  DEFAULT_FORCEIGNORE_REGION,
+  SIMPLY_UTAM_FORCEIGNORE_RULES,
+  mergeForceignore,
+  resolveUtamTestIgnoreRules,
+  ensureForceignore,
+  type ForceignoreRule,
+  type ForceignorePlacement,
+  type MergeForceignoreOptions,
+  type MergeForceignoreResult,
+  type EnsureForceignoreOptions,
+  type ForceignoreResult,
+} from './forceignore/index.js';
+
+export {
   ROOT_TARGETS,
   convertLwcNameToHtml,
   getTargetsFromMeta,

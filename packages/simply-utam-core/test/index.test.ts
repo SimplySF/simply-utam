@@ -67,6 +67,15 @@ describe('@simplysf/simply-utam-core', () => {
         'discoverProject',
         'findLwcDirectories',
 
+        // forceignore
+        'DEFAULT_FORCEIGNORE_REGION',
+        'FORCEIGNORE_FILE',
+        'FORCEIGNORE_HEADER',
+        'SIMPLY_UTAM_FORCEIGNORE_RULES',
+        'ensureForceignore',
+        'mergeForceignore',
+        'resolveUtamTestIgnoreRules',
+
         // rules
         'ROOT_TARGETS',
         'convertLwcNameToHtml',

@@ -82,6 +82,21 @@ describe('scaffold service', () => {
       });
     });
 
+    it('keeps a leading ../ and strips a leading ./ in config paths', () => {
+      expect(generateGeneratorConfig('../shared/force-app', 'a')['inputRootDir']).toBe('./../shared/force-app');
+      expect(generateGeneratorConfig('./force-app', 'a')['inputRootDir']).toBe('./force-app');
+      expect(generateGeneratorConfig('.', 'a')['inputRootDir']).toBe('./');
+      expect(generateWdioConfig('../shared/force-app')).toContain("'../shared/force-app/**/test/*.feature'");
+      expect(generateWdioConfig('.')).toContain("'./**/test/*.feature'");
+      expect(generateWdioConfig('force-app\\main')).toContain("'force-app/main/**/test/*.feature'");
+    });
+
+    it('uses an absolute source path as is, such as a folder on another Windows drive', () => {
+      expect(generateGeneratorConfig('D:\\src\\force-app', 'a')['inputRootDir']).toBe('D:/src/force-app');
+      expect(generateGeneratorConfig('/abs/force-app', 'a')['inputRootDir']).toBe('/abs/force-app');
+      expect(generateWdioConfig('D:\\src\\force-app')).toContain("'D:/src/force-app/**/test/*.feature'");
+    });
+
     it('generateUtamConfig should produce valid compiler configuration', () => {
       const config = generateUtamConfig();
       expect(config['pageObjectsOutputDir']).toBe('pageObjects');
@@ -281,6 +296,147 @@ describe('scaffold service', () => {
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'utam.config.json'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(false);
+    });
+  });
+
+  describe('scaffoldProject .forceignore', () => {
+    const writeSfdxProject = (packagePath = 'force-app'): void => {
+      fs.writeFileSync(
+        path.join(tempDir, 'sfdx-project.json'),
+        JSON.stringify({ packageDirectories: [{ path: packagePath, default: true }] }),
+        'utf-8',
+      );
+    };
+    const readForceignore = (): string => fs.readFileSync(path.join(tempDir, '.forceignore'), 'utf-8');
+
+    it('creates .forceignore with the UTAM rules and the scaffolded test folder', async () => {
+      writeSfdxProject();
+
+      const result = await scaffoldProject({ projectDir: tempDir });
+
+      expect(result.createdFiles).toContain('.forceignore');
+      expect(result.forceignore?.action).toBe('created');
+      expect(readForceignore()).toBe(
+        [
+          '# Ignore UTAM',
+          '**/__utam__/**',
+          '**/lwc/**/*.rules.json',
+          '**/*.utam-overrides.json',
+          'force-app/test/utam/',
+          '',
+        ].join('\n'),
+      );
+    });
+
+    it('adds only missing rules to an existing file and lists it as modified', async () => {
+      writeSfdxProject();
+      fs.writeFileSync(
+        path.join(tempDir, '.forceignore'),
+        '# Ignore UTAM\n**/__utam__/**\n**/*.rules.json\n**/*.utam-overrides.json\n',
+        'utf-8',
+      );
+
+      const result = await scaffoldProject({ projectDir: tempDir });
+
+      expect(result.modifiedFiles).toContain('.forceignore');
+      expect(result.forceignore?.addedPatterns).toStrictEqual(['force-app/test/utam/']);
+      expect(readForceignore()).toBe(
+        '# Ignore UTAM\n**/__utam__/**\n**/*.rules.json\n**/*.utam-overrides.json\nforce-app/test/utam/\n',
+      );
+    });
+
+    it('covers an existing test folder inside a package directory', async () => {
+      writeSfdxProject();
+      fs.mkdirSync(path.join(tempDir, 'force-app', 'tests', 'utam'), { recursive: true });
+
+      const result = await scaffoldProject({ projectDir: tempDir });
+
+      expect(result.forceignore?.addedPatterns).toContain('force-app/tests/utam/');
+      expect(result.forceignore?.addedPatterns).not.toContain('force-app/test/utam/');
+    });
+
+    it('gives no rule to a test folder at the project root', async () => {
+      writeSfdxProject();
+      fs.mkdirSync(path.join(tempDir, 'test', 'utam'), { recursive: true });
+
+      const result = await scaffoldProject({ projectDir: tempDir });
+
+      expect(result.forceignore?.addedPatterns).toStrictEqual([
+        '**/__utam__/**',
+        '**/lwc/**/*.rules.json',
+        '**/*.utam-overrides.json',
+      ]);
+    });
+
+    it('inserts into a custom customization region', async () => {
+      writeSfdxProject();
+      fs.writeFileSync(path.join(tempDir, '.forceignore'), '# LOCAL START\nteam/\n# LOCAL END\n', 'utf-8');
+
+      const result = await scaffoldProject({
+        projectDir: tempDir,
+        forceignoreRegionStart: '# LOCAL START',
+        forceignoreRegionEnd: '# LOCAL END',
+      });
+
+      expect(result.forceignore?.placement).toBe('region');
+      expect(readForceignore().endsWith('force-app/test/utam/\n# LOCAL END\n')).toBe(true);
+    });
+
+    it('reports but does not write .forceignore during dryRun', async () => {
+      writeSfdxProject();
+
+      const result = await scaffoldProject({ projectDir: tempDir, dryRun: true });
+
+      expect(result.createdFiles).toContain('.forceignore');
+      expect(fs.existsSync(path.join(tempDir, '.forceignore'))).toBe(false);
+    });
+
+    it('leaves .forceignore alone and omits the result when disabled', async () => {
+      writeSfdxProject();
+
+      const result = await scaffoldProject({ projectDir: tempDir, forceignore: false });
+
+      expect(result.forceignore).toBeUndefined();
+      expect(fs.existsSync(path.join(tempDir, '.forceignore'))).toBe(false);
+    });
+
+    it('turns an absolute source directory into a project-relative rule and paths', async () => {
+      writeSfdxProject();
+
+      const result = await scaffoldProject({ projectDir: tempDir, sourceDir: path.join(tempDir, 'force-app') });
+
+      expect(result.forceignore?.addedPatterns).toContain('force-app/test/utam/');
+      expect(result.createdFiles).toContain(path.join('force-app', 'test', 'utam', 'features', 'hello.feature'));
+      expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(true);
+    });
+
+    it('finishes scaffolding and updates package.json when .forceignore cannot be read', async () => {
+      writeSfdxProject();
+      fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: 'p' }), 'utf-8');
+      fs.mkdirSync(path.join(tempDir, '.forceignore'));
+
+      const result = await scaffoldProject({ projectDir: tempDir });
+
+      expect(result.forceignore?.action).toBe('failed');
+      expect(result.modifiedFiles).toStrictEqual(['package.json']);
+      expect(result.createdFiles).not.toContain('.forceignore');
+    });
+
+    it('with force, adds rules for both the existing and the scaffolded test folders', async () => {
+      writeSfdxProject();
+      fs.mkdirSync(path.join(tempDir, 'force-app', 'tests', 'utam'), { recursive: true });
+
+      const result = await scaffoldProject({ projectDir: tempDir, force: true });
+
+      expect(result.forceignore?.addedPatterns).toContain('force-app/tests/utam/');
+      expect(result.forceignore?.addedPatterns).toContain('force-app/test/utam/');
+    });
+
+    it('skips projects without sfdx-project.json or .forceignore', async () => {
+      const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+      expect(result.forceignore?.action).toBe('skipped');
+      expect(result.createdFiles).not.toContain('.forceignore');
     });
   });
 });
