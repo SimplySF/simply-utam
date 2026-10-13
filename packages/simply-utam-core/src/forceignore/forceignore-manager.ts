@@ -300,10 +300,28 @@ export function mergeForceignore(content: string, options?: MergeForceignoreOpti
 }
 
 /**
+ * Escapes the characters that .forceignore would read as wildcards in a literal path: `[`, `]` and `*`.
+ * A `?` is left as is: the `ignore` 5.x library that Salesforce's deploy tooling uses can't escape it,
+ * and unescaped it still matches the literal character.
+ */
+function escapeIgnoreWildcards(literalPath: string): string {
+  return literalPath.replace(/[[\]*]/g, '\\$&');
+}
+
+/**
+ * Escapes a literal path for use as a whole .forceignore line: its wildcards, plus a leading `#` (a
+ * comment) or `!` (a negation).
+ */
+function escapeIgnorePattern(literalPath: string): string {
+  return escapeIgnoreWildcards(literalPath).replace(/^[#!]/, '\\$&');
+}
+
+/**
  * Builds .forceignore rules for UTAM test folders that sit inside a Salesforce package directory.
  *
  * Each rule is the folder's path relative to the project root, with forward slashes and a trailing
- * slash, so it matches only that folder. Folders outside every package directory are never deployed
+ * slash, so it matches only that folder. Characters .forceignore treats as special are escaped, so a
+ * folder such as `force-app[1]` is matched literally. Folders outside every package directory are never deployed
  * and get no rule, and absolute paths or paths outside the project root get no rule because a
  * .forceignore pattern can't reach them.
  *
@@ -323,9 +341,11 @@ export function resolveUtamTestIgnoreRules(testDirs: string[], packageDirectorie
       continue;
     }
     seen.add(testDir);
+    const literal = escapeIgnorePattern(testDir);
+    const rooted = `/${escapeIgnoreWildcards(testDir)}`;
     rules.push({
-      pattern: `${testDir}/`,
-      alternatives: [testDir, `${testDir}/**`, `/${testDir}/`, `/${testDir}`, `/${testDir}/**`],
+      pattern: `${literal}/`,
+      alternatives: [literal, `${literal}/**`, `${rooted}/`, rooted, `${rooted}/**`],
     });
   }
 

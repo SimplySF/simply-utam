@@ -361,7 +361,8 @@ function writeScaffoldFiles(
   const skippedFiles: string[] = [];
 
   for (const item of filesToCreate) {
-    const targetPath = path.join(projectDir, item.relativePath);
+    // resolve, not join: relativePath is absolute when the source folder is on another Windows drive.
+    const targetPath = path.resolve(projectDir, item.relativePath);
     if (fs.existsSync(targetPath) && !force) {
       skippedFiles.push(item.relativePath);
     } else {

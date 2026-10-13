@@ -432,6 +432,35 @@ describe('scaffold service', () => {
       expect(result.forceignore?.addedPatterns).toContain('force-app/test/utam/');
     });
 
+    // GitHub's Windows runners keep the temp folder on C: and the checkout on D:, which is the only
+    // way to get a source folder on another drive than the project.
+    const tempRoot = path.parse(os.tmpdir()).root.toLowerCase();
+    const cwdRoot = path.parse(process.cwd()).root.toLowerCase();
+    it.runIf(process.platform === 'win32' && tempRoot !== cwdRoot)(
+      'scaffolds into a source folder on another Windows drive',
+      async () => {
+        writeSfdxProject();
+        const otherDriveSource = fs.mkdtempSync(path.join(process.cwd(), '.simply-utam-other-drive-'));
+        try {
+          const result = await scaffoldProject({ projectDir: tempDir, sourceDir: otherDriveSource });
+
+          const helloFeature = path.join(otherDriveSource, 'test', 'utam', 'features', 'hello.feature');
+          expect(fs.existsSync(helloFeature)).toBe(true);
+          expect(result.createdFiles).toContain(
+            path.join(otherDriveSource, 'test', 'utam', 'features', 'hello.feature'),
+          );
+          expect(fs.readdirSync(tempDir).some((name) => /^[a-z]:$/i.test(name))).toBe(false);
+          expect(result.forceignore?.addedPatterns).toStrictEqual([
+            '**/__utam__/**',
+            '**/lwc/**/*.rules.json',
+            '**/*.utam-overrides.json',
+          ]);
+        } finally {
+          fs.rmSync(otherDriveSource, { recursive: true, force: true });
+        }
+      },
+    );
+
     it('skips projects without sfdx-project.json or .forceignore', async () => {
       const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
 

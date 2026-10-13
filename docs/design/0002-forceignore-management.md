@@ -72,6 +72,10 @@ spellings are accepted:
   drive, gets no rule, since a `.forceignore` pattern can't reach it. A `/` partway through a pattern ties it to the `.forceignore` folder, so the
   rule can't match an unrelated `test/utam` elsewhere.
 - The rule covers the whole folder, so features the developer adds later are covered too.
+- Folder names are literal, but `.forceignore` reads some characters as wildcards. `[`, `]` and `*`
+  are escaped with a backslash, as is a leading `#` (a comment) or `!` (a negation), so
+  `force-app[1]` becomes `force-app\[1\]/test/utam/`. A `?` is left as is: the `ignore` 5.x library
+  that Salesforce's deploy tooling uses can't escape it, and unescaped it still matches the folder.
 
 ### Deciding whether a rule is already there
 
@@ -228,7 +232,8 @@ change, its release notes will give the manual edit.
    result and add it to `ScaffoldResult`. Add `forceignore`, `forceignoreRegionStart` and
    `forceignoreRegionEnd` to `ScaffoldOptions`. Make `sourceDir` project-relative once, up front,
    and keep a leading `../` when filling the config templates. An absolute source path, such as a
-   folder on another Windows drive, is used as is. Read package directories from
+   folder on another Windows drive, is used as is, both in the configs and when writing the hello-world
+   files. Read package directories from
    `sfdx-project.json` through a small internal reader, `src/discovery/sfdx-project.ts`, split out of
    `project-discovery.ts` and not re-exported, so `init` never has to scan every LWC.
 4. `src/index.ts`, the core README `## API` section and `test/index.test.ts`, updated together.

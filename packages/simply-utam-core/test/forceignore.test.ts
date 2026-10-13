@@ -332,6 +332,33 @@ describe('forceignore management', () => {
       expect(rules).toStrictEqual([]);
     });
 
+    it('escapes characters that .forceignore would read as wildcards', () => {
+      const [rule] = resolveUtamTestIgnoreRules(['force-app[1]/test/utam'], ['force-app[1]']);
+
+      expect(rule.pattern).toBe('force-app\\[1\\]/test/utam/');
+      expect(rule.alternatives).toContain('force-app\\[1\\]/test/utam/**');
+      expect(rule.alternatives).toContain('/force-app\\[1\\]/test/utam/');
+      expect(resolveUtamTestIgnoreRules(['a*b/test/utam'], ['a*b'])[0].pattern).toBe('a\\*b/test/utam/');
+    });
+
+    it('escapes a leading # or ! so the rule is not read as a comment or negation', () => {
+      const [hash] = resolveUtamTestIgnoreRules(['#app/test/utam'], ['#app']);
+      const [bang] = resolveUtamTestIgnoreRules(['!app/test/utam'], ['!app']);
+
+      expect(hash.pattern).toBe('\\#app/test/utam/');
+      expect(hash.alternatives).toContain('/#app/test/utam/');
+      expect(bang.pattern).toBe('\\!app/test/utam/');
+    });
+
+    it('counts an existing escaped rule as covering a bracketed folder', () => {
+      const rules = resolveUtamTestIgnoreRules(['force-app[1]/test/utam'], ['force-app[1]']);
+
+      expect(mergeForceignore(lines('force-app\\[1\\]/test/utam/**'), { rules }).action).toBe('unchanged');
+      expect(mergeForceignore(lines('force-app[1]/test/utam/'), { rules }).addedPatterns).toStrictEqual([
+        'force-app\\[1\\]/test/utam/',
+      ]);
+    });
+
     it('covers every folder when a package directory is the project root', () => {
       const rules = resolveUtamTestIgnoreRules(['test/utam'], ['.']);
 
