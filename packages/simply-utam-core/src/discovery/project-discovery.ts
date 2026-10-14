@@ -16,6 +16,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseSfdxProject } from './sfdx-project.js';
 
 export interface SfdxPackageDirectory {
   [key: string]: unknown;
@@ -135,57 +136,6 @@ export function discoverComponentsInPackageDir(packageDirPath: string, rootDir: 
   }
 
   return components;
-}
-
-interface SfdxProjectDetails {
-  sfdxProjectFile: string | null;
-  namespace: string | null;
-  packageDirectories: string[];
-  defaultPackageDirectory: string | null;
-}
-
-function parseSfdxProject(resolvedRoot: string): SfdxProjectDetails {
-  let sfdxProjectFile: string | null = null;
-  let namespace: string | null = null;
-  const packageDirectories: string[] = [];
-  let defaultPackageDirectory: string | null = null;
-
-  const candidate = path.join(resolvedRoot, 'sfdx-project.json');
-  if (fs.existsSync(candidate)) {
-    sfdxProjectFile = candidate;
-    try {
-      const parsed = JSON.parse(fs.readFileSync(candidate, 'utf-8')) as SfdxProjectConfig;
-      if (typeof parsed.namespace === 'string' && parsed.namespace.trim()) {
-        namespace = parsed.namespace.trim();
-      }
-      if (Array.isArray(parsed.packageDirectories)) {
-        for (const pkgDir of parsed.packageDirectories) {
-          if (typeof pkgDir?.path === 'string') {
-            packageDirectories.push(pkgDir.path);
-            if (pkgDir.default === true && !defaultPackageDirectory) {
-              defaultPackageDirectory = pkgDir.path;
-            }
-          }
-        }
-      }
-    } catch {
-      // Continue with empty defaults on JSON read error
-    }
-  }
-
-  if (packageDirectories.length === 0) {
-    for (const fallback of ['force-app', 'sfdx-source', 'src']) {
-      if (fs.existsSync(path.join(resolvedRoot, fallback))) {
-        packageDirectories.push(fallback);
-      }
-    }
-  }
-
-  if (!defaultPackageDirectory && packageDirectories.length > 0) {
-    defaultPackageDirectory = packageDirectories[0];
-  }
-
-  return { sfdxProjectFile, namespace, packageDirectories, defaultPackageDirectory };
 }
 
 interface PackageJsonDetails {

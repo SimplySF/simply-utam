@@ -67,26 +67,26 @@ internal.
 
 ### Org authentication & Environment
 
-| Export                                                        | Description                                                                                                               |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `TestEnvironment`                                             | The org under test. `new TestEnvironment({ username?, env?, allowedDomains? })` throws when neither a username nor `UTAM_USERNAME` is set. |
-| `testEnvironment.getOrg()`                                    | The authenticated `Org`. Authenticates on first call and shares the result; a failure is not cached.                      |
-| `testEnvironment.getConnection()`                             | The underlying `@salesforce/core` Connection.                                                                            |
-| `testEnvironment.init()`                                      | Authenticates eagerly, for a runner hook that wants auth failures reported before any test starts. Optional.              |
-| `testEnvironment.buildFrontdoorUrl(returnUrl?)`               | A one-time URL that logs a browser in and lands on `returnUrl`.                                                           |
-| `testEnvironment.buildExperienceFrontdoorUrl(prefix?, ret?)`  | One-time single-access login URL for Experience Cloud sites.                                                              |
-| `testEnvironment.getOrgId()`                                  | Dynamically queries the 15- or 18-character Salesforce Organization ID.                                                   |
-| `testEnvironment.getUserIdByUsername(username)`               | Resolves a target username to its Salesforce User record ID.                                                             |
-| `testEnvironment.getNetworkIdByPrefix(prefix?)`               | Resolves an Experience site prefix to its corresponding Network ID.                                                      |
-| `testEnvironment.buildExperienceUrl(prefix?, path?)`          | Constructs a fully qualified secure Experience Cloud site URL.                                                            |
-| `getTestEnvironment(options?)`                                | Retrieves the global singleton `TestEnvironment` instance.                                                                |
-| `setTestEnvironment(instance)`                                | Overrides the global `TestEnvironment` singleton.                                                                         |
-| `resetTestEnvironment()`                                      | Resets and unsets the global `TestEnvironment` singleton.                                                                 |
-| `isHostAllowed(host, instanceUrl?, allowedDomains?)`          | Validates a hostname against Salesforce default patterns and custom overrides.                                           |
-| `validateAndParseSecureUrl(secureUrl, siteId, validator?)`    | Validates and parses a raw secure URL retrieved from SiteDetail.                                                          |
-| `DEFAULT_ALLOWED_HOST_PATTERNS`                               | Default trusted Salesforce domain RegExp matchers.                                                                        |
-| `USERNAME_ENV`                                                | `'UTAM_USERNAME'`.                                                                                                        |
-| `TestEnvironmentOptions`, `EnvLike`                           | Types for the constructor options and an environment-shaped map.                                                          |
+| Export                                                       | Description                                                                                                                                |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TestEnvironment`                                            | The org under test. `new TestEnvironment({ username?, env?, allowedDomains? })` throws when neither a username nor `UTAM_USERNAME` is set. |
+| `testEnvironment.getOrg()`                                   | The authenticated `Org`. Authenticates on first call and shares the result; a failure is not cached.                                       |
+| `testEnvironment.getConnection()`                            | The underlying `@salesforce/core` Connection.                                                                                              |
+| `testEnvironment.init()`                                     | Authenticates eagerly, for a runner hook that wants auth failures reported before any test starts. Optional.                               |
+| `testEnvironment.buildFrontdoorUrl(returnUrl?)`              | A one-time URL that logs a browser in and lands on `returnUrl`.                                                                            |
+| `testEnvironment.buildExperienceFrontdoorUrl(prefix?, ret?)` | One-time single-access login URL for Experience Cloud sites.                                                                               |
+| `testEnvironment.getOrgId()`                                 | Dynamically queries the 15- or 18-character Salesforce Organization ID.                                                                    |
+| `testEnvironment.getUserIdByUsername(username)`              | Resolves a target username to its Salesforce User record ID.                                                                               |
+| `testEnvironment.getNetworkIdByPrefix(prefix?)`              | Resolves an Experience site prefix to its corresponding Network ID.                                                                        |
+| `testEnvironment.buildExperienceUrl(prefix?, path?)`         | Constructs a fully qualified secure Experience Cloud site URL.                                                                             |
+| `getTestEnvironment(options?)`                               | Retrieves the global singleton `TestEnvironment` instance.                                                                                 |
+| `setTestEnvironment(instance)`                               | Overrides the global `TestEnvironment` singleton.                                                                                          |
+| `resetTestEnvironment()`                                     | Resets and unsets the global `TestEnvironment` singleton.                                                                                  |
+| `isHostAllowed(host, instanceUrl?, allowedDomains?)`         | Validates a hostname against Salesforce default patterns and custom overrides.                                                             |
+| `validateAndParseSecureUrl(secureUrl, siteId, validator?)`   | Validates and parses a raw secure URL retrieved from SiteDetail.                                                                           |
+| `DEFAULT_ALLOWED_HOST_PATTERNS`                              | Default trusted Salesforce domain RegExp matchers.                                                                                         |
+| `USERNAME_ENV`                                               | `'UTAM_USERNAME'`.                                                                                                                         |
+| `TestEnvironmentOptions`, `EnvLike`                          | Types for the constructor options and an environment-shaped map.                                                                           |
 
 ### Navigation
 
@@ -103,7 +103,7 @@ internal.
 | `navigator.loginAsExperienceUser(username, sitePrefix, pageName)`     | Impersonate a user and switch network to an Experience Cloud site.                                |
 | `goToLoginUrl`, `goToExperiencePage`, `loginAsUser`                   | Standalone functional wrappers for navigation methods.                                            |
 | `goToApplication`, `goToCreateNewRecord`, `goToRecord`                | Standalone functional wrappers for record and app navigation.                                     |
-| `goToRelatedList`, `resolveBrowser`                                   | Standalone helper to open related list and resolve browser instance.                             |
+| `goToRelatedList`, `resolveBrowser`                                   | Standalone helper to open related list and resolve browser instance.                              |
 | `applicationPath`, `newRecordPath`, `recordPath`, `relatedListPath`   | The Lightning paths the methods above open, for a caller building its own URLs.                   |
 | `lightningAppName(app)`                                               | The namespacing rule: `MyApp` becomes `c__MyApp`, a namespaced name is unchanged.                 |
 | `NavigableBrowser`, `FrontdoorUrlSource`, `LightningNavigatorOptions` | Structural types: anything with `navigateTo(url)`, anything with `buildFrontdoorUrl(returnUrl?)`. |
@@ -119,70 +119,83 @@ internal.
 
 ### Discovery
 
-| Export                                            | Description                                                                           |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `discoverProject(rootDir?)`                       | Discovers `sfdx-project.json`, package directories, namespaces, and LWC components.   |
-| `findLwcDirectories(dirPath)`                     | Recursively locates directories named `lwc`.                                          |
-| `discoverComponentsInPackageDir(pkgDir, rootDir)` | Finds all LWC components and metadata inside a given package directory.               |
+| Export                                            | Description                                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `discoverProject(rootDir?)`                       | Discovers `sfdx-project.json`, package directories, namespaces, and LWC components. |
+| `findLwcDirectories(dirPath)`                     | Recursively locates directories named `lwc`.                                        |
+| `discoverComponentsInPackageDir(pkgDir, rootDir)` | Finds all LWC components and metadata inside a given package directory.             |
+
+### `.forceignore` Management
+
+| Export                                                                          | Description                                                                                         |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ensureForceignore(options?)`                                                   | Adds missing UTAM rules to a project's `.forceignore`, creating it when `sfdx-project.json` exists. |
+| `mergeForceignore(content, options?)`                                           | Pure merge of missing rules into `.forceignore` content; never changes an existing line.            |
+| `resolveUtamTestIgnoreRules(testDirs, packageDirs)`                             | Rules for UTAM test folders that sit inside a package directory, relative to the project root.      |
+| `SIMPLY_UTAM_FORCEIGNORE_RULES`                                                 | The rules for UTAM artifacts in LWC bundles, with the existing patterns accepted as covering each.  |
+| `FORCEIGNORE_HEADER`, `FORCEIGNORE_FILE`                                        | The `# Ignore UTAM` comment that heads our rules, and the `.forceignore` file name.                 |
+| `DEFAULT_FORCEIGNORE_REGION`                                                    | Default `# -- START CUSTOMIZATION` / `# -- END CUSTOMIZATION` region markers.                       |
+| `ForceignoreRule`, `ForceignoreResult`, `ForceignorePlacement`                  | Types: a rule, what happened to the file, and where rules were written.                             |
+| `MergeForceignoreOptions`, `MergeForceignoreResult`, `EnsureForceignoreOptions` | Option and result types for the functions above.                                                    |
 
 ### Rules Generation
 
-| Export                                       | Description                                                                           |
-| -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `generateLwcRules(options?)`                 | Scans LWC components and generates or updates `<component>.rules.json` files.         |
-| `convertLwcNameToHtml(componentName, ns?)`   | Converts component name to kebab-case HTML tag with namespace prefix.                 |
-| `getTargetsFromMeta(xmlContent)`             | Extracts targets from `<targets>` in a `*.js-meta.xml` file.                          |
-| `ROOT_TARGETS`                               | Target page names that designate an LWC as a root component.                          |
+| Export                                     | Description                                                                   |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `generateLwcRules(options?)`               | Scans LWC components and generates or updates `<component>.rules.json` files. |
+| `convertLwcNameToHtml(componentName, ns?)` | Converts component name to kebab-case HTML tag with namespace prefix.         |
+| `getTargetsFromMeta(xmlContent)`           | Extracts targets from `<targets>` in a `*.js-meta.xml` file.                  |
+| `ROOT_TARGETS`                             | Target page names that designate an LWC as a root component.                  |
 
 ### Overrides Merger
 
-| Export                                       | Description                                                                           |
-| -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `applyUtamOverrides(options?)`               | Deep merges `*.utam-overrides.json` definitions into generated `*.utam.json` files.   |
-| `findUtamOverridesFiles(dirPath)`            | Locates all `*.utam-overrides.json` files in a directory tree.                        |
-| `detectIndentation(content)`                 | Detects indentation formatting of a JSON file (2 spaces, 4 spaces, or tabs).          |
-| `mergeElements(target, source)`              | Deep merges override properties into a target AST node.                               |
-| `walkElements(node, callback)`               | Traverses AST nodes across root elements, nested elements, and shadow DOM roots.      |
+| Export                            | Description                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------------------- |
+| `applyUtamOverrides(options?)`    | Deep merges `*.utam-overrides.json` definitions into generated `*.utam.json` files. |
+| `findUtamOverridesFiles(dirPath)` | Locates all `*.utam-overrides.json` files in a directory tree.                      |
+| `detectIndentation(content)`      | Detects indentation formatting of a JSON file (2 spaces, 4 spaces, or tabs).        |
+| `mergeElements(target, source)`   | Deep merges override properties into a target AST node.                             |
+| `walkElements(node, callback)`    | Traverses AST nodes across root elements, nested elements, and shadow DOM roots.    |
 
 ### Namespace Rewriting
 
-| Export                                       | Description                                                                           |
-| -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `rewriteUtamNamespaces(options?)`            | Rewrites namespace prefixes across `*.utam.json` files according to mapping config.   |
-| `findUtamJsonFiles(dirPath)`                 | Locates all `*.utam.json` schema files in a directory tree.                           |
-| `updateValueWithMappings(value, map, list)`  | Replaces namespace prefixes in AST values based on longest-match sorting.             |
+| Export                                      | Description                                                                         |
+| ------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `rewriteUtamNamespaces(options?)`           | Rewrites namespace prefixes across `*.utam.json` files according to mapping config. |
+| `findUtamJsonFiles(dirPath)`                | Locates all `*.utam.json` schema files in a directory tree.                         |
+| `updateValueWithMappings(value, map, list)` | Replaces namespace prefixes in AST values based on longest-match sorting.           |
 
 ### Step Scaffolding Engine
 
-| Export                                       | Description                                                                           |
-| -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `generateCucumberSteps(options?)`            | Scans Gherkin features, compiles existing step expressions, and scaffolds skeletons.  |
-| `parseGherkinDocument(content)`              | Parses Gherkin source text into an AST document representation.                       |
-| `extractStepsFromGherkin(content, path?)`    | Extracts all scenario and background steps, normalizing And/But keywords.             |
-| `extractStepExpressionsFromContent(content)` | Statically extracts registered step expressions from definition code.                 |
-| `compileStepExpressions(raw, registry?)`     | Compiles string and RegExp expressions using `@cucumber/cucumber-expressions`.        |
-| `matchStepAgainstExpressions(stepText, list)`| Matches a feature step text against compiled expressions.                             |
-| `generateStepSnippet(step, registry?)`       | Generates an idiomatic async step snippet with Cucumber expressions.                  |
-| `formatParameterNames(names, table?, doc?)`  | Formats parameter names to eliminate collisions and add dataTable/docString.          |
-| `formatCode(code)`                           | Formats generated TypeScript / JavaScript code using Prettier.                        |
-| `resolveGlobs(patterns, rootDir)`            | Resolves one or more glob patterns or file paths.                                     |
+| Export                                        | Description                                                                          |
+| --------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `generateCucumberSteps(options?)`             | Scans Gherkin features, compiles existing step expressions, and scaffolds skeletons. |
+| `parseGherkinDocument(content)`               | Parses Gherkin source text into an AST document representation.                      |
+| `extractStepsFromGherkin(content, path?)`     | Extracts all scenario and background steps, normalizing And/But keywords.            |
+| `extractStepExpressionsFromContent(content)`  | Statically extracts registered step expressions from definition code.                |
+| `compileStepExpressions(raw, registry?)`      | Compiles string and RegExp expressions using `@cucumber/cucumber-expressions`.       |
+| `matchStepAgainstExpressions(stepText, list)` | Matches a feature step text against compiled expressions.                            |
+| `generateStepSnippet(step, registry?)`        | Generates an idiomatic async step snippet with Cucumber expressions.                 |
+| `formatParameterNames(names, table?, doc?)`   | Formats parameter names to eliminate collisions and add dataTable/docString.         |
+| `formatCode(code)`                            | Formats generated TypeScript / JavaScript code using Prettier.                       |
+| `resolveGlobs(patterns, rootDir)`             | Resolves one or more glob patterns or file paths.                                    |
 
 ### Project Scaffolding
 
-| Export                                       | Description                                                                           |
-| -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `scaffoldProject(options?)`                  | Scaffolds configuration files, template files, and injects Wireit tasks into package. |
-| `injectWireitConfiguration(packageJson, dir)`| Injects standard UTAM Wireit scripts and tasks non-destructively into package.json.   |
-| `checkMissingDependencies(pkg, required?)`   | Detects missing recommended devDependencies.                                          |
-| `loadTemplate(name, dir?, tokens?)`          | Loads an external scaffold template, performing `{{token}}` replacements.             |
-| `generateGeneratorConfig(sourceDir, appName)`| Generates parsed `generator.config.json` content.                                     |
-| `generateUtamConfig(templatesDir?)`          | Generates parsed `utam.config.json` content.                                          |
-| `generateWdioConfig(sourceDir, dir?)`        | Generates formatted `wdio.conf.mjs` content.                                          |
-| `generateNamespaceMap(appName, dir?)`        | Generates parsed `namespace-map.json` content.                                        |
-| `generateHelloFeature(dir?)`                 | Generates formatted `hello.feature` starter smoke test content.                       |
-| `generateHelloSteps(dir?)`                   | Generates formatted `hello.steps.mjs` starter step definition content.                |
-| `DEFAULT_TEMPLATES_DIR`                      | Path to starter config templates directory.                                           |
-| `DEFAULT_REQUIRED_DEV_DEPENDENCIES`          | List of standard recommended UTAM devDependencies.                                    |
+| Export                                        | Description                                                                            |
+| --------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `scaffoldProject(options?)`                   | Scaffolds configuration files, template files, Wireit tasks, and `.forceignore` rules. |
+| `injectWireitConfiguration(packageJson, dir)` | Injects standard UTAM Wireit scripts and tasks non-destructively into package.json.    |
+| `checkMissingDependencies(pkg, required?)`    | Detects missing recommended devDependencies.                                           |
+| `loadTemplate(name, dir?, tokens?)`           | Loads an external scaffold template, performing `{{token}}` replacements.              |
+| `generateGeneratorConfig(sourceDir, appName)` | Generates parsed `generator.config.json` content.                                      |
+| `generateUtamConfig(templatesDir?)`           | Generates parsed `utam.config.json` content.                                           |
+| `generateWdioConfig(sourceDir, dir?)`         | Generates formatted `wdio.conf.mjs` content.                                           |
+| `generateNamespaceMap(appName, dir?)`         | Generates parsed `namespace-map.json` content.                                         |
+| `generateHelloFeature(dir?)`                  | Generates formatted `hello.feature` starter smoke test content.                        |
+| `generateHelloSteps(dir?)`                    | Generates formatted `hello.steps.mjs` starter step definition content.                 |
+| `DEFAULT_TEMPLATES_DIR`                       | Path to starter config templates directory.                                            |
+| `DEFAULT_REQUIRED_DEV_DEPENDENCIES`           | List of standard recommended UTAM devDependencies.                                     |
 
 WebdriverIO and UTAM are not dependencies: the browser and UTAM objects are typed structurally, so
 the package works with whichever versions your test project already uses.

@@ -16,7 +16,7 @@ Requires Node.js 22 or later.
 
 ## Commands
 
-- `simply-utam init`: Scaffolds starter UTAM configs (`generator.config.json`, `utam.config.json`, `wdio.conf.mjs`, `.utam/namespace-map.json`) and non-destructively injects standard Wireit tasks into `package.json`.
+- `simply-utam init`: Scaffolds starter UTAM configs (`generator.config.json`, `utam.config.json`, `wdio.conf.mjs`, `.utam/namespace-map.json`), non-destructively injects standard Wireit tasks into `package.json`, and adds any missing UTAM rules to `.forceignore` under a `# Ignore UTAM` comment so LWC bundles that contain UTAM files deploy successfully. Existing lines are never changed; new rules go inside the `# -- START CUSTOMIZATION` / `# -- END CUSTOMIZATION` region when one exists (`--forceignore-region-start` / `--forceignore-region-end` to change the markers, `--no-forceignore` to skip).
 - `simply-utam rules`: Scans LWC component definitions and generates or updates UTAM `.rules.json` files for root components.
 - `simply-utam overrides`: Deeply merges custom element assertions, wait conditions, and visibility rules from `*.utam-overrides.json` into generated `*.utam.json` files while preserving file indentation.
 - `simply-utam rewrite`: Rewrites namespace prefixes across compiled `*.utam.json` files according to `.utam/namespace-map.json`.

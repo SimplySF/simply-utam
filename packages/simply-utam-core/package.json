@@ -37,6 +37,10 @@
       "types": "./lib/discovery/index.d.ts",
       "default": "./lib/discovery/index.js"
     },
+    "./forceignore": {
+      "types": "./lib/forceignore/index.d.ts",
+      "default": "./lib/forceignore/index.js"
+    },
     "./rules": {
       "types": "./lib/rules/index.d.ts",
       "default": "./lib/rules/index.js"
