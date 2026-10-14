@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.3](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.1.2...%40simplysf%2Fsimply-utam%400.1.3) (2026-10-14)
+
+**Note:** Version bump only for package @simplysf/simply-utam
+
 ## [0.1.2](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.1.1...%40simplysf%2Fsimply-utam%400.1.2) (2026-10-14)
 
 ### Bug Fixes
