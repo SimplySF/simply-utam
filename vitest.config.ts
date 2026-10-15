@@ -37,6 +37,14 @@ const packageProjects = fs
       globals: true,
       environment: 'node',
       include: ['test/**/*.test.ts'],
+      // The first `Command.run()` in a worker pays for oclif's whole `Config.load()` — plugin
+      // discovery, manifest reads, and a walk over a symlink-heavy pnpm node_modules — and vitest
+      // charges all of it to whichever test happened to run first. That start-up cost is well
+      // under a second locally but repeatedly blew past 10s on cold Windows CI runners, failing
+      // whichever test drew the short straw rather than anything actually wrong with it. These
+      // suites load real commands, so the ceiling has to clear a cold start, not a warm one.
+      testTimeout: 30_000,
+      hookTimeout: 30_000,
     },
   }));
 
