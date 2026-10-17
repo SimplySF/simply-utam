@@ -289,6 +289,155 @@ describe('buildPageObjectIndex', () => {
   });
 });
 
+describe('buildPageObjectIndex: compose summaries', () => {
+  const form = {
+    root: true,
+    selector: { css: 'c-form' },
+    elements: [
+      {
+        name: 'nameInput',
+        public: true,
+        type: 'utam-lightning/pageObjects/input',
+        selector: { css: "lightning-input[data-name='%s']", args: [{ name: 'fieldName', type: 'string' }] },
+      },
+      { name: 'save', selector: { css: 'button.save' } },
+      {
+        name: 'toast',
+        type: 'utam-lightning/pageObjects/formattedText',
+        selector: { css: 'lightning-formatted-text' },
+      },
+    ],
+    methods: [
+      {
+        name: 'setName',
+        compose: [{ element: 'nameInput', apply: 'setText', args: [{ name: 'value', type: 'string' }] }],
+      },
+      {
+        name: 'fillTwice',
+        args: [
+          { name: 'value', type: 'string' },
+          { name: 'mode', value: 'fast' },
+        ],
+        compose: [
+          { element: 'nameInput', apply: 'setText', args: [{ name: 'value', type: 'string' }] },
+          { element: 'nameInput', apply: 'setText', args: [{ name: 'value', type: 'string' }] },
+        ],
+      },
+      {
+        name: 'hasSavedLabel',
+        compose: [
+          { element: 'save', apply: 'getText', matcher: { type: 'stringContains', args: [{ value: '"Saved"' }] } },
+        ],
+      },
+      { name: 'isSaveEnabled', compose: [{ element: 'save', apply: 'isEnabled', matcher: { type: 'isTrue' } }] },
+      {
+        name: 'useHelper',
+        compose: [
+          {
+            applyExternal: {
+              type: 'utam-helpers/utils/formHelper',
+              invoke: 'fill',
+              args: [
+                { value: 3 },
+                { value: true },
+                { name: 'record', type: 'string' },
+                { type: 'elementReference', value: 'save' },
+                { type: 'pageObject', value: 'utam-lightning/pageObjects/input' },
+                { value: { css: '.x' } },
+                { value: null },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        name: 'waitForToast',
+        compose: [{ apply: 'waitFor', args: [{ type: 'function', predicate: [{ element: 'toast' }] }] }],
+      },
+      {
+        name: 'openRecord',
+        description: {
+          text: ['Opens the record.'],
+          return: 'the record page (utam-global/pageObjects/recordHomeFlexipage2)',
+        },
+        compose: [{ element: 'save', apply: 'click' }],
+      },
+    ],
+  };
+  const index = buildPageObjectIndex({
+    projectDir: project({ ...projectFiles, 'test/__utam__/form.utam.json': form }),
+  });
+  const methods = Object.fromEntries(
+    index.entries.get('my-app/pageObjects/form')!.methods.map((method) => [method.name, method]),
+  );
+
+  it('writes statement arguments as parameter names and literals', () => {
+    expect(methods.setName.compose).toBe(`setText(value) on nameInput "lightning-input[data-name='%s']"`);
+    expect(methods.useHelper.compose).toBe('formHelper.fill(3, true, record, save, input, ".x")');
+  });
+
+  it('writes a matcher after the statement it checks, with its arguments', () => {
+    expect(methods.hasSavedLabel.compose).toBe('getText on save "button.save" is stringContains("Saved")');
+    expect(methods.isSaveEnabled.compose).toBe('isEnabled on save "button.save" is isTrue');
+  });
+
+  it('lists each parameter once, leaving out literal values', () => {
+    expect(methods.fillTwice.args).toEqual([
+      { name: 'value', type: 'string' },
+      { name: 'fieldName', type: 'string' },
+    ]);
+    expect(methods.fillTwice.compose).toBe(
+      `setText(value), setText(value) on nameInput "lightning-input[data-name='%s']"`,
+    );
+  });
+
+  it("reads a return type from a waitFor predicate's element, or from the description", () => {
+    expect(methods.waitForToast).toMatchObject({
+      compose: 'waitFor(toast)',
+      returns: 'utam-lightning/pageObjects/formattedText',
+    });
+    expect(methods.openRecord.returns).toBe('utam-global/pageObjects/recordHomeFlexipage2');
+  });
+
+  it('says how many more elements declare a typed match than it names', () => {
+    const typed = (name: string): Record<string, unknown> => ({
+      name,
+      type: 'my-app/pageObjects/card',
+      selector: { css: 'c-card' },
+    });
+    const many = buildPageObjectIndex({
+      projectDir: project({
+        ...projectFiles,
+        'test/__utam__/card.utam.json': { elements: [] },
+        'test/__utam__/deck.utam.json': { elements: ['a', 'b', 'c', 'd'].map(typed) },
+      }),
+    });
+    expect(lookupPageObject(many, 'c-card').lines).toContain(
+      '  matched by: typed element in deck.a, deck.b, deck.c and 1 more',
+    );
+  });
+
+  it("warns when salesforce-pageobjects has no readable manifest, and skips a manifest entry it can't read", () => {
+    const noManifest = buildPageObjectIndex({
+      projectDir: project({ ...projectFiles, [`${SPO}/package.json`]: { name: 'salesforce-pageobjects' } }),
+    });
+    expect(noManifest.warnings).toContain(
+      "salesforce-pageobjects has no readable dist/utam.manifest.json; it isn't indexed.",
+    );
+    const missingSource = buildPageObjectIndex({
+      projectDir: project({
+        ...projectFiles,
+        [`${SPO}/package.json`]: { name: 'salesforce-pageobjects' },
+        [`${SPO}/dist/utam.manifest.json`]: {
+          pageObjects: { 'utam-x/pageObjects/gone': 'package/dist/x/gone.utam.json' },
+        },
+      }),
+    });
+    expect(missingSource.entries.has('utam-x/pageObjects/gone')).toBe(false);
+    expect(missingSource.warnings.filter((warning) => warning.includes('salesforce-pageobjects'))).toEqual([]);
+  });
+});
+
 describe('lookupPageObject', () => {
   const dir = project({ ...shippedPageObjects, ...projectFiles });
   const index = buildPageObjectIndex({ projectDir: dir });

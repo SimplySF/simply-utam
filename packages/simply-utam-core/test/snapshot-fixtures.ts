@@ -37,6 +37,8 @@ export type Spec = {
   shadow?: Spec[];
   shadowText?: string;
   mode?: ShadowMode;
+  /** An iframe's source, recorded without its content. */
+  src?: string;
 };
 
 export function el(tag: string, attrs: Record<string, string> = {}, rest: Omit<Spec, 'tag' | 'attrs'> = {}): Spec {
@@ -47,6 +49,7 @@ function toNode(spec: Spec, address: string): Omit<DomNode, 'id'> {
   const node: Omit<DomNode, 'id'> = { address, tag: spec.tag };
   if (spec.attrs) node.attrs = spec.attrs;
   if (spec.text) node.text = spec.text;
+  if (spec.src) Object.assign(node, { src: spec.src, notCaptured: true });
   if (spec.hidden) node.hidden = true;
   else node.rect = [0, 0, 10, 10];
   if (spec.children) node.children = spec.children.map((child, i) => toNode(child, `${address}.${i}`)) as DomNode[];

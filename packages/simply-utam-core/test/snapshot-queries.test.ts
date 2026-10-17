@@ -426,6 +426,39 @@ describe('path', () => {
     );
   });
 
+  it('marks a hidden ancestor on the path, even a plain one', () => {
+    const { lines, steps } = path(label('old'));
+    expect(lines[0]).toBe('div.oneContent.lafPageHost.windowViewMode-minimized  (hidden)');
+    expect(steps.map((step) => [step.tag, step.hidden])).toEqual([
+      ['div', true],
+      ['one-record-home-flexipage2', false],
+      ['records-highlights2', false],
+      ['records-entity-label', false],
+    ]);
+  });
+
+  it("doesn't tell you to move an element to the other scope when neither scope finds it", () => {
+    // Two shadow roots below the page object's root: neither elements nor shadow.elements reaches it.
+    const page = snapshotOf([
+      el(
+        'one-record-home-flexipage2',
+        {},
+        { shadow: [el('c-wrap', {}, { shadow: [el('records-highlights2', {}, { text: 'Panel' })] })] },
+      ),
+    ]);
+    const target = handle(page, (node) => node.tag === 'records-highlights2');
+    const deep = indexWith({
+      deep: {
+        root: true,
+        selector: { css: 'one-record-home-flexipage2' },
+        elements: [{ name: 'highlights', public: true, selector: { css: 'records-highlights2' } }],
+      },
+    });
+    const { lines, json } = componentPath(page, target, { index: deep });
+    expect(json.steps.flatMap((step) => step.scopeMismatches ?? [])).toEqual([]);
+    expect(lines.some((line) => line.includes('Move it to'))).toBe(false);
+  });
+
   it('counts a public method that reaches a private element through elements nested in it', () => {
     const nested = indexWith({
       recordHeader: {
@@ -542,6 +575,99 @@ describe('tree and node', () => {
     expect(lines.at(-1)).toBe(
       "A CSS selector can't reach past a #shadow line: above it, scope with a page object, not a selector.",
     );
+  });
+});
+
+describe('tree and node on hidden, closed and framed nodes', () => {
+  const page = snapshotOf([
+    el(
+      'div',
+      { class: 'slds-hide' },
+      {
+        hidden: true,
+        children: [
+          el('c-card', { title: '•4' }, { text: 'Hidden card', children: [el('span', {}, { text: 'inner' })] }),
+        ],
+      },
+    ),
+    el(
+      'c-host',
+      { id: 'main' },
+      {
+        shadow: [el('h2', {}, { text: 'Title' })],
+        children: [el('button', { name: 'save' }, { text: 'Save' }), el('div', { class: 'later' }, { hidden: true })],
+      },
+    ),
+    el('x-closed', {}, { mode: 'unreadable' }),
+    el('iframe', { name: 'f' }, { src: 'https://acme.my.site.com/s/form' }),
+  ]);
+  const hiddenTop = handle(page, (node) => node.attrs?.class === 'slds-hide');
+  const card = handle(page, (node) => node.tag === 'c-card');
+  const inner = handle(page, (node) => node.text === 'inner');
+  const host = handle(page, (node) => node.tag === 'c-host');
+  const later = handle(page, (node) => node.attrs?.class === 'later');
+
+  it('says whether a node is the top of a hidden subtree or inside one', () => {
+    expect(nodeDetails(page, hiddenTop).lines).toContain('  visibility: hidden (top of a hidden subtree)');
+    const { lines, json } = nodeDetails(page, card);
+    expect(lines).toContain(`  visibility: hidden, inside ${hiddenTop} div.slds-hide`);
+    expect(json.hiddenUnder).toBe(hiddenTop);
+  });
+
+  it('lists every attribute, its text, and each light and shadow child, marking hidden ones', () => {
+    const { lines, json } = nodeDetails(page, host);
+    expect(lines[0]).toMatch(/^c-host {2}\[n\d+\] {2}at 0\.1\.1$/);
+    expect(lines).toContain('  attributes:');
+    expect(lines).toContain('    id="main"');
+    expect(lines).toContain('  light DOM children (2):');
+    expect(lines.find((line) => line.includes(later))).toMatch(/div\.later {2}\(hidden\)$/);
+    expect(lines).toContain('  shadow root children (1):');
+    expect(lines.find((line) => line.includes('h2'))).toMatch(/^ {4}n\d+ +h2 "Title"$/);
+    expect(json.children.map((child) => [child.node, child.hidden])).toEqual([
+      ['button[name="save"] "Save"', false],
+      ['div.later', true],
+    ]);
+    expect(json.shadowChildren.map((child) => child.node)).toEqual(['h2 "Title"']);
+    expect(nodeDetails(page, card).lines).toContain('  text: "Hidden card"');
+  });
+
+  it("says a closed shadow root can't be read, and an iframe's content wasn't captured", () => {
+    const closed = nodeDetails(
+      page,
+      handle(page, (node) => node.tag === 'x-closed'),
+    ).lines;
+    expect(closed).toContain("  shadow root: unreadable, most likely closed; UTAM selectors can't reach inside it");
+    expect(closed).toContain('  no children in the snapshot');
+    const frame = handle(page, (node) => node.tag === 'iframe');
+    expect(nodeDetails(page, frame).lines).toContain(
+      '  src: https://acme.my.site.com/s/form (iframe content not captured)',
+    );
+    expect(subtree(page, frame).lines[0]).toBe(
+      `iframe[name="f"] src="https://acme.my.site.com/s/form" (iframe content not captured)  [${frame}]`,
+    );
+  });
+
+  it('prints a node id as #id in one-line descriptions', () => {
+    expect(subtree(page, host, { depth: 0 }).lines[0]).toBe(`c-host#main  [${host}]`);
+  });
+
+  it('says when a tree or an ancestor list starts inside a hidden subtree', () => {
+    expect(subtree(page, card).lines[0]).toBe(`(inside hidden subtree ${hiddenTop})`);
+    const { lines, json } = nodeAncestors(page, inner);
+    expect(lines[0]).toBe(`Ancestors of ${inner} span (hidden, under ${hiddenTop}), nearest first:`);
+    expect(lines).toContain(`  ${hiddenTop}  div.slds-hide  (hidden)`);
+    expect(json.ancestors).toContainEqual({ kind: 'element', id: hiddenTop, node: 'div.slds-hide', hidden: true });
+    expect(nodeAncestors(page, hiddenTop).lines[0]).toBe(
+      `Ancestors of ${hiddenTop} div.slds-hide (hidden), nearest first:`,
+    );
+  });
+
+  it('repeats where a long tree starts at its end, for output that keeps only the tail', () => {
+    const wide = snapshotOf(Array.from({ length: 45 }, (_, i) => el('c-row', { 'data-i': String(i) })));
+    const { lines } = subtree(wide);
+    expect(lines).toHaveLength(48);
+    expect(lines.at(-1)).toBe('(end of tree under n1 html)');
+    expect(subtree(page).lines.at(-1)).not.toMatch(/^\(end of tree/);
   });
 });
 

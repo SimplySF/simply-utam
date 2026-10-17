@@ -16,6 +16,8 @@
 
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import * as vm from 'node:vm';
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { parseDomSnapshot, querySnapshot, type DomNode, type DomSnapshot, type SelectorScope } from '../src/index.js';
@@ -32,6 +34,8 @@ type WalkOptions = Record<string, unknown> & {
   /** Runs `performance.now()` through this instead, given the number of calls so far. */
   clock?: (calls: number) => number;
 };
+
+const WALKER_FILE = fileURLToPath(new URL('../src/snapshot/walker.js', import.meta.url));
 
 const URL_WITH_RECORD = 'https://acme.lightning.force.com/lightning/r/Account/0015g00000XyZabAAB/view?ws=1#x';
 
@@ -71,7 +75,9 @@ function walkDom(
       getRect: (el: Element) => ({ x: 1.4, y: 2.6, width: 10, height: 10, ...rect?.(el) }),
     },
   });
-  return { snapshot: parseDomSnapshot(window.eval(`(${walkerSource()})(window.walkerOptions)`) as string), window };
+  // The same text core sends to a browser, run as a script named after walker.js, so coverage counts it.
+  const script = new vm.Script(`(${walkerSource()})(window.walkerOptions)`, { filename: WALKER_FILE });
+  return { snapshot: parseDomSnapshot(script.runInContext(dom.getInternalVMContext()) as string), window };
 }
 
 function allNodes(node: DomNode, out: DomNode[] = []): DomNode[] {
@@ -233,6 +239,23 @@ describe('walker: visibility', () => {
     expect(byTag(snapshot, 'c-b')[0].hidden).toBeUndefined();
   });
 
+  it("uses the browser's checkVisibility, checking visibility and opacity, when the page has it", () => {
+    const asked: unknown[] = [];
+    const snapshot = walk('<c-shown></c-shown><c-faded style="opacity: 0"></c-faded>', {
+      noCheckVisibility: true,
+      setup: (window) => {
+        window.Element.prototype.checkVisibility = function (this: Element, options?: unknown): boolean {
+          asked.push(options);
+          return window.getComputedStyle(this).opacity !== '0';
+        };
+      },
+    });
+    expect(byTag(snapshot, 'c-faded')[0].hidden).toBe(true);
+    expect(byTag(snapshot, 'c-shown')[0].hidden).toBeUndefined();
+    expect(asked.length).toBeGreaterThan(0);
+    for (const options of asked) expect(options).toEqual({ visibilityProperty: true, opacityProperty: true });
+  });
+
   it('judges the children of a visibility: hidden element on their own when one is set back to visible', () => {
     const body = `<c-panel style="visibility: hidden"><c-label>Hidden</c-label><c-action style="visibility: visible"></c-action></c-panel>
        <c-gone style="visibility: hidden"><c-inner></c-inner><c-under style="display: none"><c-x style="visibility: visible"></c-x></c-under></c-gone>`;
@@ -374,6 +397,29 @@ describe('walker: limits and focus', () => {
     const none = walk(body, { focus: 'main' });
     expect(none.meta.focus).toBeUndefined();
     expect(walk(body, { focus: '<<not css' }).meta.focus).toBeUndefined();
+  });
+
+  it('skips a focus match that is hidden and takes the first visible one', () => {
+    const body = `${many('chrome', 2)}<c-pane style="display: none"></c-pane><c-pane data-i="2"></c-pane>`;
+    expect(walk(body, { focus: 'c-pane' }).meta.focus).toBe('0.1.3');
+  });
+
+  it('masks a focus element inside an always-masked area as the walk in document order does', () => {
+    const row = '<label>Jo Bloggs</label><button title="Edit Jo Bloggs">Edit</button>';
+    const fields = (snapshot: DomSnapshot): unknown[] => [
+      byTag(snapshot, 'label')[0]?.text,
+      byTag(snapshot, 'button')[0]?.attrs?.title,
+    ];
+    // An ancestor of the focus element is the masked area: the focus walk runs before the main walk reaches it.
+    const underRow = `<table><tbody><tr><td><section class="tabContent oneConsoleTab">${row}</section></td></tr></tbody></table>`;
+    expect(fields(walk(underRow))).toEqual(['•9', '•14']);
+    expect(fields(walk(underRow, { focus: 'auto' }))).toEqual(['•9', '•14']);
+    expect(walk(underRow, { focus: 'auto' }).meta.focus).toBeDefined();
+    // The focus element is the masked area itself.
+    const tabBar = `<ul class="tabBarItems">${row}</ul>`;
+    expect(fields(walk(tabBar, { focus: '.tabBarItems' }))).toEqual(['•9', '•14']);
+    // Outside a masked area the same labels are kept, focused or not.
+    expect(fields(walk(`<main>${row}</main>`, { focus: 'main' }))).toEqual(['Jo Bloggs', 'Edit Jo Bloggs']);
   });
 
   it('focuses an element inside a shadow root by keeping its host chain', () => {
