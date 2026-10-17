@@ -22,6 +22,7 @@ Requires Node.js 22 or later.
 - `simply-utam rewrite`: Rewrites namespace prefixes across compiled `*.utam.json` files according to `.utam/namespace-map.json`.
 - `simply-utam steps`: Statically analyzes Gherkin `.feature` files, compiles existing step expressions, detects true undefined steps, and appends formatted Cucumber expressions into target step files.
 - `simply-utam build`: Convenience runner executing all compilation and transformation stages sequentially (`rules -> utam-generate -> overrides -> rewrite -> utam`).
+- `simply-utam snapshot lookup`: Shows the page objects for a custom element tag or a page object name, from `salesforce-pageobjects` and the project's own page objects: import path, methods and what they do, and public and private elements with their light or shadow scope. `--search <words>` finds page objects by name, tag or description. Needs no snapshot. Takes `--json`, `--limit` and `--project-dir`. See [design 0003](../../docs/design/0003-dom-snapshots.md).
 
 ## Usage & Wireit Integration
 

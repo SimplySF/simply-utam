@@ -121,6 +121,12 @@ describe('@simplysf/simply-utam-core', () => {
         'injectWireitConfiguration',
         'loadTemplate',
         'scaffoldProject',
+
+        // DOM snapshots
+        'DEFAULT_OUTPUT_LIMIT',
+        'buildPageObjectIndex',
+        'lookupPageObject',
+        'searchPageObjects',
       ].sort(),
     );
   });

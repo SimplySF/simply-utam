@@ -197,6 +197,23 @@ internal.
 | `DEFAULT_TEMPLATES_DIR`                       | Path to starter config templates directory.                                            |
 | `DEFAULT_REQUIRED_DEV_DEPENDENCIES`           | List of standard recommended UTAM devDependencies.                                     |
 
+### DOM Snapshots
+
+The page-object index and its queries. Each query returns `{ lines, json }`: text to print, capped
+at an output limit, and the same answer as data. See
+[design 0003](../../docs/design/0003-dom-snapshots.md).
+
+| Export                                                            | Description                                                                                                                                                          |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `buildPageObjectIndex(options?)`                                  | Indexes the installed `salesforce-pageobjects` and the project's own page objects (from `utam.config.json`) by the tags they cover. Missing sources become warnings. |
+| `lookupPageObject(index, query, options?)`                        | The page objects for a tag, or one page object by name, import path or short name: import path, methods with what they do, and public and private elements.          |
+| `searchPageObjects(index, words, options?)`                       | Page objects whose name, import path, tags or description contain every word, name matches first.                                                                    |
+| `DEFAULT_OUTPUT_LIMIT`                                            | `200`, the default text output limit in lines.                                                                                                                       |
+| `PageObjectIndex`, `PageObjectEntry`, `PageObjectElement`         | Types: the index, one page object, and one of its elements.                                                                                                          |
+| `PageObjectMethod`, `PageObjectArg`, `PageObjectMatch`            | Types: a method with its parameters and `compose` summary, a parameter, and why a query matched a page object.                                                       |
+| `LookupResult`, `SearchResult`, `SearchResultLine`, `QueryResult` | Result types for the queries above.                                                                                                                                  |
+| `BuildPageObjectIndexOptions`, `QueryOutputOptions`               | Option types.                                                                                                                                                        |
+
 WebdriverIO and UTAM are not dependencies: the browser and UTAM objects are typed structurally, so
 the package works with whichever versions your test project already uses.
 

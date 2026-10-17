@@ -868,7 +868,7 @@ build-time tooling the CLI uses, not what a test run imports.
 | `buildPageObjectIndex(options?)`, `lookupPageObject`, `searchPageObjects`                                            | The page-object index and its queries.                                                                  |
 | `ensureGitignore`, `mergeGitignore`                                                                                  | The `.gitignore` rule, shaped like `ensureForceignore` and `mergeForceignore` and sharing their merge.  |
 | `DomSnapshotError`                                                                                                   | Thrown for input that isn't a readable snapshot, an unknown handle, or a selector that can't be parsed. |
-| `DOM_SNAPSHOT_FORMAT`, `DOM_SNAPSHOT_VERSION`, `LATEST_SNAPSHOT`                                                     | `'simply-utam-dom-snapshot'`, `1`, `'.utam/snapshots/latest.json'`.                                     |
+| `DOM_SNAPSHOT_FORMAT`, `DOM_SNAPSHOT_VERSION`, `LATEST_SNAPSHOT`, `DEFAULT_OUTPUT_LIMIT`                             | `'simply-utam-dom-snapshot'`, `1`, `'.utam/snapshots/latest.json'`, `200` (lines of text output).       |
 | `DomSnapshot`, `DomNode`, `SnapshotPage`, `SnapshotBrowser`, `SelectorScope`, `QueryResult`, option and result types | Types. `SnapshotBrowser` and `SnapshotPage` are structural.                                             |
 
 **Later**, with the hand-driven capture routes: `devToolsPage`, `launchExploreBrowser` and

@@ -152,3 +152,22 @@ export {
   type ScaffoldOptions,
   type ScaffoldResult,
 } from './scaffold/index.js';
+
+export {
+  DEFAULT_OUTPUT_LIMIT,
+  buildPageObjectIndex,
+  lookupPageObject,
+  searchPageObjects,
+  type BuildPageObjectIndexOptions,
+  type LookupResult,
+  type PageObjectArg,
+  type PageObjectElement,
+  type PageObjectEntry,
+  type PageObjectIndex,
+  type PageObjectMatch,
+  type PageObjectMethod,
+  type QueryOutputOptions,
+  type QueryResult,
+  type SearchResult,
+  type SearchResultLine,
+} from './snapshot/index.js';

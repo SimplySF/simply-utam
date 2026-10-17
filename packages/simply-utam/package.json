@@ -72,7 +72,12 @@
     "commands": "./lib/commands",
     "topicSeparator": " ",
     "plugins": [],
-    "devPlugins": []
+    "devPlugins": [],
+    "topics": {
+      "snapshot": {
+        "description": "Query DOM snapshots and the page-object index."
+      }
+    }
   },
   "wireit": {
     "build": {
