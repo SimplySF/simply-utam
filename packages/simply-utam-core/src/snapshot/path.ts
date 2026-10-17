@@ -464,12 +464,13 @@ export function componentPathByText(snapshot: DomSnapshot, text: string, options
   const found = findNodes(snapshot, { text, all: true, limit: Number.MAX_SAFE_INTEGER });
   const { visible, hidden } = found.json;
   if (visible.length === 1) {
-    const result = componentPath(snapshot, visible[0].id, options);
+    // The limit applies to the whole output, the hidden-matches line included.
+    const result = componentPath(snapshot, visible[0].id, { ...options, limit: Number.MAX_SAFE_INTEGER });
     if (hidden.length > 0)
       result.lines.push(
         `${hidden.length} hidden matches for "${text}" also exist; see \`find --text "${text}" --all\`.`,
       );
-    return { ...result, exitCode: 0 };
+    return { ...result, lines: limitLines(result.lines, limit, 'Use tree on a node lower down.'), exitCode: 0 };
   }
   const command = (id: string): string => `npx simply-utam snapshot path --node ${id}`;
   let lines: string[];

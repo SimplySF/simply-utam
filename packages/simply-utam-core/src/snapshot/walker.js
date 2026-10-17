@@ -255,7 +255,7 @@ function domSnapshotWalker(input) {
     }
     if (tag === 'iframe') {
       const src = el.getAttribute('src');
-      if (src) node.src = mask === 'full' ? src : scrub(src.split('?')[0]);
+      if (src) node.src = mask === 'full' ? src : scrub(src.split('?')[0].split('#')[0]);
       node.notCaptured = true;
     }
     return node;
@@ -318,16 +318,23 @@ function domSnapshotWalker(input) {
       for (const node of focusOut) out.push(node);
       return;
     }
-    // The focus element's ancestors are always walked, so its nodes have somewhere to go.
-    const onFocusPath = focusOut !== null && focusPath.has(el);
+    // The focus element's ancestors are always walked, so its nodes have somewhere to go; so are the
+    // root and `body`, so the snapshot always has its root. Their descendants can still be cut.
+    const always = el === root || el === document.body;
+    const onFocusPath = always || (focusOut !== null && focusPath.has(el));
     if (checkTime() && !onFocusPath) return;
     if (inHidden ? hiddenFull : visibleFull && !onFocusPath) return;
     const tag = el.localName;
     if (DROP_TAGS.includes(tag)) return;
     const zone = inMaskZone || matchesAny(el, ALWAYS_MASK_WITHIN);
 
-    // The top of a hidden subtree: always kept, walked after the visible tree.
+    // The top of a hidden subtree: kept while the hidden budget lasts, and walked after the visible tree.
     if (!inHidden && isHidden(el, tag)) {
+      if (hiddenCount >= maxHiddenNodes && !always) {
+        hiddenFull = true;
+        addReason('hiddenNodes');
+        return;
+      }
       const node = makeNode(el, tag, address, true, zone);
       node.hidden = true;
       out.push(node);

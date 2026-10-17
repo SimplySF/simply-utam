@@ -59,7 +59,8 @@ export default class SnapshotNode extends Command {
     if (!id) this.error('Give a node handle: snapshot node <n…>.', { exit: BAD_INPUT });
     try {
       const { snapshot, header } = await loadSnapshot(flags['project-dir'], flags.file);
-      const result = flags.ancestors ? nodeAncestors(snapshot, id, { limit: flags.limit }) : nodeDetails(snapshot, id);
+      const options = { limit: flags.limit };
+      const result = flags.ancestors ? nodeAncestors(snapshot, id, options) : nodeDetails(snapshot, id, options);
       for (const line of [...header, ...result.lines]) this.log(line);
       return result.json;
     } catch (error) {

@@ -30,10 +30,12 @@ export type QueryOutputOptions = {
  * Cut text output at `limit` lines, with a last line saying how much was left out and what to do.
  *
  * @param lines The full output.
- * @param limit The output limit in lines.
+ * @param requested The output limit in lines; below 1 counts as 1.
  * @param hint What to do to see the rest.
  */
-export function limitLines(lines: string[], limit: number, hint: string): string[] {
+export function limitLines(lines: string[], requested: number, hint: string): string[] {
+  // At least one line, whatever was asked for.
+  const limit = Math.max(1, Math.floor(requested));
   if (lines.length <= limit) return lines;
   return [...lines.slice(0, limit), `… ${lines.length - limit} more lines not shown (output limit ${limit}). ${hint}`];
 }

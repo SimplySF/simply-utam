@@ -18,8 +18,9 @@ import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
-import { parseDomSnapshot, type DomNode, type DomSnapshot } from '../src/index.js';
+import { parseDomSnapshot, querySnapshot, type DomNode, type DomSnapshot, type SelectorScope } from '../src/index.js';
 import { walkerSource } from '../src/snapshot/capture.js';
+import { getNode } from '../src/snapshot/locate.js';
 
 type WalkOptions = Record<string, unknown> & {
   /** Runs against the document before the walk, to attach shadow roots and define elements. */
@@ -39,6 +40,15 @@ const URL_WITH_RECORD = 'https://acme.lightning.force.com/lightning/r/Account/00
  * `checkVisibility` and no layout, so the test passes both in, as the walker allows.
  */
 function walk(body: string, options: WalkOptions = {}, title = 'Acme | Account | Salesforce'): DomSnapshot {
+  return walkDom(body, options, title).snapshot;
+}
+
+/** {@link walk}, keeping the jsdom window the snapshot was taken from. */
+function walkDom(
+  body: string,
+  options: WalkOptions = {},
+  title = 'Acme | Account | Salesforce',
+): { snapshot: DomSnapshot; window: JSDOM['window'] } {
   const { setup, rect, noCheckVisibility, clock, ...walkerOptions } = options;
   const dom = new JSDOM(`<!doctype html><html><head><title>${title}</title></head><body>${body}</body></html>`, {
     url: URL_WITH_RECORD,
@@ -61,7 +71,7 @@ function walk(body: string, options: WalkOptions = {}, title = 'Acme | Account |
       getRect: (el: Element) => ({ x: 1.4, y: 2.6, width: 10, height: 10, ...rect?.(el) }),
     },
   });
-  return parseDomSnapshot(window.eval(`(${walkerSource()})(window.walkerOptions)`) as string);
+  return { snapshot: parseDomSnapshot(window.eval(`(${walkerSource()})(window.walkerOptions)`) as string), window };
 }
 
 function allNodes(node: DomNode, out: DomNode[] = []): DomNode[] {
@@ -297,6 +307,29 @@ describe('walker: limits and focus', () => {
     expect(snapshot.meta.truncated).toEqual({ reasons: ['time'] });
   });
 
+  it('keeps the root and body when the time is up before the walk starts, cutting what is below them', () => {
+    const snapshot = walk(many('v', 3), { timeBudgetMs: 0, clock: (calls) => calls });
+    expect(snapshot.root).toMatchObject({ tag: 'html', address: '0' });
+    expect(snapshot.root.children?.map((node) => node.tag)).toEqual(['body']);
+    expect(byTag(snapshot, 'c-v')).toHaveLength(0);
+    expect(snapshot.meta.truncated).toEqual({ reasons: ['time'] });
+  });
+
+  it('keeps the root and body past maxNodes', () => {
+    const snapshot = walk(many('v', 3), { maxNodes: 0 });
+    expect(snapshot.root.children?.map((node) => node.tag)).toEqual(['body']);
+    expect(byTag(snapshot, 'c-v')).toHaveLength(0);
+    expect(snapshot.meta.truncated).toEqual({ reasons: ['nodes'] });
+  });
+
+  it('counts the tops of hidden subtrees against maxHiddenNodes', () => {
+    const tops = Array.from({ length: 5 }, (_, i) => `<c-h data-i="${i}" style="display: none"></c-h>`).join('');
+    const snapshot = walk(`${tops}${many('v', 2)}`, { maxHiddenNodes: 2 });
+    expect(byTag(snapshot, 'c-h').map((node) => node.attrs?.['data-i'])).toEqual(['0', '1']);
+    expect(byTag(snapshot, 'c-v')).toHaveLength(2);
+    expect(snapshot.meta.truncated).toEqual({ reasons: ['hiddenNodes'] });
+  });
+
   it('lists every limit it reached', () => {
     const snapshot = walk(`<div style="display: none">${many('h', 5)}</div>${many('v', 6)}`, {
       maxNodes: 5,
@@ -428,6 +461,10 @@ describe('walker: masking', () => {
   it('records an iframe as not captured, with its masked source', () => {
     const snapshot = walk('<iframe src="/apex/Page?id=0015g00000XyZabAAB"></iframe>');
     expect(byTag(snapshot, 'iframe')[0]).toMatchObject({ src: '/apex/Page', notCaptured: true });
+    // The fragment goes too, as it does from meta.url, query string or not.
+    const fragments = walk('<iframe src="/apex/Page#0015g00000XyZabAAB"></iframe><iframe src="/a?x=1#y"></iframe>');
+    expect(byTag(fragments, 'iframe').map((node) => node.src)).toEqual(['/apex/Page', '/a']);
+    expect(byTag(walk('<iframe src="/a?x=1#y"></iframe>', { mask: 'full' }), 'iframe')[0].src).toBe('/a?x=1#y');
   });
 });
 
@@ -472,6 +509,112 @@ describe('walker: LWC synthetic shadow', () => {
 
   it("doesn't see shadow content from the document's tree", () => {
     expect(outerLightTags(snapshot)).toEqual([]);
+  });
+});
+
+describe('querySnapshot matches querySelectorAll', () => {
+  // A page with no plain wrapper in the way of these selectors, and one that is: `div.wrap`, which the
+  // walker prunes, moving `c-wrapped` up to `body`.
+  const { snapshot, window } = walkDom(
+    `<c-app id="app"><c-header class="hdr" title="Header"><span data-k="a">A</span><span data-k="b">B</span></c-header>` +
+      `<c-list><c-item data-i="1"></c-item><c-item data-i="2" class="sel"></c-item><c-item data-i="3"></c-item></c-list></c-app>` +
+      `<c-host><c-slotted slot="x"><c-leaf></c-leaf></c-slotted></c-host>` +
+      `<div class="wrap"><c-wrapped data-w="1"></c-wrapped></div>`,
+    {
+      setup: (win) => {
+        shadow(
+          win.document.querySelector('c-host')!,
+          '<c-panel class="p"><c-row data-r="1"></c-row><c-row data-r="2"></c-row></c-panel><c-foot></c-foot><slot name="x"></slot>',
+        );
+      },
+    },
+  );
+  const doc = window.document;
+  const host = doc.querySelector('c-host')!;
+  const hostHandle = nodes(snapshot).find((node) => node.tag === 'c-host')!.id;
+
+  /** An element's address as the walker records it: child positions, `s` for a step into a shadow root. */
+  function addressOf(el: Element): string {
+    const segments: string[] = [];
+    for (let current = el; current !== doc.documentElement;) {
+      const parent = current.parentElement;
+      if (parent) {
+        segments.unshift(String([...parent.children].indexOf(current)));
+        current = parent;
+      } else {
+        const root = current.parentNode as ShadowRoot;
+        segments.unshift(`s.${[...root.children].indexOf(current)}`);
+        current = root.host;
+      }
+    }
+    return ['0', ...segments].join('.');
+  }
+
+  const live = (from: ParentNode, css: string): string[] => [...from.querySelectorAll(css)].map(addressOf);
+  const fromSnapshot = (css: string, scope?: SelectorScope): string[] =>
+    querySnapshot(snapshot, css, scope).matches.map((match) => getNode(snapshot, match.id).node.address);
+
+  it('in the document', () => {
+    const selectors = [
+      'c-item',
+      'c-list > c-item',
+      'c-item + c-item',
+      'c-item ~ c-item',
+      'c-item:first-child',
+      'c-item:nth-child(2)',
+      'c-item:last-child',
+      '.sel',
+      '#app c-item',
+      'c-app > c-header span',
+      'span[data-k="b"]',
+      '[title]',
+      'c-header span:last-child',
+      'body > c-app',
+      'c-host > c-slotted',
+      'c-slotted c-leaf',
+      'c-panel',
+      'c-row',
+    ];
+    for (const css of selectors) expect(fromSnapshot(css), css).toEqual(live(doc, css));
+    expect(fromSnapshot('c-item').length).toBe(3);
+  });
+
+  it("in a host's shadow root", () => {
+    const scope: SelectorScope = { kind: 'shadow', within: hostHandle };
+    for (const css of [
+      'c-row',
+      'c-panel > c-row',
+      'c-row + c-row',
+      'c-panel ~ c-foot',
+      ':first-child',
+      'slot',
+      '.p c-row',
+    ])
+      expect(fromSnapshot(css, scope), css).toEqual(live(host.shadowRoot!, css));
+    // As in the browser, the host itself and its light DOM are outside its shadow root.
+    expect(fromSnapshot('c-host c-row', scope)).toEqual(live(host.shadowRoot!, 'c-host c-row'));
+    expect(fromSnapshot('c-leaf', scope)).toEqual([]);
+  });
+
+  it("in a host's light DOM", () => {
+    const scope: SelectorScope = { kind: 'light', within: hostHandle };
+    for (const css of ['c-leaf', 'c-slotted > c-leaf', '[slot]', 'c-host c-leaf', 'c-row'])
+      expect(fromSnapshot(css, scope), css).toEqual(live(host, css));
+  });
+
+  it('differs across a pruned wrapper, and says it may', () => {
+    expect(live(doc, '.wrap c-wrapped')).toHaveLength(1);
+    const named = querySnapshot(snapshot, '.wrap c-wrapped');
+    expect(named.matches).toEqual([]);
+    expect(named.notes).toContain(
+      'No node in this snapshot has .wrap: it may be on an element the snapshot pruned (plain wrappers are dropped), so the live page may match differently.',
+    );
+    expect(live(doc, 'body > c-wrapped')).toEqual([]);
+    const child = querySnapshot(snapshot, 'body > c-wrapped');
+    expect(child.matches).toHaveLength(1);
+    expect(child.notes).toContain(
+      ">, +, ~ and child-position pseudo-classes can match differently on the live page: the snapshot drops plain wrappers, so a node's parent and siblings here may not be its live ones.",
+    );
   });
 });
 

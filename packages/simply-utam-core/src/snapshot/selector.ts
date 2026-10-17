@@ -18,15 +18,21 @@ import { compile, type Options } from 'css-select';
 import { DomSnapshotError, type DomSnapshot } from './format.js';
 import { getNode, locate, toFound, type FoundNode, type Located } from './locate.js';
 
+/** An own attribute's value, so a name like `constructor` isn't read off the object's prototype. */
+export function attribute(attrs: Record<string, string> | undefined, name: string): string | undefined {
+  return attrs && Object.hasOwn(attrs, name) ? attrs[name] : undefined;
+}
+
 // css-select over the snapshot. A shadow root is a boundary, as it is for querySelector: a node in
 // one has no parent to match a combinator against, and a host's children are its light children.
 type Adapter = NonNullable<Options<Located, Located>['adapter']>;
 
-const adapter: Adapter = {
+/** The adapter, exported for its tests: `compile` uses only part of it, and `selectAll` the rest. */
+export const adapter: Adapter = {
   isTag: (node): node is Located => node !== undefined,
   getName: (node) => node.node.tag,
-  getAttributeValue: (node, name) => node.node.attrs?.[name],
-  hasAttrib: (node, name) => node.node.attrs !== undefined && name in node.node.attrs,
+  getAttributeValue: (node, name) => attribute(node.node.attrs, name),
+  hasAttrib: (node, name) => attribute(node.node.attrs, name) !== undefined,
   getChildren: (node) => node.light,
   getParent: (node) => (node.viaShadow ? null : (node.parent ?? null)),
   getSiblings: (node) => (node.parent ? (node.viaShadow ? node.parent.shadow : node.parent.light) : [node]),
@@ -54,7 +60,12 @@ const adapter: Adapter = {
 };
 
 // Pseudo-classes about live state that a snapshot can't judge; they're dropped, so the selector may over-match.
-const LIVE_STATE = /:(hover|focus|focus-within|focus-visible|active|visited|checked)\b/g;
+// Longer names come first, and the guard stops `:focus` matching the start of `:focus-within`.
+const LIVE_STATE = /:(focus-within|focus-visible|focus|hover|active|visited|checked)(?![\w-])/g;
+// What dropping a live-state pseudo-class can leave behind: an empty argument in a list, then an empty
+// `:not()`, `:is()`, `:where()` or `:has()`, which is dropped too.
+const EMPTY_ARGUMENT = /(\(\s*,\s*)|(\s*,\s*(?=[,)]))/g;
+const EMPTY_PSEUDO = /:(not|is|where|has)\(\s*\)/g;
 
 /** A selector made ready to check against a snapshot, with what it can't check. */
 export type PreparedSelector = { selector: string; notes: string[] };
@@ -71,10 +82,83 @@ export function prepareSelector(selector: string): PreparedSelector {
   if (out !== selector) notes.push('%s/%d placeholders match any value.');
   const live = [...new Set([...out.matchAll(LIVE_STATE)].map((m) => `:${m[1]}`))];
   if (live.length > 0) {
-    out = out.replace(LIVE_STATE, '');
+    out = out.replace(LIVE_STATE, '').replace(EMPTY_ARGUMENT, (_match, open?: string) => (open ? '(' : ''));
+    let before: string;
+    do {
+      before = out;
+      out = out.replace(EMPTY_PSEUDO, '');
+    } while (out !== before);
     notes.push(`Ignored ${live.join(', ')}: a snapshot doesn't record live state, so this may over-match.`);
   }
   return { selector: out, notes };
+}
+
+/** A selector with strings and attribute tests blanked, so a `>` or `.` inside one isn't read as syntax. */
+function blankValues(selector: string): string {
+  return selector.replace(/(["'])(?:\\.|(?!\1).)*\1/g, '""').replace(/\[[^\]]*\]/g, '[]');
+}
+
+/** The tags, classes and ids a selector names, leaving out pseudo-class arguments that aren't selectors. */
+function selectorNames(selector: string): { tags: string[]; classes: string[]; ids: string[] } {
+  const bare = blankValues(selector).replace(/:(nth-[\w-]+|lang|dir)\([^)]*\)/g, '');
+  const names = (pattern: RegExp): string[] => [...new Set([...bare.matchAll(pattern)].map((m) => m[1]))];
+  return {
+    tags: names(/(?:^|[\s>+~,(])([a-zA-Z][\w-]*)/g).map((tag) => tag.toLowerCase()),
+    classes: names(/\.(-?[_a-zA-Z][\w-]*)/g),
+    ids: names(/#(-?[_a-zA-Z][\w-]*)/g),
+  };
+}
+
+const POSITIONAL = /[>+~]|:(nth-[\w-]+|first-child|last-child|only-child|first-of-type|last-of-type|only-of-type)/;
+
+/**
+ * The plain tags, classes and ids a selector names that no node in the snapshot has. Such a name may be
+ * on a plain wrapper the snapshot pruned, so the live page can match where the snapshot doesn't.
+ *
+ * @param snapshot The snapshot.
+ * @param selector The selector, already through {@link prepareSelector}.
+ */
+export function unseenNames(snapshot: DomSnapshot, selector: string): string[] {
+  const { tags, classes, ids } = selectorNames(selector);
+  const seen = seenNames(snapshot);
+  return [
+    // The walker keeps every custom element, so a custom tag no node has isn't on the page.
+    ...tags.filter((tag) => !tag.includes('-') && !seen.tags.has(tag)),
+    ...classes.filter((name) => !seen.classes.has(name)).map((name) => `.${name}`),
+    ...ids.filter((id) => !seen.ids.has(id)).map((id) => `#${id}`),
+  ];
+}
+
+type SeenNames = { tags: Set<string>; classes: Set<string>; ids: Set<string | undefined> };
+const seenBySnapshot = new WeakMap<DomSnapshot, SeenNames>();
+
+function seenNames(snapshot: DomSnapshot): SeenNames {
+  let seen = seenBySnapshot.get(snapshot);
+  if (!seen) {
+    const nodes = [...locate(snapshot).values()].map((entry) => entry.node);
+    seen = {
+      tags: new Set(nodes.map((node) => node.tag)),
+      classes: new Set(nodes.flatMap((node) => (attribute(node.attrs, 'class') ?? '').split(/\s+/))),
+      ids: new Set(nodes.map((node) => attribute(node.attrs, 'id'))),
+    };
+    seenBySnapshot.set(snapshot, seen);
+  }
+  return seen;
+}
+
+/** What the snapshot's pruned wrappers may change about a selector's matches. */
+function prunedNotes(snapshot: DomSnapshot, selector: string): string[] {
+  const notes: string[] = [];
+  const unseen = unseenNames(snapshot, selector);
+  if (unseen.length > 0)
+    notes.push(
+      `No node in this snapshot has ${unseen.join(', ')}: it may be on an element the snapshot pruned (plain wrappers are dropped), so the live page may match differently.`,
+    );
+  if (POSITIONAL.test(blankValues(selector)))
+    notes.push(
+      ">, +, ~ and child-position pseudo-classes can match differently on the live page: the snapshot drops plain wrappers, so a node's parent and siblings here may not be its live ones.",
+    );
+  return notes;
 }
 
 const compiled = new Map<string, (node: Located) => boolean>();
@@ -178,7 +262,7 @@ export function matchSelector(
   const matches = candidates.filter((node) => test(node));
   const tested = [...prepared.selector.matchAll(/\[\s*([\w-]+)\s*[~|^$*]?=/g)].map((m) => m[1]);
   const maskedAttributes = [...new Set(tested)].filter((name) =>
-    candidates.some((node) => node.node.attrs?.[name]?.startsWith('•')),
+    candidates.some((node) => attribute(node.node.attrs, name)?.startsWith('•')),
   );
-  return { matches, notes: prepared.notes, maskedAttributes };
+  return { matches, notes: [...prepared.notes, ...prunedNotes(snapshot, prepared.selector)], maskedAttributes };
 }

@@ -39,6 +39,7 @@ export {
   LATEST_SNAPSHOT,
   SNAPSHOT_RUN_ID_ENV,
   pruneDomSnapshots,
+  snapshotRunId,
   writeDomSnapshot,
   type PruneDomSnapshotsOptions,
   type SnapshotFileSystem,

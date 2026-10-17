@@ -188,6 +188,7 @@ export {
   pruneDomSnapshots,
   readDomSnapshot,
   serializeDomSnapshot,
+  snapshotRunId,
   writeDomSnapshot,
   type AncestorLine,
   type AncestorsResult,

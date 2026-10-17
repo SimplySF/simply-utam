@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { selectAll, selectOne } from 'css-select';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   componentPath,
@@ -27,6 +28,8 @@ import {
   utamErrorHint,
   type PathResult,
 } from '../src/index.js';
+import { getNode, type Located } from '../src/snapshot/locate.js';
+import { adapter } from '../src/snapshot/selector.js';
 import {
   activeRecordHome,
   el,
@@ -61,7 +64,7 @@ describe('find', () => {
     expect(lines[1]).toMatch(new RegExp(`^${copy('new')} +one-record-home-flexipage2\\[data-copy="new"\\]$`));
     expect(lines).toContain('1 hidden matches not listed; add --all to list them.');
     expect(lines.at(-1)).toBe(
-      `First in document order: ${copy('old')} (hidden). utam.load takes a root selector's first match; test a selector with find --css.`,
+      `First in the document's own tree, which a root selector reaches first: ${copy('old')} (hidden). utam.load takes a root selector's first match; test a selector with find --css.`,
     );
     expect(json.hidden[0]).toMatchObject({ id: copy('old'), hidden: true, hiddenUnder: { id: hiddenHost } });
   });
@@ -79,6 +82,23 @@ describe('find', () => {
     expect(findNodes(snapshot, { text: 'lafPageHost' }).json.visible).toEqual([]);
   });
 
+  it("names the first match in the document's own tree, skipping one in a shadow root before it", () => {
+    const mixed = snapshotOf([
+      el('c-host', {}, { shadow: [el('c-item', { 'data-k': 'shadow' }, { hidden: true })] }),
+      el('c-item', { 'data-k': 'doc' }),
+    ]);
+    const doc = handle(mixed, (node) => node.attrs?.['data-k'] === 'doc');
+    expect(findNodes(mixed, { tag: 'c-item' }).lines.at(-1)).toBe(
+      `First in the document's own tree, which a root selector reaches first: ${doc}. utam.load takes a root selector's first match; test a selector with find --css.`,
+    );
+  });
+
+  it("says when every match is inside a shadow root, out of a root selector's reach", () => {
+    expect(findNodes(snapshot, { tag: 'records-highlights2' }).lines.at(-1)).toBe(
+      "Every match is inside a shadow root, so a root selector can't reach them; test a selector with find --css.",
+    );
+  });
+
   it('matches --attr as a case-insensitive substring, and --class as a whole token', () => {
     expect(findNodes(snapshot, { attr: 'slot=ENTITY' }).json.visible.map((node) => node.tag)).toEqual([
       'records-entity-label',
@@ -86,6 +106,11 @@ describe('find', () => {
     expect(findNodes(snapshot, { attr: 'data-id' }).json.visible.map((node) => node.tag)).toEqual(['c-widget']);
     expect(findNodes(snapshot, { class: 'active' }).json.visible.map((node) => node.id)).toEqual([visibleHost]);
     expect(findNodes(snapshot, { class: 'activ' }).json.visible).toEqual([]);
+  });
+
+  it("tests --attr against the node's own attributes, not names an object inherits", () => {
+    expect(findNodes(snapshot, { attr: 'constructor' }).json.visible).toEqual([]);
+    expect(findNodes(snapshot, { attr: 'toString=x' }).json.visible).toEqual([]);
   });
 });
 
@@ -151,6 +176,31 @@ describe('find --css', () => {
     );
   });
 
+  it('says a selector naming something no node has may match a pruned wrapper on the live page', () => {
+    const { lines } = findNodes(snapshot, { css: '.wrap lightning-combobox' });
+    expect(lines).toContain(
+      'It matches nothing in this snapshot, in any shadow root, but it names something no node here has, which the live page may have on a pruned wrapper (see below).',
+    );
+    expect(lines).not.toContain('It matches nothing anywhere in this snapshot, in any shadow root.');
+    expect(lines).toContain(
+      'No node in this snapshot has .wrap: it may be on an element the snapshot pruned (plain wrappers are dropped), so the live page may match differently.',
+    );
+  });
+
+  it('notes names no node has, and combinators and positions a pruned wrapper can change, through querySnapshot too', () => {
+    const POSITIONAL_NOTE =
+      ">, +, ~ and child-position pseudo-classes can match differently on the live page: the snapshot drops plain wrappers, so a node's parent and siblings here may not be its live ones.";
+    expect(querySnapshot(snapshot, '#main c-widget').notes).toEqual([
+      'No node in this snapshot has #main: it may be on an element the snapshot pruned (plain wrappers are dropped), so the live page may match differently.',
+    ]);
+    for (const css of ['body > c-widget', 'x-closed + c-widget', 'x-closed ~ c-widget', 'c-widget:first-child'])
+      expect(querySnapshot(snapshot, css).notes).toEqual([POSITIONAL_NOTE]);
+    // Names and combinators inside attribute values and strings, and nth arguments, aren't read as syntax.
+    expect(querySnapshot(snapshot, "c-widget[data-id='a > b.c #d']").notes).toEqual([]);
+    expect(querySnapshot(snapshot, 'c-widget:not(.active)').notes).toEqual([]);
+    expect(querySnapshot(snapshot, 'span:nth-child(odd)').notes).toEqual([POSITIONAL_NOTE]);
+  });
+
   it('notes placeholders, live-state pseudo-classes and masked attributes', () => {
     const { lines } = findNodes(snapshot, { css: "c-widget[data-id='%s']:hover span[title='Acme']" });
     expect(lines).toContain('%s/%d placeholders match any value.');
@@ -158,6 +208,79 @@ describe('find --css', () => {
     expect(lines).toContain(
       "Can't check [title=…] values: they're masked in this snapshot, so a masked node may not be listed.",
     );
+  });
+
+  it('drops :focus-within, :focus-visible and :checked whole, and an emptied :not() with them', () => {
+    const page = snapshotOf([
+      el('div', { class: 'box' }, { children: [el('a', { href: 'x' }), el('input', { type: 'checkbox' })] }),
+    ]);
+    const ids = (css: string): string[] => querySnapshot(page, css).matches.map((match) => match.tag);
+    expect(ids('div:focus-within')).toEqual(['div']);
+    expect(querySnapshot(page, 'div:focus-within').notes).toEqual([
+      "Ignored :focus-within: a snapshot doesn't record live state, so this may over-match.",
+    ]);
+    expect(ids('a:focus-visible')).toEqual(['a']);
+    expect(querySnapshot(page, 'a:focus-visible').notes[0]).toMatch(/^Ignored :focus-visible:/);
+    expect(ids('input:not(:checked)')).toEqual(['input']);
+    expect(ids('input:not(:checked, .other)')).toEqual(['input']);
+    expect(ids('input:not(.other, :hover)')).toEqual(['input']);
+    expect(ids('div:is(:hover, :focus) a, input:checked')).toEqual(['a', 'input']);
+    expect(ids('a:focus')).toEqual(['a']);
+  });
+
+  it("tests attributes against the node's own, not names an object inherits", () => {
+    expect(querySnapshot(snapshot, '[constructor]').matches).toEqual([]);
+    expect(querySnapshot(snapshot, '[toString=x]').matches).toEqual([]);
+    expect(querySnapshot(snapshot, '[hasOwnProperty]').matches).toEqual([]);
+  });
+
+  it('runs sibling combinators, :has and nested matches through the snapshot tree', () => {
+    const page = snapshotOf([
+      el('c-a', { class: 'first' }),
+      el('c-b', {}, { children: [el('span', { class: 'inner' }, { children: [el('span', { class: 'deep' })] })] }),
+      el('c-c'),
+      el('c-host', {}, { shadow: [el('c-x'), el('c-y')], children: [el('c-z')] }),
+    ]);
+    const tags = (css: string, scope?: Parameters<typeof querySnapshot>[2]): string[] =>
+      querySnapshot(page, css, scope).matches.map((match) => match.tag);
+    expect(tags('c-a + c-b')).toEqual(['c-b']);
+    expect(tags('c-a ~ c-c')).toEqual(['c-c']);
+    expect(tags('c-a + c-c')).toEqual([]);
+    expect(tags('c-b:has(.deep)')).toEqual(['c-b']);
+    expect(tags('c-b:has(> .deep)')).toEqual([]);
+    expect(tags(':has(> .inner)')).toEqual(['c-b']);
+    expect(tags('c-b span')).toEqual(['span', 'span']);
+    expect(tags('span span')).toEqual(['span']);
+    expect(tags('c-b:has(span span)')).toEqual(['c-b']);
+    const host = handle(page, (node) => node.tag === 'c-host');
+    expect(tags('c-x + c-y', { kind: 'shadow', within: host })).toEqual(['c-y']);
+    expect(tags('c-x ~ c-y', { kind: 'shadow', within: host })).toEqual(['c-y']);
+    // A shadow root is a boundary: its first child has no previous sibling outside it.
+    expect(tags('c-z ~ c-x', { kind: 'shadow', within: host })).toEqual([]);
+    expect(tags('c-host:has(c-x)')).toEqual([]);
+    expect(() => tags('c-x', { kind: 'shadow', within: handle(page, (node) => node.tag === 'c-a') })).toThrow(
+      /has no shadow root in this snapshot/,
+    );
+  });
+
+  it("gives css-select's whole-tree searches the light tree, without nested matches twice", () => {
+    const page = snapshotOf([
+      el('c-b', {}, { children: [el('span', { class: 'inner' }, { children: [el('span', { class: 'deep' })] })] }),
+      el('c-host', {}, { shadow: [el('span', { class: 'in-shadow' })] }),
+    ]);
+    const body = getNode(
+      page,
+      handle(page, (node) => node.tag === 'body'),
+    );
+    const opts = { adapter, xmlMode: false };
+    const classes = (nodes: Located[]): Array<string | undefined> => nodes.map((node) => node.node.attrs?.class);
+    // Searching from both spans returns the deep one once; nothing in a shadow root is reached.
+    const spans = selectAll<Located, Located>('span', body, opts);
+    expect(classes(spans)).toEqual(['inner', 'deep']);
+    expect(classes(selectAll<Located, Located>('span', spans, opts))).toEqual(['inner', 'deep']);
+    expect(adapter.removeSubsets(spans)).toEqual([spans[0]]);
+    expect(selectOne<Located, Located>('.deep', body, opts)?.node.attrs?.class).toBe('deep');
+    expect(selectOne<Located, Located>('.in-shadow', body, opts)).toBeNull();
   });
 
   it('refuses an unreadable selector, --shadow without --within, and an address for a handle', () => {
@@ -294,6 +417,14 @@ describe('path --text', () => {
     );
   });
 
+  it('keeps the hidden-matches line within the output limit', () => {
+    const full = componentPathByText(snapshot, 'Highlights').lines;
+    const limit = full.length - 1;
+    const limited = componentPathByText(snapshot, 'Highlights', { limit }).lines;
+    expect(limited).toHaveLength(limit + 1);
+    expect(limited.at(-1)).toBe(`… 1 more lines not shown (output limit ${limit}). Use tree on a node lower down.`);
+  });
+
   it('lists candidates and exits 1 for no match, several, or only hidden ones', () => {
     expect(componentPathByText(snapshot, 'nothing here')).toMatchObject({
       exitCode: 1,
@@ -334,6 +465,21 @@ describe('tree and node', () => {
     expect(lines.find((line) => line.startsWith('  parent'))).toMatch(/\(light DOM child\)$/);
     expect(json.node).toMatchObject({ id: label('new'), address: '0.1.1.0.s.0.0', shadow: { mode: 'synthetic' } });
     expect(json.node).not.toHaveProperty('children');
+  });
+
+  it('cuts one node in full at the output limit, and treats a limit below 1 as 1', () => {
+    const full = nodeDetails(snapshot, label('new')).lines;
+    const { lines, json } = nodeDetails(snapshot, label('new'), { limit: 2 });
+    expect(lines).toEqual([
+      ...full.slice(0, 2),
+      `… ${full.length - 2} more lines not shown (output limit 2). Raise --limit.`,
+    ]);
+    expect(json.node.id).toBe(label('new'));
+    for (const limit of [0, -3])
+      expect(nodeDetails(snapshot, label('new'), { limit }).lines).toEqual([
+        full[0],
+        `… ${full.length - 1} more lines not shown (output limit 1). Raise --limit.`,
+      ]);
   });
 
   it('lists ancestors nearest first, with a line wherever the chain leaves a shadow root', () => {
@@ -383,6 +529,23 @@ describe('header and UTAM error', () => {
     const header = snapshotHeader(single, { index: () => (built++, index) });
     expect(built).toBe(1);
     expect(header.at(-1)).toContain(`--within ${panel}`);
+  });
+
+  it('keeps a selector with quotes in it whole, and quotes it for the shell', () => {
+    const hint = (selector: string): ReturnType<typeof utamErrorHint> =>
+      utamErrorHint(
+        snapshotOf([el('c-x')], {
+          error: `Can't find element with locator '${selector}' inside its scope shadow root`,
+        }),
+      );
+    expect(hint("button[title='Save']")?.json.selector).toBe("button[title='Save']");
+    expect(hint("button[title='Save']")?.lines[1]).toBe(
+      `    npx simply-utam snapshot find --css "button[title='Save']"`,
+    );
+    expect(hint('button[title="Save"]')?.lines[1]).toBe(
+      `    npx simply-utam snapshot find --css 'button[title="Save"]'`,
+    );
+    expect(hint(`a[title="it's"]`)?.lines[1]).toBe(`    npx simply-utam snapshot find --css 'a[title="it'\\''s"]'`);
   });
 
   it("asks for both scopes when it can't tell where UTAM searched, and adds nothing for other errors", () => {

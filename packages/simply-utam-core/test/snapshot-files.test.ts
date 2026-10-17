@@ -27,6 +27,7 @@ import {
   pruneDomSnapshots,
   readDomSnapshot,
   serializeDomSnapshot,
+  snapshotRunId,
   writeDomSnapshot,
   type DomSnapshot,
   type SnapshotFileSystem,
@@ -108,6 +109,13 @@ describe('format', () => {
     );
     expect(() => parseDomSnapshot(rawSnapshot().replace('"address":"0",', ''))).toThrow(/no root node with an address/);
     expect(() => parseDomSnapshot('null')).toThrow(DomSnapshotError);
+  });
+
+  it('rejects a version that is not a whole number from 1', () => {
+    for (const version of ['0', '-1', '1.5', '"1"'])
+      expect(() => parseDomSnapshot(rawSnapshot().replace('"version":1', `"version":${version}`))).toThrow(
+        `Not a DOM snapshot: version is ${version}, expected a whole number from 1`,
+      );
   });
 
   it('reads a snapshot file, and names the file it cannot read', async () => {
@@ -249,22 +257,90 @@ describe('writeDomSnapshot', () => {
     expect(snapshot.meta.pageObjectPackages).toEqual({ 'salesforce-pageobjects': '12.0.0' });
   });
 
-  it('writes through an injected file system', async () => {
-    const written = new Map<string, string>();
-    const memory: SnapshotFileSystem = {
+  /** A file system in memory; `rename` throws `renameError` when set. */
+  function memoryFs(renameError?: Error): {
+    fileSystem: SnapshotFileSystem;
+    files: Map<string, string>;
+    calls: string[];
+  } {
+    const files = new Map<string, string>();
+    const calls: string[] = [];
+    const fileSystem: SnapshotFileSystem = {
       mkdir: async () => undefined,
       writeFile: async (file, data, options) => {
-        if (options?.flag === 'wx' && written.has(file)) throw Object.assign(new Error('exists'), { code: 'EEXIST' });
-        written.set(file, data);
+        calls.push(`write ${file}`);
+        if (options?.flag === 'wx' && files.has(file)) throw Object.assign(new Error('exists'), { code: 'EEXIST' });
+        files.set(file, data);
       },
       readdir: async () => [],
-      rm: async () => undefined,
+      rm: async (target) => {
+        calls.push(`rm ${target}`);
+        files.delete(target);
+      },
+      rename: async (from, to) => {
+        calls.push(`rename ${from} ${to}`);
+        if (renameError) throw renameError;
+        files.set(to, files.get(from)!);
+        files.delete(from);
+      },
     };
+    return { fileSystem, files, calls };
+  }
+
+  it('writes through an injected file system', async () => {
+    const memory = memoryFs();
     const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
-    await writeDomSnapshot(snapshot, { projectDir: '/p', env, fs: memory, pageObjectPackages: {} });
-    expect([...written.keys()].sort()).toEqual(
+    await writeDomSnapshot(snapshot, { projectDir: '/p', env, fs: memory.fileSystem, pageObjectPackages: {} });
+    expect([...memory.files.keys()].sort()).toEqual(
       [path.join('/p', LATEST_SNAPSHOT), path.join('/p', run('S--1.json'))].sort(),
     );
+  });
+
+  it('replaces latest.json by renaming a temporary file in the same folder over it', async () => {
+    const memory = memoryFs();
+    const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
+    await writeDomSnapshot(snapshot, { projectDir: '/p', env, fs: memory.fileSystem, pageObjectPackages: {} });
+    const latest = path.join('/p', LATEST_SNAPSHOT);
+    const rename = memory.calls.find((call) => call.startsWith('rename '))!;
+    const [, temp, target] = rename.split(' ');
+    expect(target).toBe(latest);
+    expect(temp.startsWith(`${latest}.${process.pid}-`) && temp.endsWith('.tmp')).toBe(true);
+    expect(memory.calls).toContain(`write ${temp}`);
+    expect(memory.calls).not.toContain(`write ${latest}`);
+  });
+
+  it('removes the temporary file and rethrows when the rename fails', async () => {
+    const memory = memoryFs(Object.assign(new Error('busy'), { code: 'EBUSY' }));
+    const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
+    await expect(
+      writeDomSnapshot(snapshot, { projectDir: '/p', env, fs: memory.fileSystem, pageObjectPackages: {} }),
+    ).rejects.toThrow('busy');
+    const temp = memory.calls.find((call) => call.startsWith('rename '))!.split(' ')[1];
+    expect(memory.calls).toContain(`rm ${temp}`);
+    expect([...memory.files.keys()].some((file) => file.endsWith('.tmp'))).toBe(false);
+  });
+
+  it('names the folder and base name when every numbered name is taken', async () => {
+    const memory = memoryFs();
+    const always: SnapshotFileSystem = {
+      ...memory.fileSystem,
+      writeFile: async () => {
+        throw Object.assign(new Error('exists'), { code: 'EEXIST' });
+      },
+    };
+    const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S', label: 'x' }));
+    await expect(
+      writeDomSnapshot(snapshot, { projectDir: '/p', env, fs: always, pageObjectPackages: {} }),
+    ).rejects.toThrow(
+      `Can't name a snapshot in ${run()}: 1000 files named after S--x already exist. Prune the folder or set another UTAM_SNAPSHOT_RUN_ID.`,
+    );
+  });
+});
+
+describe('snapshotRunId', () => {
+  it('gives the time as a run id that sorts in time order', () => {
+    expect(snapshotRunId(new Date('2026-10-16T12:34:56.789Z'))).toBe('20261016T123456');
+    expect(snapshotRunId()).toMatch(/^\d{8}T\d{6}$/);
   });
 });
 
@@ -279,6 +355,16 @@ describe('pruneDomSnapshots', () => {
     const removed = await pruneDomSnapshots({ projectDir: dir, keepRuns: 2 });
     expect(removed).toEqual([path.join('.utam', 'snapshots', '20261014T090000')]);
     expect(fs.readdirSync(snapshots).sort()).toEqual(['20261015T090000', '20261016T090000', 'latest.json']);
+  });
+
+  it('compares numbers in custom run ids as numbers, so build-10 is newer than build-9', async () => {
+    const dir = tempDir();
+    const snapshots = path.join(dir, '.utam', 'snapshots');
+    for (const run of ['build-10', 'build-8', 'build-9', 'build-11'])
+      fs.mkdirSync(path.join(snapshots, run), { recursive: true });
+    const removed = await pruneDomSnapshots({ projectDir: dir, keepRuns: 2 });
+    expect(removed).toEqual([path.join('.utam', 'snapshots', 'build-8'), path.join('.utam', 'snapshots', 'build-9')]);
+    expect(fs.readdirSync(snapshots).sort()).toEqual(['build-10', 'build-11']);
   });
 
   it('does nothing when there are no snapshots, and keeps 10 runs by default', async () => {

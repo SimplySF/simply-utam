@@ -93,9 +93,11 @@ guide; the examples here show the shape of the output, not its final text.
   serialization depth limits and is slower to convert; a string crosses as one value, and the caller
   parses it.
 - It collects page metadata itself (`url`, `title`, viewport size) and masks it in the page, so in
-  the default modes unmasked values never leave the browser.
-- Top-level document only. Each `iframe` is recorded as a node with its `src` (query string removed,
-  record IDs masked) and marked `notCaptured`. Most Setup pages in Lightning are Visualforce pages
+  the default modes unmasked values never leave the browser. The one exception is `meta.error`,
+  which capture adds outside the browser: the failed step's error message is recorded as-is, and can
+  include record values.
+- Top-level document only. Each `iframe` is recorded as a node with its `src` (query string and fragment
+  removed, record IDs masked) and marked `notCaptured`. Most Setup pages in Lightning are Visualforce pages
   inside iframes, so the MVP doesn't cover them.
 - It works in any current browser. Where `checkVisibility` is missing, it falls back to computed
   `display` and `visibility`.
@@ -391,12 +393,12 @@ fails. It captures the snapshot first, before anything else changes the page:
 
 ```js
 import allureReporter from '@wdio/allure-reporter';
-import { captureDomSnapshot, pruneDomSnapshots, writeDomSnapshot } from '@simplysf/simply-utam';
+import { captureDomSnapshot, pruneDomSnapshots, snapshotRunId, writeDomSnapshot } from '@simplysf/simply-utam';
 
 // …
 onPrepare: async function () {
   // One snapshot folder per test run, shared by every worker.
-  process.env.UTAM_SNAPSHOT_RUN_ID ??= new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
+  process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshotRunId();
   await pruneDomSnapshots({ keepRuns: 10 });
 },
 afterStep: async function (step, scenario, { error }) {
@@ -459,14 +461,18 @@ them to existing projects too, in the project's UTAM test folder.
 
 - Snapshots go to `.utam/snapshots/<runId>/<name>.json`. `runId` comes from `UTAM_SNAPSHOT_RUN_ID`
   (through the injectable `env`), which the scaffolded `onPrepare` hook sets once per test run, so
-  every worker in a run uses the same folder. In a project without the hook, the current time is
-  used.
+  every worker in a run uses the same folder, to `snapshotRunId()`, the current time as
+  `20261016T120000`. In a project without the hook, the current time is used the same way. Run ids
+  must sort in time order, since pruning keeps the ones that sort last; numbers in a custom id
+  compare as numbers (`build-9` before `build-10`).
 - `<name>` is `<scenario>--<step>` for failures, and `<scenario>--<label or number>` for the step and
   the custom command. Each part is cut down to letters, digits and `-`, and capped at 60 characters.
   A number is appended if the name is already taken; files are created with the exclusive `wx` flag,
   so two workers can't both take the same name.
 - It also writes `.utam/snapshots/latest.json`, a copy of the most recent snapshot, which the query
-  commands read by default. With more than one worker, `latest.json` is whichever finished last. The
+  commands read by default. It's written to a temporary file in the same folder and renamed over
+  `latest.json`, so a reader never sees it half-written. With more than one worker, `latest.json` is
+  whichever finished last. The
   file inside the run folder is always correct, and every command prints a header saying which
   snapshot it read (see CLI).
 - It adds `pageObjectPackages`, the installed `salesforce-pageobjects` version, when it resolves from
@@ -600,7 +606,7 @@ then its text in quotes and its shadow text after `#shadow`. Aura bookkeeping at
 | `componentPath(snapshot, handle, options)`     | The custom elements from the document down to a node, annotated from the index.                 |
 | `componentPathByText(snapshot, text, options)` | The same, for the only visible node matching `text`; otherwise the candidates, and exit code 1. |
 | `subtree(snapshot, handle, { depth })`         | The pruned tree under a node, to a depth.                                                       |
-| `nodeDetails(snapshot, handle)`                | One node in full.                                                                               |
+| `nodeDetails(snapshot, handle, options)`       | One node in full.                                                                               |
 | `nodeAncestors(snapshot, handle)`              | A node's ancestors, nearest first, with each shadow crossing.                                   |
 | `utamErrorHint(snapshot, index)`               | For UTAM's not-found error, the `find --css` that repeats UTAM's search.                        |
 | `snapshotHeader(snapshot, options)`            | The lines every snapshot command prints first (see CLI).                                        |
@@ -620,8 +626,9 @@ then its text in quotes and its shadow text after `#shadow`. Aura bookkeeping at
 
 Visible matches come first, in document order, because a search by label is usually for the one the
 user sees. Hidden ones are counted, or listed with `all`, each with the top of the hidden subtree
-it's in. When there are hidden matches, a last line names the first match in document order, which is
-the one a selector finds first, and points to `find --css`.
+it's in. When there are hidden matches, a last line names the first match in the document's own tree
+(not inside a shadow root), which is the one a root selector finds first, or says every match is
+inside a shadow root, and points to `find --css`.
 
 `querySnapshot` (`find --css`) tests a selector the way UTAM's `findElement` runs it, because a
 wrongly scoped root page object loads a hidden copy silently, with no error. It lists every match in
@@ -641,11 +648,16 @@ for combinators inside it. Where the snapshot can't judge a selector, the output
 - Live-state pseudo-classes (`:hover`, `:focus`, `:checked`, …) are ignored, so the selector may
   over-match.
 - A test on an attribute whose value is masked can't be checked, so a masked node may be missing.
+- A tag, class or id that no node in the snapshot has may be on a plain wrapper the walker pruned,
+  so the live page may match differently.
+- `>`, `+`, `~` and child-position pseudo-classes (`:nth-child`, `:first-child`, …) can match
+  differently across a pruned wrapper.
 
 A bare "0 matches" is easy to doubt, especially with synthetic shadow roots, which are boundaries
 too. So when nothing matches in the scope, `find --css` says where the selector does match: each
 match outside the scope, with the scope that would find it (no `--within`, `--within <handle>`, or
-`--within <host> --shadow`), or that it matches nothing anywhere in the snapshot.
+`--within <host> --shadow`), or that it matches nothing anywhere in the snapshot. When it names
+something no node has, it says the match may be on a pruned wrapper instead.
 
 #### `path`
 
@@ -873,6 +885,7 @@ build-time tooling the CLI uses, not what a test run imports.
 | `captureDomSnapshot(options?)`                                                                                                                     | Captures a snapshot through a `browser` or `SnapshotPage`; never throws.                                                                            |
 | `writeDomSnapshot(snapshot, options?)`                                                                                                             | Writes a snapshot and `latest.json`, and returns the path.                                                                                          |
 | `pruneDomSnapshots(options?)`                                                                                                                      | Deletes all but the newest run folders.                                                                                                             |
+| `snapshotRunId(date?)`                                                                                                                             | A run id for `UTAM_SNAPSHOT_RUN_ID`, the time as `20261016T120000`; the scaffolded `onPrepare` hook sets it.                                        |
 | `readDomSnapshot(path)`, `parseDomSnapshot(json)`, `serializeDomSnapshot(snapshot)`                                                                | Reads or parses a snapshot, checking `format` and `version` and numbering handles; writes the file form, without handles.                           |
 | `findNodes`, `querySnapshot`, `componentPath`, `componentPathByText`, `subtree`, `nodeDetails`, `nodeAncestors`, `utamErrorHint`, `snapshotHeader` | The snapshot queries.                                                                                                                               |
 | `buildPageObjectIndex(options?)`, `lookupPageObject`, `searchPageObjects`                                                                          | The page-object index and its queries.                                                                                                              |
@@ -1044,7 +1057,10 @@ defensible.
     API) and open for review comment, since AGENTS.md asks for discussion first. The alternative is a
     hand-written matcher for the subset page objects use (tags, classes, ids, attribute tests,
     descendant and child combinators, `:not`), with a clear error for anything else.
-    Recommendation: keep `css-select`, pinned to an exact version.
+    Recommendation: keep `css-select`, with a caret range like core's other dependencies. The
+    lockfile pins it for this repository, and the `querySnapshot`/`querySelectorAll` parity tests
+    catch a release that changes matching; an exact pin would only stop consumers deduplicating it
+    and taking its patch releases.
 13. **Should the spike's probe become a release check?** It compares the walker's view with
     `querySelectorAll` on a live page and lists the shadow-mode signals, so on each Salesforce
     release it would catch drift to native shadow or in the light-tree differences (Risks). Options:

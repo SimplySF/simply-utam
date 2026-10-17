@@ -37,13 +37,19 @@ hooks you already have (`afterStep` most likely also takes a screenshot):
 
 ```js
 import allureReporter from '@wdio/allure-reporter';
-import { captureDomSnapshot, pruneDomSnapshots, serializeDomSnapshot, writeDomSnapshot } from '@simplysf/simply-utam';
+import {
+  captureDomSnapshot,
+  pruneDomSnapshots,
+  serializeDomSnapshot,
+  snapshotRunId,
+  writeDomSnapshot,
+} from '@simplysf/simply-utam';
 
 export const config = {
   // …
   onPrepare: async function () {
     // One DOM snapshot folder per test run, shared by every worker; keep the last 10 runs.
-    process.env.UTAM_SNAPSHOT_RUN_ID ??= new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
+    process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshotRunId();
     await pruneDomSnapshots({ keepRuns: 10 });
   },
   before: async function () {

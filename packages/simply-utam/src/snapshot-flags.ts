@@ -29,7 +29,7 @@ import {
 /** Flags the `snapshot` commands share. */
 export const fileFlag = {
   file: Flags.string({
-    summary: `Snapshot file to read. Defaults to ${LATEST_SNAPSHOT} in the project, the most recent snapshot.`,
+    summary: `Snapshot file to read, relative to the current folder (not --project-dir). Defaults to ${LATEST_SNAPSHOT} in the project, the most recent snapshot.`,
   }),
 };
 
@@ -44,6 +44,7 @@ export const limitFlag = {
   limit: Flags.integer({
     summary: `Maximum lines of text output (default ${DEFAULT_OUTPUT_LIMIT}).`,
     default: DEFAULT_OUTPUT_LIMIT,
+    min: 1,
   }),
 };
 

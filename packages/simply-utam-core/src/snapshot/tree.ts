@@ -105,37 +105,9 @@ function visibilityLine(entry: Located): string {
   return `  visibility: visible${rect}`;
 }
 
-/**
- * One node in full: its handle and address, every recorded attribute unclipped, its text and shadow
- * text, size, visibility, parent, and each of its light and shadow children on one line.
- *
- * @param snapshot The snapshot.
- * @param handle The node's handle.
- */
-export function nodeDetails(snapshot: DomSnapshot, handle: string): QueryResult<NodeDetails> {
-  const entry = getNode(snapshot, handle);
+/** `nodeDetails`'s text lines, before the output limit. */
+function detailLines(entry: Located, json: NodeDetails): string[] {
   const { node } = entry;
-  const summary = (child: DomNode): ChildLine => ({
-    id: child.id,
-    node: describeNode(child),
-    hidden: child.hidden === true,
-  });
-  const json: NodeDetails = {
-    node: ownFields(node),
-    ...(entry.parent
-      ? {
-          parent: {
-            id: entry.parent.node.id,
-            node: describeNode(entry.parent.node),
-            via: entry.viaShadow ? 'shadow' : 'light',
-          },
-        }
-      : {}),
-    ...(entry.hiddenTop ? { hiddenUnder: entry.hiddenTop.node.id } : {}),
-    children: (node.children ?? []).map(summary),
-    shadowChildren: (node.shadow?.children ?? []).map(summary),
-  };
-
   const lines = [`${node.tag}  [${node.id}]  at ${node.address}`];
   const attrs = Object.entries(node.attrs ?? {});
   if (attrs.length > 0) lines.push('  attributes:', ...attrs.map(([name, value]) => `    ${name}="${value}"`));
@@ -159,7 +131,46 @@ export function nodeDetails(snapshot: DomSnapshot, handle: string): QueryResult<
   list('light DOM children', json.children);
   list('shadow root children', json.shadowChildren);
   if (json.children.length === 0 && json.shadowChildren.length === 0) lines.push('  no children in the snapshot');
-  return { lines, json };
+  return lines;
+}
+
+/**
+ * One node in full: its handle and address, every recorded attribute unclipped, its text and shadow
+ * text, size, visibility, parent, and each of its light and shadow children on one line.
+ *
+ * @param snapshot The snapshot.
+ * @param handle The node's handle.
+ * @param options The output limit.
+ */
+export function nodeDetails(
+  snapshot: DomSnapshot,
+  handle: string,
+  options: QueryOutputOptions = {},
+): QueryResult<NodeDetails> {
+  const entry = getNode(snapshot, handle);
+  const { node } = entry;
+  const summary = (child: DomNode): ChildLine => ({
+    id: child.id,
+    node: describeNode(child),
+    hidden: child.hidden === true,
+  });
+  const json: NodeDetails = {
+    node: ownFields(node),
+    ...(entry.parent
+      ? {
+          parent: {
+            id: entry.parent.node.id,
+            node: describeNode(entry.parent.node),
+            via: entry.viaShadow ? 'shadow' : 'light',
+          },
+        }
+      : {}),
+    ...(entry.hiddenTop ? { hiddenUnder: entry.hiddenTop.node.id } : {}),
+    children: (node.children ?? []).map(summary),
+    shadowChildren: (node.shadow?.children ?? []).map(summary),
+  };
+
+  return { lines: limitLines(detailLines(entry, json), options.limit ?? DEFAULT_OUTPUT_LIMIT, 'Raise --limit.'), json };
 }
 
 export type AncestorLine =

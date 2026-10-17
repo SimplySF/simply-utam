@@ -103,7 +103,7 @@ importers:
         specifier: ^9.3.6
         version: 9.3.6
       css-select:
-        specifier: 5.2.2
+        specifier: ^5.2.2
         version: 5.2.2
       prettier:
         specifier: ^3.9.6

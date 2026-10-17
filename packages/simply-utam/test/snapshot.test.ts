@@ -226,6 +226,20 @@ describe('snapshot find, path, tree and node', () => {
     });
   });
 
+  it('applies --limit to a node in full, and refuses a limit below 1', async () => {
+    const full = await run(SnapshotNode, ['n4']);
+    const limited = await run(SnapshotNode, ['n4', '--limit', '1']);
+    // The header is printed in full; the node's own lines are cut after the first.
+    const first = full.out.indexOf('h1  [n4]  at 0.1.0.s.0');
+    expect(limited.out).toEqual([
+      ...full.out.slice(0, first + 1),
+      `… ${full.out.length - first - 1} more lines not shown (output limit 1). Raise --limit.`,
+    ]);
+    for (const limit of ['0', '-1'])
+      // eslint-disable-next-line no-await-in-loop
+      await expect(run(SnapshotNode, ['n4', '--limit', limit])).rejects.toThrow(/greater than or equal to 1/);
+  });
+
   it('exits 2 on bad input: no snapshot, an address, an unknown handle, or a bad selector', async () => {
     await expect(
       run(SnapshotFind, ['--tag', 'a', '--file', path.join(projectDir, 'missing.json')]),

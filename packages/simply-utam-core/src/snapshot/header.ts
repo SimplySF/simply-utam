@@ -26,7 +26,13 @@ import {
 import type { QueryResult } from './query-result.js';
 import { matchSelector, type SelectorScope } from './selector.js';
 
-const UTAM_NOT_FOUND = /Can't find elements? with locator '([^']+)' inside its scope (element|shadow root)/;
+// Lazy and anchored on the text after it, so a selector with a quote in it, like `[title='Save']`, is kept whole.
+const UTAM_NOT_FOUND = /Can't find elements? with locator '(.+?)' inside its scope (element|shadow root)/;
+
+/** A selector as one POSIX shell word: double-quoted, or single-quoted when it has a double quote. */
+function shellQuote(selector: string): string {
+  return selector.includes('"') ? `'${selector.replaceAll("'", "'\\''")}'` : `"${selector}"`;
+}
 
 /** Where UTAM searched, from its not-found error, and the elements that may have declared it. */
 export type UtamErrorHint = {
@@ -86,7 +92,7 @@ export function utamErrorHint(snapshot: DomSnapshot, index?: PageObjectIndex): Q
       ? "its scope element's light DOM (elements)"
       : "its scope element's shadow root (shadow.elements)";
   const command = (within?: string): string =>
-    `npx simply-utam snapshot find --css "${selector}"${within ? ` --within ${within}${scope === 'shadow' ? ' --shadow' : ''}` : ''}`;
+    `npx simply-utam snapshot find --css ${shellQuote(selector)}${within ? ` --within ${within}${scope === 'shadow' ? ' --shadow' : ''}` : ''}`;
   const lines = [`  UTAM searched ${searched} for "${selector}". To repeat its search here:`];
   if (candidates.length > 0) {
     for (const c of candidates.slice(0, 3))
@@ -137,9 +143,10 @@ export function snapshotHeader(snapshot: DomSnapshot, options: SnapshotHeaderOpt
     const [first, ...rest] = errorLines(meta.error);
     lines.push(`  error: ${first}`, ...rest.map((line) => `         ${line}`));
   }
-  if (utamErrorHint(snapshot)) {
+  // The index is only built for UTAM's not-found error, which the pattern tells cheaply.
+  if (UTAM_NOT_FOUND.test(meta.error ?? '')) {
     const index = typeof options.index === 'function' ? options.index() : options.index;
-    lines.push(...utamErrorHint(snapshot, index)!.lines);
+    lines.push(...(utamErrorHint(snapshot, index)?.lines ?? []));
   }
   return lines;
 }

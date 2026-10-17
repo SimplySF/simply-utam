@@ -470,13 +470,14 @@ function readEntry(
 
   addGetterUse(publicElements, privateElements);
 
+  const description = describe(json.description);
   return {
     ...base,
     root: json.root === true,
     interface: json.interface === true,
     ...(json.implements ? { implements: json.implements } : {}),
     ...(json.root && json.selector?.css ? { selector: json.selector.css } : {}),
-    ...(describe(json.description) ? { description: describe(json.description) } : {}),
+    ...(description ? { description } : {}),
     publicElements,
     privateElements,
     methods,

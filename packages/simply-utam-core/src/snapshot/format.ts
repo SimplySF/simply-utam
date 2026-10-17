@@ -121,7 +121,12 @@ export function parseDomSnapshot(json: string): DomSnapshot {
       `Not a DOM snapshot: format is ${JSON.stringify(candidate?.format)}, expected "${DOM_SNAPSHOT_FORMAT}"`,
     );
   }
-  if (typeof candidate.version !== 'number' || candidate.version > DOM_SNAPSHOT_VERSION) {
+  if (typeof candidate.version !== 'number' || !Number.isInteger(candidate.version) || candidate.version < 1) {
+    throw new DomSnapshotError(
+      `Not a DOM snapshot: version is ${JSON.stringify(candidate.version)}, expected a whole number from 1`,
+    );
+  }
+  if (candidate.version > DOM_SNAPSHOT_VERSION) {
     throw new DomSnapshotError(
       `${DOM_SNAPSHOT_FORMAT} version ${String(candidate.version)} is newer than this reader understands (${DOM_SNAPSHOT_VERSION})`,
     );

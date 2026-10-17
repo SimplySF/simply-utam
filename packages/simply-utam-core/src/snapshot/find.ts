@@ -18,7 +18,14 @@ import { clip, describeNode, describePlain } from './describe.js';
 import { DomSnapshotError, type DomNode, type DomSnapshot } from './format.js';
 import { getNode, isUnder, locate, toFound, treeHost, type FoundNode, type Located } from './locate.js';
 import { DEFAULT_OUTPUT_LIMIT, limitLines, type QueryOutputOptions, type QueryResult } from './query-result.js';
-import { matchSelector, nodeMatchesSelector, prepareSelector, type SelectorScope } from './selector.js';
+import {
+  attribute,
+  matchSelector,
+  nodeMatchesSelector,
+  prepareSelector,
+  unseenNames,
+  type SelectorScope,
+} from './selector.js';
 
 export type FindOptions = QueryOutputOptions & {
   /** Case-insensitive substring of a node's text, shadow text or any attribute value except `class`. */
@@ -49,10 +56,11 @@ function matches(node: DomNode, options: FindOptions): boolean {
   if (options.attr) {
     const [name, ...rest] = options.attr.split('=');
     const value = rest.join('=').replace(/^["']|["']$/g, '');
-    if (!(name in attrs)) return false;
-    if (rest.length > 0 && !attrs[name].toLowerCase().includes(value.toLowerCase())) return false;
+    const actual = attribute(attrs, name);
+    if (actual === undefined) return false;
+    if (rest.length > 0 && !actual.toLowerCase().includes(value.toLowerCase())) return false;
   }
-  if (options.class && !(attrs.class ?? '').split(/\s+/).includes(options.class)) return false;
+  if (options.class && !(attribute(attrs, 'class') ?? '').split(/\s+/).includes(options.class)) return false;
   if (options.text) {
     const needle = options.text.toLowerCase();
     const values = [
@@ -89,7 +97,7 @@ function describeQuery(options: FindOptions): string {
 /**
  * Nodes matching text, an attribute, a tag or a class, or with `css`, a CSS selector as UTAM's
  * `findElement` runs it. Visible matches come first, in document order, then hidden ones; when there
- * are hidden matches, a last line names the first in document order, which is the one a selector finds.
+ * are hidden matches, a last line names the first in the document's own tree, which a root selector finds.
  *
  * @param snapshot The snapshot.
  * @param options What to match.
@@ -108,10 +116,13 @@ export function findNodes(snapshot: DomSnapshot, options: FindOptions): QueryRes
     } else {
       lines.push(`${hidden.length} hidden matches not listed; add --all to list them.`);
     }
-    // Visible matches are listed first; say which comes first in the page, which is what a selector finds.
-    const first = all[0];
+    // Visible matches are listed first; say which a root selector reaches first. utam.load searches
+    // only the document's own tree, not inside shadow roots.
+    const first = all.find((entry) => treeHost(entry) === undefined);
     lines.push(
-      `First in document order: ${first.node.id}${first.hiddenTop ? ' (hidden)' : ''}. utam.load takes a root selector's first match; test a selector with find --css.`,
+      first
+        ? `First in the document's own tree, which a root selector reaches first: ${first.node.id}${first.hiddenTop ? ' (hidden)' : ''}. utam.load takes a root selector's first match; test a selector with find --css.`
+        : "Every match is inside a shadow root, so a root selector can't reach them; test a selector with find --css.",
     );
   }
   return {
@@ -147,7 +158,13 @@ function whereElse(entry: Located, scope: SelectorScope, snapshot: DomSnapshot):
 function elsewhere(snapshot: DomSnapshot, css: string, scope: SelectorScope): string[] {
   const { selector } = prepareSelector(css);
   const all = [...locate(snapshot).values()].filter((entry) => nodeMatchesSelector(entry, selector));
-  if (all.length === 0) return ['It matches nothing anywhere in this snapshot, in any shadow root.'];
+  if (all.length === 0) {
+    if (unseenNames(snapshot, selector).length > 0)
+      return [
+        'It matches nothing in this snapshot, in any shadow root, but it names something no node here has, which the live page may have on a pruned wrapper (see below).',
+      ];
+    return ['It matches nothing anywhere in this snapshot, in any shadow root.'];
+  }
   const shown = 5;
   const lines = [`It matches ${all.length} node${all.length === 1 ? '' : 's'} this search doesn't cover:`];
   let crossesShadow = false;

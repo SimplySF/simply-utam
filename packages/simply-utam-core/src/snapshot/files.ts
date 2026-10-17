@@ -33,6 +33,7 @@ export type SnapshotFileSystem = {
   writeFile(file: string, data: string, options?: { flag?: string }): Promise<void>;
   readdir(dir: string, options: { withFileTypes: true }): Promise<Array<{ name: string; isDirectory(): boolean }>>;
   rm(target: string, options: { recursive: true; force: true }): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
 };
 
 export type WriteDomSnapshotOptions = {
@@ -63,9 +64,28 @@ function cleanPart(value: string): string {
     .slice(0, MAX_PART);
 }
 
-/** `20261016T120000`: sorts in time order, so run folders do too. */
-function timestamp(date = new Date()): string {
+/**
+ * A run id for `UTAM_SNAPSHOT_RUN_ID`: the time as `20261016T120000`, which sorts in time order, so
+ * run folders do too.
+ *
+ * @param date The time; now when omitted.
+ */
+export function snapshotRunId(date = new Date()): string {
   return date.toISOString().replace(/[-:]/g, '').slice(0, 15);
+}
+
+const MAX_NAME_TRIES = 1000;
+
+/** Replace `file` in one step, so a reader never sees it half-written while another worker writes it. */
+async function replaceFile(fs: SnapshotFileSystem, file: string, data: string): Promise<void> {
+  const temp = `${file}.${process.pid}-${Math.random().toString(36).slice(2, 10)}.tmp`;
+  await fs.writeFile(temp, data);
+  try {
+    await fs.rename(temp, file);
+  } catch (error) {
+    await fs.rm(temp, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 /** `<scenario>--<step>` for a failure; `<scenario>--<label>`, or the scenario numbered, otherwise. */
@@ -90,7 +110,8 @@ function installedPageObjectPackages(projectDir: string): Record<string, string>
 
 /**
  * Write a snapshot to `.utam/snapshots/<run id>/<name>.json`, and a copy as
- * `.utam/snapshots/latest.json`. The run id comes from `UTAM_SNAPSHOT_RUN_ID`, or the current time.
+ * `.utam/snapshots/latest.json`, replaced in one step through a temporary file and a rename. The run
+ * id comes from `UTAM_SNAPSHOT_RUN_ID`, or the current time.
  * A name already taken gets a number; files are created exclusively, so two workers can't both take
  * one name. Records the installed `salesforce-pageobjects` version in `meta.pageObjectPackages`.
  *
@@ -105,7 +126,7 @@ export async function writeDomSnapshot(snapshot: DomSnapshot, options: WriteDomS
   const packages = options.pageObjectPackages ?? installedPageObjectPackages(projectDir);
   if (Object.keys(packages).length > 0) snapshot.meta.pageObjectPackages = packages;
 
-  const dir = path.join(SNAPSHOTS_DIR, cleanPart(env[SNAPSHOT_RUN_ID_ENV] ?? '') || timestamp());
+  const dir = path.join(SNAPSHOTS_DIR, cleanPart(env[SNAPSHOT_RUN_ID_ENV] ?? '') || snapshotRunId());
   await fs.mkdir(path.join(projectDir, dir), { recursive: true });
 
   const json = serializeDomSnapshot(snapshot);
@@ -117,18 +138,23 @@ export async function writeDomSnapshot(snapshot: DomSnapshot, options: WriteDomS
       // eslint-disable-next-line no-await-in-loop
       await fs.writeFile(path.join(projectDir, file), json, { flag: 'wx' });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'EEXIST' && n < 1000) continue;
-      throw error;
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      if (n < MAX_NAME_TRIES) continue;
+      throw new Error(
+        `Can't name a snapshot in ${dir}: ${MAX_NAME_TRIES} files named after ${name} already exist. Prune the folder or set another ${SNAPSHOT_RUN_ID_ENV}.`,
+        { cause: error },
+      );
     }
     // eslint-disable-next-line no-await-in-loop -- runs once, after the loop's last attempt
-    await fs.writeFile(path.join(projectDir, LATEST_SNAPSHOT), json);
+    await replaceFile(fs, path.join(projectDir, LATEST_SNAPSHOT), json);
     return file;
   }
 }
 
 /**
  * Delete all but the newest `keepRuns` run folders under `.utam/snapshots/`. Run folders are
- * named by run id, a timestamp, so the newest sort last. `latest.json` is kept.
+ * named by run id, so run ids must sort in time order: a timestamp does, and numbers in a custom id
+ * compare as numbers (`build-9` before `build-10`). The newest sort last. `latest.json` is kept.
  *
  * @param options The project, how many runs to keep, and the file system.
  * @returns The run folders deleted, relative to the project folder.
@@ -147,7 +173,7 @@ export async function pruneDomSnapshots(options: PruneDomSnapshotsOptions = {}):
   const runs = entries
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .sort();
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
   const removed = runs.slice(0, Math.max(0, runs.length - keepRuns)).map((run) => path.join(SNAPSHOTS_DIR, run));
   await Promise.all(removed.map((dir) => fs.rm(path.join(projectDir, dir), { recursive: true, force: true })));
   return removed;

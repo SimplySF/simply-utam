@@ -153,6 +153,7 @@ describe('@simplysf/simply-utam-core', () => {
         'pruneDomSnapshots',
         'readDomSnapshot',
         'serializeDomSnapshot',
+        'snapshotRunId',
         'writeDomSnapshot',
         'lookupPageObject',
         'searchPageObjects',
