@@ -12,18 +12,21 @@ read or script over the JSON: the `npx simply-utam snapshot` commands answer que
 
 ## Snapshot lifecycle
 
-- **Where they come from.** Only a test run writes snapshots, in two ways:
+- **Where they come from.** Only a test run writes snapshots, in three ways:
   - **On failure.** When a step throws, the `afterStep` hook in `wdio.conf.mjs` captures the page
     before anything else happens.
   - **On demand.** The step `And I capture the DOM snapshot` (or `... snapshot "<label>"`) captures
     the page wherever you put it in a scenario.
+  - **While paused.** `await browser.domSnapshot("<label>")` in the REPL of `browser.debug()` (see
+    "Capture by hand while paused"). It needs a person at the terminal.
 - **Where they go.** Each run gets a folder, `.utam/snapshots/<run>/`, with one file per capture,
-  named `<scenario>--<step or label>.json`. Every capture is also copied to
+  named `<scenario>--<step or label>.json`; a `browser.domSnapshot` capture doesn't know its
+  scenario, so it's `scenario--<label>.json`. Every capture is also copied to
   `.utam/snapshots/latest.json`, which the commands read by default; `--file <path>` reads another.
 - **`latest.json` is only the most recent capture.** It may come from an earlier run, another
-  scenario, or another step. Every command prints a header naming the snapshot's scenario, step,
-  time and, for a failure, the error, with an assertion's `Expected` and `Received` lines. Check it
-  before you trust the answer.
+  scenario, or another step. Every command prints a header naming the snapshot's file, trigger,
+  time, URL and mask mode, then its scenario, step and, for a failure, the error, with an
+  assertion's `Expected` and `Received` lines. Check it before you trust the answer.
 - **A capture is one moment.** The on-demand step doesn't wait for anything. Lightning keeps
   rendering after navigation returns, so a capture taken too early shows the app's frame with the
   page half-built: the target missing, components with nothing inside. A failure capture shows the
@@ -33,7 +36,15 @@ read or script over the JSON: the `npx simply-utam snapshot` commands answer que
 
 ## Getting the snapshot you need
 
-Each live run is slow, so get a snapshot from a run you need anyway.
+Each live run is slow, so get a snapshot from a run you need anyway, and run only the scenario you
+need:
+
+```bash
+npm run test:ui -- --spec <path/to/file>.feature:<line>
+```
+
+`<line>` is the line of the scenario's `Scenario:`. `test:ui` compiles your page objects first, then
+runs `wdio run wdio.conf.mjs` with the arguments after `--`.
 
 | You have                                    | Do this                                                                                                                                                                                        |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -43,6 +54,20 @@ Each live run is slow, so get a snapshot from a run you need anyway.
 | A page state no step reaches yet            | Add the steps that reach it, then capture after them.                                                                                                                                          |
 
 Remove any capture step you added to a feature file before you finish.
+
+### Capture by hand while paused
+
+For a person at the terminal, not an agent: the REPL needs someone to type into it. Add
+`await browser.debug();` to a step definition where you want to stop, and run the scenario with
+`DEBUG` set (`DEBUG=1 npm run test:ui -- --spec …`), so the step can stay paused for up to 30 minutes
+instead of timing out. In the REPL, click around the page as you need, then capture it:
+
+```js
+await browser.domSnapshot('after opening Account');
+```
+
+It returns the file it wrote, and copies it to `latest.json` like any other capture. Remove the
+`browser.debug()` call before you finish.
 
 ## Workflow
 
@@ -80,8 +105,9 @@ Remove any capture step you added to a feature file before you finish.
 
 ## Commands
 
-Run from the project folder. Every command takes `--json`; text output stops at 200 lines, and
-`--limit <n>` changes that.
+Run from the project folder, or point `--project-dir <dir>` at it. Every command takes `--json`;
+text output stops at 200 lines, and `--limit <n>` changes that. Every command but `lookup` reads
+`latest.json` unless you give `--file <path>` (relative to the current folder).
 
 ### `find`: which nodes match
 
@@ -171,7 +197,7 @@ root. A selector can't reach past that line; to scope above it, use a page objec
 npx simply-utam snapshot tree --node <handle> --depth 3
 ```
 
-Lines as in `find`, with node handles. A long tree ends by repeating which node it started at. Under a node with a shadow root, its `#shadow(...)` children come
+Without `--node` it starts at the page's root; `--depth` defaults to 3. Lines as in `find`, with node handles. A long tree ends by repeating which node it started at. Under a node with a shadow root, its `#shadow(...)` children come
 first, then its light DOM children (slotted content) under `light DOM:`; a node without a shadow root
 lists its light DOM children directly below it. Plain wrapper elements with only a class are left out of
 snapshots, so a child in the tree isn't always a direct child in the DOM.
@@ -223,6 +249,9 @@ such file, not a snapshot, an unknown node handle, a selector that can't be read
   section is still in the DOM. Scope the root selector so it matches only the visible copy, and test
   it with `find --css`: a class such as `.active` can also appear inside the hidden copy. To find a
   container that only the visible copy is in, compare `node <handle> --ancestors` for each copy.
+- **A header marked `TRUNCATED`.** The capture stopped at a limit (`nodes`, `hiddenNodes` or
+  `time`), so part of the page isn't in the snapshot, and a node it doesn't have may still be on the
+  page. Close console tabs and pages the test doesn't need, and capture again.
 - **An `iframe` node marked `not captured`.** Its content isn't in the snapshot.
 - **An unreadable shadow root.** Content behind a closed shadow root can't be automated through
   UTAM. UTAM's error `its scope does not have shadow root` is the sign of it.
@@ -312,8 +341,17 @@ methods and its upgrades.
   `html`, each number is the nth child element, and `s` steps into a shadow root. An address stays
   the same in another snapshot of the same page, as long as the page's structure is the same.
   Commands don't take them; one passed to `--node` is refused with its handle.
-- **Masking** keeps field labels, button text, tab names, column headers and object names, and
-  replaces other text with its length (`"•14"`) and record ids with `•id`.
+- **Masking** is set by `UTAM_SNAPSHOT_MASK` when the test runs, and the header shows the mode:
+  - `labels` (the default) keeps field labels, button text, tab names, column headers and object
+    names, and replaces other text with its length (`"•14"`), record ids with `•id` and email
+    addresses with `•email`.
+  - `structure` masks all text, and the labels of controls too: the safe mode, when record data
+    mustn't leave the org. `find --text` then has nothing to match; search by tag, attribute or class.
+  - `full` keeps everything, record values included, so `find --text` can match a value. Use it only
+    on a dev org with no real data; capture warns when it's on.
+
+  In every mode, a failure's error message is recorded as the test printed it, unmasked.
+
 - **Your own page objects** go in a `__utam__` folder as `<name>.utam.json`.
   `npx utam -c utam.config.json` compiles them to `pageObjects/<name>.js`, which step definitions
   import by relative path.
