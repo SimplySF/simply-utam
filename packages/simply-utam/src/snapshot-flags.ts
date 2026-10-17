@@ -14,10 +14,25 @@
  * limitations under the License.
  */
 
+import * as path from 'node:path';
 import { Flags } from '@oclif/core';
-import { DEFAULT_OUTPUT_LIMIT } from '@simplysf/simply-utam-core';
+import {
+  DEFAULT_OUTPUT_LIMIT,
+  LATEST_SNAPSHOT,
+  buildPageObjectIndex,
+  readDomSnapshot,
+  snapshotHeader,
+  type DomSnapshot,
+  type PageObjectIndex,
+} from '@simplysf/simply-utam-core';
 
 /** Flags the `snapshot` commands share. */
+export const fileFlag = {
+  file: Flags.string({
+    summary: `Snapshot file to read. Defaults to ${LATEST_SNAPSHOT} in the project, the most recent snapshot.`,
+  }),
+};
+
 export const projectDirFlag = {
   'project-dir': Flags.string({
     summary: 'Root directory of the test project.',
@@ -34,3 +49,28 @@ export const limitFlag = {
 
 /** Exit code 2: bad input, such as a missing snapshot, an unknown handle, or conflicting arguments. */
 export const BAD_INPUT = 2;
+
+/** A snapshot a query command was pointed at, and its header. */
+export type LoadedSnapshot = { snapshot: DomSnapshot; header: string[] };
+
+/**
+ * Read the snapshot a query command was pointed at, and the header that names it.
+ *
+ * @param projectDir The test project.
+ * @param file The `--file` flag; the project's latest snapshot when omitted.
+ * @param index The page-object index, when the command has built it; otherwise it's built only for
+ * UTAM's not-found error.
+ */
+export async function loadSnapshot(
+  projectDir: string,
+  file?: string,
+  index?: PageObjectIndex,
+): Promise<LoadedSnapshot> {
+  const resolved = file ? path.resolve(file) : path.resolve(projectDir, LATEST_SNAPSHOT);
+  const snapshot = await readDomSnapshot(resolved);
+  const header = snapshotHeader(snapshot, {
+    file: path.relative(process.cwd(), resolved) || resolved,
+    index: index ?? ((): PageObjectIndex => buildPageObjectIndex({ projectDir })),
+  });
+  return { snapshot, header };
+}

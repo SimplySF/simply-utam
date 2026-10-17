@@ -62,3 +62,27 @@ export {
   type SearchResult,
   type SearchResultLine,
 } from './lookup.js';
+export { findNodes, type FindOptions, type FindResult } from './find.js';
+export type { FoundNode } from './locate.js';
+export { querySnapshot, type SelectorMatches, type SelectorScope } from './selector.js';
+export {
+  componentPath,
+  componentPathByText,
+  type PathAnnotation,
+  type PathByTextResult,
+  type PathOptions,
+  type PathResult,
+  type PathStep,
+  type ReachableThrough,
+  type ScopeMismatch,
+} from './path.js';
+export {
+  nodeAncestors,
+  nodeDetails,
+  subtree,
+  type AncestorLine,
+  type AncestorsResult,
+  type NodeDetails,
+  type SubtreeOptions,
+} from './tree.js';
+export { snapshotHeader, utamErrorHint, type SnapshotHeaderOptions, type UtamErrorHint } from './header.js';

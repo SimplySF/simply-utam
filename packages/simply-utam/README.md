@@ -22,6 +22,11 @@ Requires Node.js 22 or later.
 - `simply-utam rewrite`: Rewrites namespace prefixes across compiled `*.utam.json` files according to `.utam/namespace-map.json`.
 - `simply-utam steps`: Statically analyzes Gherkin `.feature` files, compiles existing step expressions, detects true undefined steps, and appends formatted Cucumber expressions into target step files.
 - `simply-utam build`: Convenience runner executing all compilation and transformation stages sequentially (`rules -> utam-generate -> overrides -> rewrite -> utam`).
+- `simply-utam snapshot find`: Finds nodes in a DOM snapshot by `--text`, `--attr`, `--tag` or `--class`, visible matches first; or tests a CSS selector with `--css` as UTAM's `findElement` runs it, in the document or `--within` a node's light DOM or, with `--shadow`, its shadow root. `--all` lists hidden matches in full.
+- `simply-utam snapshot path`: Shows the custom elements from the document down to a node (`--node` or `--text`), with each shadow crossing, the page object for each element, the route to it from the page object above, and warnings for a root selector that loads a hidden copy or an element declared in the wrong scope. Exits 1 when `--text` doesn't find exactly one visible node.
+- `simply-utam snapshot tree`: Prints the tree under a node (`--node`, `--depth`), shadow root first, then light DOM.
+- `simply-utam snapshot node`: Shows one node in full, or with `--ancestors`, its ancestors nearest first.
+- Every `snapshot` command but `lookup` reads `.utam/snapshots/latest.json` (or `--file`) and prints a header naming it, with a failed step's error and, for UTAM's not-found error, the `find --css` that repeats its search. All take `--json`, `--limit` and `--project-dir`, and exit 2 on bad input.
 - `simply-utam snapshot lookup`: Shows the page objects for a custom element tag or a page object name, from `salesforce-pageobjects` and the project's own page objects: import path, methods and what they do, and public and private elements with their light or shadow scope. `--search <words>` finds page objects by name, tag or description. Needs no snapshot. Takes `--json`, `--limit` and `--project-dir`. See [design 0003](../../docs/design/0003-dom-snapshots.md).
 
 ## Usage & Wireit Integration
