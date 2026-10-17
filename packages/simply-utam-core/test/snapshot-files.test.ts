@@ -1,0 +1,291 @@
+/*
+ * Copyright (c) 2026, SimplySF.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
+import {
+  DOM_SNAPSHOT_FORMAT,
+  DomSnapshotError,
+  LATEST_SNAPSHOT,
+  captureDomSnapshot,
+  parseDomSnapshot,
+  pruneDomSnapshots,
+  readDomSnapshot,
+  serializeDomSnapshot,
+  writeDomSnapshot,
+  type DomSnapshot,
+  type SnapshotFileSystem,
+} from '../src/index.js';
+
+/** A small snapshot as the walker writes it: addresses, no handles. */
+function rawSnapshot(meta: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    format: DOM_SNAPSHOT_FORMAT,
+    version: 1,
+    meta: {
+      capturedAt: '2026-10-16T12:00:00.000Z',
+      trigger: 'manual',
+      url: 'https://acme.lightning.force.com/lightning/page/home',
+      title: 'Home | Salesforce',
+      viewport: [1280, 900],
+      mask: 'labels',
+      truncated: null,
+      ...meta,
+    },
+    root: {
+      address: '0',
+      tag: 'html',
+      children: [
+        {
+          address: '0.1',
+          tag: 'body',
+          children: [
+            {
+              address: '0.1.0',
+              tag: 'c-app',
+              attrs: { id: 'main' },
+              shadow: { mode: 'synthetic', children: [{ address: '0.1.0.s.0', tag: 'c-inner' }] },
+              children: [{ address: '0.1.0.0', tag: 'span', text: 'light' }],
+            },
+          ],
+        },
+      ],
+    },
+  });
+}
+
+const dirs: string[] = [];
+function tempDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'simply-utam-snapshot-files-'));
+  dirs.push(dir);
+  return dir;
+}
+
+afterAll(() => {
+  for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+describe('format', () => {
+  it('numbers handles on read, shadow children before light ones', () => {
+    const snapshot = parseDomSnapshot(rawSnapshot());
+    const app = snapshot.root.children![0].children![0];
+    expect([snapshot.root.id, app.id, app.shadow!.children[0].id, app.children![0].id]).toEqual([
+      'n1',
+      'n3',
+      'n4',
+      'n5',
+    ]);
+  });
+
+  it('writes the file without handles, keeping attributes named id, and reads it back the same', () => {
+    const snapshot = parseDomSnapshot(rawSnapshot());
+    const json = serializeDomSnapshot(snapshot);
+    expect(json).not.toMatch(/"id":"n\d+"/);
+    expect(json).toContain('"attrs":{"id":"main"}');
+    expect(parseDomSnapshot(json)).toEqual(snapshot);
+  });
+
+  it('rejects JSON that is not a snapshot, another format, a newer version, or no addressed root', () => {
+    expect(() => parseDomSnapshot('{ nope')).toThrow(/Not JSON/);
+    expect(() => parseDomSnapshot('{"format":"x"}')).toThrow(/format is "x", expected "simply-utam-dom-snapshot"/);
+    expect(() => parseDomSnapshot(rawSnapshot().replace('"version":1', '"version":2'))).toThrow(
+      /version 2 is newer than this reader understands \(1\)/,
+    );
+    expect(() => parseDomSnapshot(rawSnapshot().replace('"address":"0",', ''))).toThrow(/no root node with an address/);
+    expect(() => parseDomSnapshot('null')).toThrow(DomSnapshotError);
+  });
+
+  it('reads a snapshot file, and names the file it cannot read', async () => {
+    const file = path.join(tempDir(), 'snapshot.json');
+    fs.writeFileSync(file, rawSnapshot());
+    expect((await readDomSnapshot(file)).root.id).toBe('n1');
+    await expect(readDomSnapshot(`${file}.missing`)).rejects.toThrow(/Cannot read .*snapshot\.json\.missing/);
+  });
+});
+
+describe('captureDomSnapshot', () => {
+  const browserReturning = (
+    result: unknown,
+  ): { execute: (script: string) => Promise<unknown> } & { scripts: string[] } => {
+    const scripts: string[] = [];
+    return {
+      scripts,
+      execute: async (script: string): Promise<unknown> => {
+        scripts.push(script);
+        return result;
+      },
+    };
+  };
+
+  it('runs the walker through browser.execute with the options, and adds the step context', async () => {
+    const browser = browserReturning(rawSnapshot({ trigger: 'failure' }));
+    const snapshot = await captureDomSnapshot({
+      browser,
+      trigger: 'failure',
+      scenario: 'Create Account',
+      step: 'When user clicks "New"',
+      error: new Error('\u001b[31mexpected\u001b[39m "Acme"\nreceived "Other"'),
+      maxNodes: 50,
+      focus: 'auto',
+      env: {},
+    });
+    expect(browser.scripts[0]).toMatch(/^return \(\/\*[\s\S]*function domSnapshotWalker\(input\)/);
+    expect(browser.scripts[0]).toContain('"trigger":"failure","mask":"labels","maxNodes":50,"focus":"auto"');
+    expect(snapshot?.meta).toMatchObject({
+      scenario: 'Create Account',
+      step: 'When user clicks "New"',
+      error: 'expected "Acme"\nreceived "Other"',
+    });
+    expect(snapshot?.root.id).toBe('n1');
+  });
+
+  it('takes the mask from UTAM_SNAPSHOT_MASK through env, and warns when it is full', async () => {
+    const browser = browserReturning(rawSnapshot());
+    const logged: string[] = [];
+    await captureDomSnapshot({ browser, env: { UTAM_SNAPSHOT_MASK: 'full' }, log: (m) => logged.push(m) });
+    expect(browser.scripts[0]).toContain('"mask":"full"');
+    expect(logged).toEqual(['DOM snapshot: mask "full" keeps record data in the snapshot.']);
+    await captureDomSnapshot({ browser, env: { UTAM_SNAPSHOT_MASK: 'bogus' }, log: (m) => logged.push(m) });
+    expect(browser.scripts[1]).toContain('"mask":"labels"');
+  });
+
+  it('runs through any SnapshotPage, with the backstop timeout', async () => {
+    const calls: number[] = [];
+    const snapshot = await captureDomSnapshot({
+      page: { evaluate: async (_source, timeoutMs) => (calls.push(timeoutMs), rawSnapshot()) },
+      timeoutMs: 1234,
+    });
+    expect(calls).toEqual([1234]);
+    expect(snapshot?.meta.trigger).toBe('manual');
+  });
+
+  it('never throws: a failing script, no result, a hang or no browser each log and return undefined', async () => {
+    const logged: string[] = [];
+    const log = (message: string): number => logged.push(message);
+    const failing = { execute: async (): Promise<unknown> => Promise.reject(new Error('no session')) };
+    expect(await captureDomSnapshot({ browser: failing, log })).toBeUndefined();
+    expect(await captureDomSnapshot({ browser: browserReturning(undefined), log })).toBeUndefined();
+    const hanging = { evaluate: (): Promise<string> => new Promise<string>(() => undefined) };
+    expect(await captureDomSnapshot({ page: hanging, timeoutMs: 5, log })).toBeUndefined();
+    expect(await captureDomSnapshot({ log })).toBeUndefined();
+    expect(logged).toEqual([
+      'DOM snapshot not captured: no session',
+      'DOM snapshot not captured: Not JSON: "undefined" is not valid JSON',
+      'DOM snapshot not captured: timed out after 5 ms',
+      'DOM snapshot not captured: no browser to capture',
+    ]);
+  });
+});
+
+describe('writeDomSnapshot', () => {
+  const env = { UTAM_SNAPSHOT_RUN_ID: '20261016T120000' };
+  const write = (snapshot: DomSnapshot, projectDir: string): Promise<string> =>
+    writeDomSnapshot(snapshot, { projectDir, env, pageObjectPackages: {} });
+  const run = (...parts: string[]): string => path.join('.utam', 'snapshots', '20261016T120000', ...parts);
+
+  it('names a failure by scenario and step, cleaned and capped', async () => {
+    const dir = tempDir();
+    const snapshot = parseDomSnapshot(
+      rawSnapshot({ trigger: 'failure', scenario: 'Create Account', step: `When user clicks "New" ${'x'.repeat(80)}` }),
+    );
+    const file = await write(snapshot, dir);
+    expect(file).toBe(run(`Create-Account--When-user-clicks-New-${'x'.repeat(39)}.json`));
+    const stored = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')) as { root: { id?: string } };
+    expect(stored.root.id).toBeUndefined();
+  });
+
+  it('names a capture by scenario and label, or numbers it, adding a number when the name is taken', async () => {
+    const dir = tempDir();
+    const labeled = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S', label: 'after opening' }));
+    const unlabeled = parseDomSnapshot(rawSnapshot({ trigger: 'manual', scenario: 'S' }));
+    expect(await write(labeled, dir)).toBe(run('S--after-opening.json'));
+    expect(await write(labeled, dir)).toBe(run('S--after-opening-2.json'));
+    expect(await write(unlabeled, dir)).toBe(run('S--1.json'));
+    expect(await write(unlabeled, dir)).toBe(run('S--2.json'));
+  });
+
+  it('gives two writers racing for one name a file each', async () => {
+    const dir = tempDir();
+    const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S', label: 'x' }));
+    const files = await Promise.all([write(snapshot, dir), write(snapshot, dir), write(snapshot, dir)]);
+    expect(new Set(files).size).toBe(3);
+  });
+
+  it('copies the newest to latest.json, and uses the current time without a run id', async () => {
+    const dir = tempDir();
+    const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
+    const file = await writeDomSnapshot(snapshot, { projectDir: dir, env: {}, pageObjectPackages: {} });
+    expect(file).toMatch(/^\.utam[/\\]snapshots[/\\]\d{8}T\d{6}[/\\]S--1\.json$/);
+    expect(fs.readFileSync(path.join(dir, LATEST_SNAPSHOT), 'utf8')).toBe(
+      fs.readFileSync(path.join(dir, file), 'utf8'),
+    );
+  });
+
+  it('records the installed salesforce-pageobjects version', async () => {
+    const dir = tempDir();
+    fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"p"}');
+    fs.mkdirSync(path.join(dir, 'node_modules', 'salesforce-pageobjects'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'node_modules', 'salesforce-pageobjects', 'package.json'),
+      '{"name":"salesforce-pageobjects","version":"12.0.0"}',
+    );
+    const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
+    await writeDomSnapshot(snapshot, { projectDir: dir, env });
+    expect(snapshot.meta.pageObjectPackages).toEqual({ 'salesforce-pageobjects': '12.0.0' });
+  });
+
+  it('writes through an injected file system', async () => {
+    const written = new Map<string, string>();
+    const memory: SnapshotFileSystem = {
+      mkdir: async () => undefined,
+      writeFile: async (file, data, options) => {
+        if (options?.flag === 'wx' && written.has(file)) throw Object.assign(new Error('exists'), { code: 'EEXIST' });
+        written.set(file, data);
+      },
+      readdir: async () => [],
+      rm: async () => undefined,
+    };
+    const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
+    await writeDomSnapshot(snapshot, { projectDir: '/p', env, fs: memory, pageObjectPackages: {} });
+    expect([...written.keys()].sort()).toEqual(
+      [path.join('/p', LATEST_SNAPSHOT), path.join('/p', run('S--1.json'))].sort(),
+    );
+  });
+});
+
+describe('pruneDomSnapshots', () => {
+  it('keeps the newest run folders and latest.json', async () => {
+    const dir = tempDir();
+    const snapshots = path.join(dir, '.utam', 'snapshots');
+    for (const run of ['20261014T090000', '20261015T090000', '20261016T090000']) {
+      fs.mkdirSync(path.join(snapshots, run), { recursive: true });
+    }
+    fs.writeFileSync(path.join(snapshots, 'latest.json'), '{}');
+    const removed = await pruneDomSnapshots({ projectDir: dir, keepRuns: 2 });
+    expect(removed).toEqual([path.join('.utam', 'snapshots', '20261014T090000')]);
+    expect(fs.readdirSync(snapshots).sort()).toEqual(['20261015T090000', '20261016T090000', 'latest.json']);
+  });
+
+  it('does nothing when there are no snapshots, and keeps 10 runs by default', async () => {
+    const dir = tempDir();
+    expect(await pruneDomSnapshots({ projectDir: dir })).toEqual([]);
+    for (let i = 10; i < 22; i++)
+      fs.mkdirSync(path.join(dir, '.utam', 'snapshots', `202610${i}T000000`), { recursive: true });
+    expect(await pruneDomSnapshots({ projectDir: dir })).toHaveLength(2);
+  });
+});

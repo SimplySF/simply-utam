@@ -14,6 +14,36 @@
  * limitations under the License.
  */
 
+export {
+  DOM_SNAPSHOT_FORMAT,
+  DOM_SNAPSHOT_VERSION,
+  DomSnapshotError,
+  parseDomSnapshot,
+  readDomSnapshot,
+  serializeDomSnapshot,
+  type DomNode,
+  type DomSnapshot,
+  type DomSnapshotMeta,
+  type ShadowMode,
+  type SnapshotMask,
+  type SnapshotTrigger,
+} from './format.js';
+export {
+  SNAPSHOT_MASK_ENV,
+  captureDomSnapshot,
+  type CaptureDomSnapshotOptions,
+  type SnapshotBrowser,
+  type SnapshotPage,
+} from './capture.js';
+export {
+  LATEST_SNAPSHOT,
+  SNAPSHOT_RUN_ID_ENV,
+  pruneDomSnapshots,
+  writeDomSnapshot,
+  type PruneDomSnapshotsOptions,
+  type SnapshotFileSystem,
+  type WriteDomSnapshotOptions,
+} from './files.js';
 export { DEFAULT_OUTPUT_LIMIT, type QueryOutputOptions, type QueryResult } from './query-result.js';
 export {
   buildPageObjectIndex,

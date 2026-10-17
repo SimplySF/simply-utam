@@ -340,7 +340,7 @@ label, or use `full` on a dev org.
     "truncated": null, // or { "reasons": ["nodes" | "hiddenNodes" | "time", …] }
     "focus": "0.1.3.s.0.2", // the focus element's address, when a focus was found
     "pageObjectPackages": { "salesforce-pageobjects": "12.0.0" }, // added when written inside a project
-    "org": { "apiVersion": "66.0", "instanceUrl": "https://…" }, // when a TestEnvironment is known; see Open questions
+    "org": { "apiVersion": "66.0", "instanceUrl": "https://…" }, // hand-driven capture only (Later phases); see Open questions
   },
   "root": {/* node */},
 }
@@ -858,18 +858,18 @@ root (`export * from '@simplysf/simply-utam-core'`) but not its subpaths. A subp
 projects depend on core directly as well. The existing subpaths (`./discovery`, `./steps`, …) hold
 build-time tooling the CLI uses, not what a test run imports.
 
-| Export                                                                                                               | Description                                                                                             |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `captureDomSnapshot(options?)`                                                                                       | Captures a snapshot through a `browser` or `SnapshotPage`; never throws.                                |
-| `writeDomSnapshot(snapshot, options?)`                                                                               | Writes a snapshot and `latest.json`, and returns the path.                                              |
-| `pruneDomSnapshots(options?)`                                                                                        | Deletes all but the newest run folders.                                                                 |
-| `readDomSnapshot(path)`, `parseDomSnapshot(json)`                                                                    | Reads or parses a snapshot, checks its `format` and `version`, and numbers its handles.                 |
-| `findNodes`, `querySnapshot`, `componentPath`, `subtree`, `nodeDetails`, `nodeAncestors`, `utamErrorHint`            | The snapshot queries.                                                                                   |
-| `buildPageObjectIndex(options?)`, `lookupPageObject`, `searchPageObjects`                                            | The page-object index and its queries.                                                                  |
-| `ensureGitignore`, `mergeGitignore`                                                                                  | The `.gitignore` rule, shaped like `ensureForceignore` and `mergeForceignore` and sharing their merge.  |
-| `DomSnapshotError`                                                                                                   | Thrown for input that isn't a readable snapshot, an unknown handle, or a selector that can't be parsed. |
-| `DOM_SNAPSHOT_FORMAT`, `DOM_SNAPSHOT_VERSION`, `LATEST_SNAPSHOT`, `DEFAULT_OUTPUT_LIMIT`                             | `'simply-utam-dom-snapshot'`, `1`, `'.utam/snapshots/latest.json'`, `200` (lines of text output).       |
-| `DomSnapshot`, `DomNode`, `SnapshotPage`, `SnapshotBrowser`, `SelectorScope`, `QueryResult`, option and result types | Types. `SnapshotBrowser` and `SnapshotPage` are structural.                                             |
+| Export                                                                                                                               | Description                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `captureDomSnapshot(options?)`                                                                                                       | Captures a snapshot through a `browser` or `SnapshotPage`; never throws.                                                                            |
+| `writeDomSnapshot(snapshot, options?)`                                                                                               | Writes a snapshot and `latest.json`, and returns the path.                                                                                          |
+| `pruneDomSnapshots(options?)`                                                                                                        | Deletes all but the newest run folders.                                                                                                             |
+| `readDomSnapshot(path)`, `parseDomSnapshot(json)`, `serializeDomSnapshot(snapshot)`                                                  | Reads or parses a snapshot, checking `format` and `version` and numbering handles; writes the file form, without handles.                           |
+| `findNodes`, `querySnapshot`, `componentPath`, `subtree`, `nodeDetails`, `nodeAncestors`, `utamErrorHint`                            | The snapshot queries.                                                                                                                               |
+| `buildPageObjectIndex(options?)`, `lookupPageObject`, `searchPageObjects`                                                            | The page-object index and its queries.                                                                                                              |
+| `ensureGitignore`, `mergeGitignore`                                                                                                  | The `.gitignore` rule, shaped like `ensureForceignore` and `mergeForceignore` and sharing their merge.                                              |
+| `DomSnapshotError`                                                                                                                   | Thrown for input that isn't a readable snapshot, an unknown handle, or a selector that can't be parsed.                                             |
+| `DOM_SNAPSHOT_FORMAT`, `DOM_SNAPSHOT_VERSION`, `LATEST_SNAPSHOT`, `DEFAULT_OUTPUT_LIMIT`, `SNAPSHOT_MASK_ENV`, `SNAPSHOT_RUN_ID_ENV` | `'simply-utam-dom-snapshot'`, `1`, `'.utam/snapshots/latest.json'`, `200` (lines of text output), `'UTAM_SNAPSHOT_MASK'`, `'UTAM_SNAPSHOT_RUN_ID'`. |
+| `DomSnapshot`, `DomNode`, `SnapshotPage`, `SnapshotBrowser`, `SelectorScope`, `QueryResult`, option and result types                 | Types. `SnapshotBrowser` and `SnapshotPage` are structural.                                                                                         |
 
 **Later**, with the hand-driven capture routes: `devToolsPage`, `launchExploreBrowser` and
 `domSnapshotScript`.
@@ -1022,32 +1022,19 @@ defensible.
     comparing `querySnapshot` with `querySelectorAll`; a live comparison for every root selector in
     `salesforce-pageobjects`; a `find --css` warning when a compound names a tag and class that
     appear nowhere in the snapshot. Recommendation: the tests and the warning in PR 4, the live
-    comparison with the release check (question 16).
+    comparison with the release check (question 13).
 11. **Should a snapshot warn when `salesforce-pageobjects` doesn't match the org's release?** Both
     versions are recorded, so the check is cheap. Options: a header line now; later.
     Recommendation: later; no session hit a mismatch.
 
 ### Format and implementation
 
-12. **Should the file store the address as `address`, or as `id` renamed on read?** This design
-    stores `address` and adds handles on read. The evaluation build writes the address as `id` and
-    renames it on read, so one key means different things on disk and in memory. Options: write
-    `address`, as designed; keep the rename. Recommendation: write `address` in PR 3, while the
-    format is unreleased.
-13. **Is the `unreadable` shadow-root flag in scope for PR 3?** This design specifies it; the
-    evaluation build doesn't implement it, and no session met a closed root. Options: build it in
-    PR 3; defer it. Recommendation: build it in PR 3. It's small, and without it a closed root looks
-    like an empty element, a wrong answer rather than no answer.
-14. **Is `css-select` acceptable as core's new runtime dependency?** It's accepted here (see Public
+12. **Is `css-select` acceptable as core's new runtime dependency?** It's accepted here (see Public
     API) and open for review comment, since AGENTS.md asks for discussion first. The alternative is a
     hand-written matcher for the subset page objects use (tags, classes, ids, attribute tests,
     descendant and child combinators, `:not`), with a clear error for anything else.
     Recommendation: keep `css-select`, pinned to an exact version.
-15. **Does `@lwc/synthetic-shadow` work in jsdom for testing against synthetic shadow?** It's the
-    planned way to test traversal and the mode signals against Lightning's emulation, and it's
-    unverified. Options: load it into jsdom; use fixtures captured from a real page.
-    Recommendation: try it in PR 3, and fall back to captured fixtures.
-16. **Should the spike's probe become a release check?** It compares the walker's view with
+13. **Should the spike's probe become a release check?** It compares the walker's view with
     `querySelectorAll` on a live page and lists the shadow-mode signals, so on each Salesforce
     release it would catch drift to native shadow or in the light-tree differences (Risks). Options:
     a maintainer script run against a scratch org; drop it. Recommendation: add it after this stack,
@@ -1055,7 +1042,7 @@ defensible.
 
 ### Evaluation
 
-17. **Is a baseline comparison against today's tools wanted before release?** The evaluation asked
+14. **Is a baseline comparison against today's tools wanted before release?** The evaluation asked
     whether the tool works, not whether it beats source, the failure screenshot, `logUtamHtml` and
     the WebdriverIO error, so it can't say whether the snapshot, rather than the agent's skill, was
     why sessions succeeded. Options: none; a small comparison on T3 and F2, where most of the time
@@ -1138,11 +1125,15 @@ The evaluation build's tests are the starting point; each PR fills them out to t
   rows), and the metadata masking. jsdom doesn't implement `checkVisibility` and returns zero for
   every `getBoundingClientRect`, so the walker takes both as optional parameters that tests replace;
   in the browser they default to the real ones. Tests load the walker from the same text core sends
-  (`walker.js`, read as text) and build it with `new Function`, which proves it has no closures and
-  that what's tested is what ships. A build check confirms `lib/` holds an identical copy.
-- **Synthetic shadow** with `@lwc/synthetic-shadow` loaded into jsdom (see Open questions), so
-  traversal is tested against the emulation Lightning uses and not only native shadow roots,
-  including the `synthetic` and `native` mode signals.
+  (`walker.js`, read as text) and run it in a separate jsdom global, where nothing from core exists,
+  which proves it has no closures and that what's tested is what ships. A build check confirms
+  `lib/` holds an identical copy.
+- **Synthetic shadow** with `@lwc/synthetic-shadow` loaded into jsdom, with each rendered element
+  marked with its owner by hand, as the LWC engine does. It scopes synthetic shadow roots as in the
+  browser and gives the `synthetic` mode signal, so traversal is tested against the emulation
+  Lightning uses and not only native shadow roots. It doesn't reproduce a host's slotted light
+  children, which the walker sees on real pages; that part of the light tree is checked against
+  captured pages (see Risks, synthetic shadow light trees).
 - **Capture** with a fake `browser` and a fake `SnapshotPage`: `evaluate` throwing, the backstop
   timeout, and the `undefined` result.
 - **Format**: `format` and `version` checks, `address` read from the file, handle numbering (shadow
@@ -1353,4 +1344,4 @@ The read is **It works**:
 It isn't **Mixed**. Where a session fell short (T2's first scope, T3's missing page object, F2's
 selector list), the cause was page-object authoring, not the snapshot: the output was right and was
 read right. That called for the recipes, not a baseline comparison. Whether reviewers want a
-baseline anyway is open question 17.
+baseline anyway is open question 14.
