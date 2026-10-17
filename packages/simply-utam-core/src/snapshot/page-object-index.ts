@@ -208,6 +208,8 @@ function composeElements(statements: unknown, out: Set<string>): void {
   const statement = statements as Record<string, unknown>;
   // A chained statement's element belongs to the page object the previous statement returned.
   if (typeof statement.element === 'string' && statement.chain !== true) out.add(statement.element);
+  // An `elementReference` argument passes one of this page object's elements, so the method uses it.
+  if (statement.type === 'elementReference' && typeof statement.value === 'string') out.add(statement.value);
   for (const value of Object.values(statement)) if (typeof value === 'object') composeElements(value, out);
 }
 
@@ -224,16 +226,23 @@ function mergeArgs(...lists: Array<UtamArgJson[] | PageObjectArg[] | undefined>)
   return out;
 }
 
-/** A method's parameters: its own `args`, then the selector arguments of the elements it uses. */
+/**
+ * A method's parameters: its own `args`, then its statements' (an `applyExternal` call's included),
+ * then the selector arguments of the elements it uses.
+ */
 function methodArgs(
   own: UtamArgJson[] | undefined,
   composeList: unknown[],
   used: Set<string>,
   elements: PageObjectElement[],
 ): PageObjectArg[] {
+  const named = (args: unknown): UtamArgJson[] =>
+    Array.isArray(args)
+      ? (args as UtamArgJson[]).filter((arg) => typeof arg?.type === 'string' && arg.type !== 'function')
+      : [];
   const statementArgs = composeList.flatMap((statement) => {
-    const args = (statement as { args?: UtamArgJson[] }).args;
-    return Array.isArray(args) ? args.filter((arg) => typeof arg.type === 'string' && arg.type !== 'function') : [];
+    const { args, applyExternal } = (statement ?? {}) as { args?: unknown; applyExternal?: { args?: unknown } };
+    return [...named(args), ...named(applyExternal?.args)];
   });
   const elementArgs = elements
     .filter((element) => used.has(element.name.split('.').at(-1) ?? ''))

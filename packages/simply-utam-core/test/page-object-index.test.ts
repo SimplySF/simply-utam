@@ -350,6 +350,7 @@ describe('buildPageObjectIndex: compose summaries', () => {
           },
         ],
       },
+      { name: 'checkToast', compose: [{ apply: 'check', args: [{ type: 'elementReference', value: 'toast' }] }] },
       {
         name: 'waitForToast',
         compose: [{ apply: 'waitFor', args: [{ type: 'function', predicate: [{ element: 'toast' }] }] }],
@@ -389,6 +390,18 @@ describe('buildPageObjectIndex: compose summaries', () => {
     expect(methods.fillTwice.compose).toBe(
       `setText(value), setText(value) on nameInput "lightning-input[data-name='%s']"`,
     );
+  });
+
+  it("collects an applyExternal call's named arguments as parameters", () => {
+    expect(methods.useHelper.args).toEqual([{ name: 'record', type: 'string' }]);
+  });
+
+  it('counts an elementReference argument as the method using that element', () => {
+    const { privateElements } = index.entries.get('my-app/pageObjects/form')!;
+    const usedBy = (name: string): string[] | undefined =>
+      privateElements.find((element) => element.name === name)?.usedBy;
+    expect(usedBy('save')).toContain('useHelper');
+    expect(usedBy('toast')).toEqual(['checkToast', 'waitForToast']);
   });
 
   it("reads a return type from a waitFor predicate's element, or from the description", () => {
