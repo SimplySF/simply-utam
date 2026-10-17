@@ -9,8 +9,12 @@ import {
 } from '@simplysf/simply-utam';
 
 const { DEBUG } = process.env;
+// How long element waits run before failing (waitforTimeout). DEBUG leaves it alone, so a wrong
+// locator still fails within a minute instead of stalling the session you're debugging.
 const EXPLICIT_TIMEOUT = 60 * 1000;
-const DEBUG_TIMEOUT = EXPLICIT_TIMEOUT * 30;
+// How long a Cucumber step may run under DEBUG, so pausing in browser.debug() or at a breakpoint
+// doesn't end the step while you're still inspecting the page.
+const DEBUG_TIMEOUT = 30 * 60 * 1000;
 // A step must outlast UTAM's waits, so a failure reports UTAM's error (which names the locator it
 // couldn't find) rather than only Cucumber's timeout, and the DOM snapshot shows the page UTAM searched.
 const STEP_TIMEOUT_MARGIN = 30 * 1000;
@@ -27,7 +31,7 @@ export const config = {
   ],
   logLevel: 'debug',
   bail: 0,
-  waitforTimeout: DEBUG ? DEBUG_TIMEOUT : EXPLICIT_TIMEOUT,
+  waitforTimeout: EXPLICIT_TIMEOUT,
   connectionRetryTimeout: 120000,
   connectionRetryCount: 3,
   automationProtocol: 'webdriver',

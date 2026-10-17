@@ -494,7 +494,8 @@ describe('scaffold service', () => {
       expect(config).toContain("browser.addCommand('domSnapshot'");
       expect(config).toContain("trigger: 'failure'");
       expect(config).toContain('timeout: (DEBUG ? DEBUG_TIMEOUT : EXPLICIT_TIMEOUT) + STEP_TIMEOUT_MARGIN,');
-      expect(config).toContain('waitforTimeout: DEBUG ? DEBUG_TIMEOUT : EXPLICIT_TIMEOUT,');
+      // DEBUG lengthens steps only, so a missing element still fails at the usual wait.
+      expect(config).toContain('waitforTimeout: EXPLICIT_TIMEOUT,');
       expect(config).toContain('disableWebdriverScreenshotsReporting: false');
       expect(config).not.toContain('Screenshotes');
       // The failure capture runs before the screenshot, so it sees the page as the step left it.
