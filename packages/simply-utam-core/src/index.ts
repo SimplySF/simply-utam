@@ -82,6 +82,16 @@ export {
 } from './forceignore/index.js';
 
 export {
+  GITIGNORE_FILE,
+  SIMPLY_UTAM_GITIGNORE_RULES,
+  ensureGitignore,
+  mergeGitignore,
+  type EnsureGitignoreOptions,
+  type GitignoreResult,
+  type MergeGitignoreOptions,
+} from './gitignore/index.js';
+
+export {
   ROOT_TARGETS,
   convertLwcNameToHtml,
   getTargetsFromMeta,
@@ -146,6 +156,8 @@ export {
   generateNamespaceMap,
   generateHelloFeature,
   generateHelloSteps,
+  generateSnapshotGuide,
+  generateSnapshotSteps,
   injectWireitConfiguration,
   checkMissingDependencies,
   scaffoldProject,

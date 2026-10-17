@@ -16,7 +16,7 @@ Requires Node.js 22 or later.
 
 ## Commands
 
-- `simply-utam init`: Scaffolds starter UTAM configs (`generator.config.json`, `utam.config.json`, `wdio.conf.mjs`, `.utam/namespace-map.json`), non-destructively injects standard Wireit tasks into `package.json`, and adds any missing UTAM rules to `.forceignore` under a `# Ignore UTAM` comment so LWC bundles that contain UTAM files deploy successfully. Existing lines are never changed; new rules go inside the `# -- START CUSTOMIZATION` / `# -- END CUSTOMIZATION` region when one exists (`--forceignore-region-start` / `--forceignore-region-end` to change the markers, `--no-forceignore` to skip).
+- `simply-utam init`: Scaffolds starter UTAM configs (`generator.config.json`, `utam.config.json`, `wdio.conf.mjs`, `.utam/namespace-map.json`) and the DOM snapshot guide and capture step (`SNAPSHOTS.md`, `step_definitions/dom-snapshot.steps.mjs`) in the UTAM test folder, adds `.utam/snapshots/` to `.gitignore` (`--no-gitignore` to skip), non-destructively injects standard Wireit tasks into `package.json`, and adds any missing UTAM rules to `.forceignore` under a `# Ignore UTAM` comment so LWC bundles that contain UTAM files deploy successfully. Existing lines are never changed; new rules go inside the `# -- START CUSTOMIZATION` / `# -- END CUSTOMIZATION` region when one exists (`--forceignore-region-start` / `--forceignore-region-end` to change the markers, `--no-forceignore` to skip).
 - `simply-utam rules`: Scans LWC component definitions and generates or updates UTAM `.rules.json` files for root components.
 - `simply-utam overrides`: Deeply merges custom element assertions, wait conditions, and visibility rules from `*.utam-overrides.json` into generated `*.utam.json` files while preserving file indentation.
 - `simply-utam rewrite`: Rewrites namespace prefixes across compiled `*.utam.json` files according to `.utam/namespace-map.json`.
@@ -28,6 +28,54 @@ Requires Node.js 22 or later.
 - `simply-utam snapshot node`: Shows one node in full, or with `--ancestors`, its ancestors nearest first.
 - Every `snapshot` command but `lookup` reads `.utam/snapshots/latest.json` (or `--file`) and prints a header naming it, with a failed step's error and, for UTAM's not-found error, the `find --css` that repeats its search. All take `--json`, `--limit` and `--project-dir`, and exit 2 on bad input.
 - `simply-utam snapshot lookup`: Shows the page objects for a custom element tag or a page object name, from `salesforce-pageobjects` and the project's own page objects: import path, methods and what they do, and public and private elements with their light or shadow scope. `--search <words>` finds page objects by name, tag or description. Needs no snapshot. Takes `--json`, `--limit` and `--project-dir`. See [design 0003](../../docs/design/0003-dom-snapshots.md).
+
+## DOM snapshots in an existing project
+
+`init` writes `wdio.conf.mjs` only when it doesn't exist yet, so an existing project's configuration
+doesn't capture DOM snapshots until you add the hooks. Merge these into your `config`, keeping any
+hooks you already have (`afterStep` most likely also takes a screenshot):
+
+```js
+import allureReporter from '@wdio/allure-reporter';
+import { captureDomSnapshot, pruneDomSnapshots, serializeDomSnapshot, writeDomSnapshot } from '@simplysf/simply-utam';
+
+export const config = {
+  // …
+  onPrepare: async function () {
+    // One DOM snapshot folder per test run, shared by every worker; keep the last 10 runs.
+    process.env.UTAM_SNAPSHOT_RUN_ID ??= new Date().toISOString().replace(/[-:]/g, '').slice(0, 15);
+    await pruneDomSnapshots({ keepRuns: 10 });
+  },
+  before: async function () {
+    // browser.domSnapshot('label') captures the page from the REPL during browser.debug().
+    browser.addCommand('domSnapshot', async (label) => {
+      const snapshot = await captureDomSnapshot({ trigger: 'manual', label });
+      return snapshot ? writeDomSnapshot(snapshot) : undefined;
+    });
+  },
+  afterStep: async function (step, scenario, { error }) {
+    if (error) {
+      // Capture the DOM snapshot first, before anything else changes the page.
+      const snapshot = await captureDomSnapshot({
+        trigger: 'failure',
+        scenario: scenario.name,
+        step: step.text,
+        error,
+      });
+      if (snapshot) {
+        allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
+        console.log(`DOM snapshot written to ${await writeDomSnapshot(snapshot)}`);
+      }
+      await browser.takeScreenshot();
+    }
+  },
+};
+```
+
+Also set `cucumberOpts.timeout` above `waitforTimeout` (the scaffold adds 30 seconds), so a step that
+waits for a missing element fails with UTAM's error, which names the locator, rather than only
+Cucumber's timeout. `init` adds the guide and the capture step to an existing project's UTAM test
+folder, since they're new files.
 
 ## Usage & Wireit Integration
 

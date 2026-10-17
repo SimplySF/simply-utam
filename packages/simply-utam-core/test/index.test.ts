@@ -76,6 +76,12 @@ describe('@simplysf/simply-utam-core', () => {
         'mergeForceignore',
         'resolveUtamTestIgnoreRules',
 
+        // gitignore
+        'GITIGNORE_FILE',
+        'SIMPLY_UTAM_GITIGNORE_RULES',
+        'ensureGitignore',
+        'mergeGitignore',
+
         // rules
         'ROOT_TARGETS',
         'convertLwcNameToHtml',
@@ -115,6 +121,8 @@ describe('@simplysf/simply-utam-core', () => {
         'generateGeneratorConfig',
         'generateHelloFeature',
         'generateHelloSteps',
+        'generateSnapshotGuide',
+        'generateSnapshotSteps',
         'generateNamespaceMap',
         'generateUtamConfig',
         'generateWdioConfig',

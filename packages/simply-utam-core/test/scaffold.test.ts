@@ -25,6 +25,8 @@ import {
   generateNamespaceMap,
   generateHelloFeature,
   generateHelloSteps,
+  generateSnapshotGuide,
+  generateSnapshotSteps,
   injectWireitConfiguration,
   checkMissingDependencies,
   scaffoldProject,
@@ -224,7 +226,14 @@ describe('scaffold service', () => {
         sourceDir: 'force-app',
       });
 
-      expect(result.createdFiles).toHaveLength(6);
+      // Six scaffold files, the DOM snapshot guide and capture step, and .gitignore.
+      expect(result.createdFiles).toHaveLength(9);
+      expect(result.createdFiles).toContain(path.join('force-app', 'test', 'utam', 'SNAPSHOTS.md'));
+      expect(result.createdFiles).toContain(
+        path.join('force-app', 'test', 'utam', 'step_definitions', 'dom-snapshot.steps.mjs'),
+      );
+      expect(result.createdFiles).toContain('.gitignore');
+      expect(result.snapshotHooksMissing).toBe(false);
       expect(result.createdFiles).toContain('generator.config.json');
       expect(result.createdFiles).toContain('utam.config.json');
       expect(result.createdFiles).toContain('wdio.conf.mjs');
@@ -259,8 +268,11 @@ describe('scaffold service', () => {
         sourceDir: 'force-app',
       });
 
-      expect(result.createdFiles).toHaveLength(4);
+      // The snapshot guide and capture step are new files, so they go into the existing folder.
+      expect(result.createdFiles).toHaveLength(7);
       expect(fs.existsSync(path.join(existingUtamDir, 'features', 'hello.feature'))).toBe(false);
+      expect(fs.existsSync(path.join(existingUtamDir, 'SNAPSHOTS.md'))).toBe(true);
+      expect(fs.existsSync(path.join(existingUtamDir, 'step_definitions', 'dom-snapshot.steps.mjs'))).toBe(true);
     });
 
     it('should skip existing files unless force is true', async () => {
@@ -292,8 +304,9 @@ describe('scaffold service', () => {
         dryRun: true,
       });
 
-      expect(result.createdFiles).toHaveLength(6);
+      expect(result.createdFiles).toHaveLength(9);
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'utam.config.json'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(false);
     });
@@ -466,6 +479,55 @@ describe('scaffold service', () => {
 
       expect(result.forceignore?.action).toBe('skipped');
       expect(result.createdFiles).not.toContain('.forceignore');
+    });
+  });
+
+  describe('DOM snapshots', () => {
+    it('adds capture on failure, pruning, the custom command and a step timeout above UTAM waits to wdio.conf.mjs', () => {
+      const config = generateWdioConfig('force-app');
+      expect(config).toContain(
+        "import { captureDomSnapshot, pruneDomSnapshots, serializeDomSnapshot, writeDomSnapshot } from '@simplysf/simply-utam';",
+      );
+      expect(config).toContain('await pruneDomSnapshots({ keepRuns: 10 });');
+      expect(config).toContain("browser.addCommand('domSnapshot'");
+      expect(config).toContain("trigger: 'failure'");
+      expect(config).toContain('timeout: (DEBUG ? DEBUG_TIMEOUT : EXPLICIT_TIMEOUT) + STEP_TIMEOUT_MARGIN,');
+      expect(config).toContain('waitforTimeout: DEBUG ? DEBUG_TIMEOUT : EXPLICIT_TIMEOUT,');
+      expect(config).toContain('disableWebdriverScreenshotsReporting: false');
+      expect(config).not.toContain('Screenshotes');
+      // The failure capture runs before the screenshot, so it sees the page as the step left it.
+      expect(config.indexOf("trigger: 'failure'")).toBeLessThan(
+        config.indexOf('await browser.takeScreenshot();\n    }\n  },\n  afterScenario'),
+      );
+    });
+
+    it('scaffolds the capture step and the usage guide with both recipes', () => {
+      const steps = generateSnapshotSteps();
+      expect(steps).toContain("When('I capture the DOM snapshot', async function ()");
+      expect(steps).toContain("When('I capture the DOM snapshot {string}', async function (label)");
+      const guide = generateSnapshotGuide();
+      expect(guide).toMatch(/^---\nname: utam-dom-snapshots\ndescription: .+\n---\n/);
+      expect(guide).toContain('### Attach your own page object below the last shipped one');
+      expect(guide).toContain('### Scope a shipped root page object to the visible copy');
+      for (const [, json] of guide.matchAll(/```json\n([\s\S]*?)```/g))
+        expect(() => JSON.parse(json) as unknown).not.toThrow();
+    });
+
+    it('notes when a kept wdio.conf.mjs does not capture DOM snapshots', async () => {
+      fs.writeFileSync(path.join(tempDir, 'wdio.conf.mjs'), 'export const config = {};\n');
+      const missing = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+      expect(missing.skippedFiles).toContain('wdio.conf.mjs');
+      expect(missing.snapshotHooksMissing).toBe(true);
+
+      fs.writeFileSync(path.join(tempDir, 'wdio.conf.mjs'), 'import { captureDomSnapshot } from "x";\n');
+      const present = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+      expect(present.snapshotHooksMissing).toBe(false);
+    });
+
+    it('leaves .gitignore alone with gitignore: false', async () => {
+      const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', gitignore: false });
+      expect(result.gitignore).toBeUndefined();
+      expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(false);
     });
   });
 });

@@ -448,9 +448,10 @@ after a step that waits for something on the page (see Risks for navigation).
 command (trigger `manual`), so it can be called from the REPL during `browser.debug()`.
 
 **Existing projects.** `init` only writes templates that are missing, so a project that already has
-`wdio.conf.mjs` doesn't get the new hooks. When `init` skips an existing `wdio.conf.mjs`, it prints a
-note pointing to the README section with the `onPrepare`, `before` and `afterStep` snippets to copy.
-The snapshot step is a new file, so `init` adds it to existing projects too.
+`wdio.conf.mjs` doesn't get the new hooks. When `init` keeps an existing `wdio.conf.mjs` that doesn't
+capture snapshots, it prints a note pointing to the CLI README section with the `onPrepare`, `before`
+and `afterStep` snippets to copy. The snapshot step and the usage guide are new files, so `init` adds
+them to existing projects too, in the project's UTAM test folder.
 
 ### 3. Files
 
@@ -474,10 +475,13 @@ The snapshot step is a new file, so `init` adds it to existing projects too.
   `onPrepare` hook keeps 10.
 - The file system is an injectable sink, so tests don't touch disk.
 
-Snapshots must not be committed. `init` adds `.utam/` to `.gitignore`, add-only, reusing the
-add-only merging design 0002 built for `.forceignore` (`mergeForceignore`): never removing or
-rewriting a line, adding under a `# Ignore UTAM` comment. The two files share one implementation of
-the merge rather than two.
+Snapshots must not be committed. `init` adds `.utam/snapshots/` to `.gitignore` (creating the file
+when it's missing; `--no-gitignore` skips it), add-only, reusing the add-only merging design 0002
+built for `.forceignore`: never removing or rewriting a line, adding under a `# Ignore UTAM`
+comment. The two files share one implementation of the merge rather than two. The rule is
+`.utam/snapshots/`, not `.utam/`, because `init` also scaffolds `.utam/namespace-map.json`, which the
+build's `rewrite` task reads and which belongs in git. An existing `.utam/` rule counts as covering
+it.
 
 ### 4. Page-object index
 
@@ -872,7 +876,8 @@ build-time tooling the CLI uses, not what a test run imports.
 | `readDomSnapshot(path)`, `parseDomSnapshot(json)`, `serializeDomSnapshot(snapshot)`                                                                | Reads or parses a snapshot, checking `format` and `version` and numbering handles; writes the file form, without handles.                           |
 | `findNodes`, `querySnapshot`, `componentPath`, `componentPathByText`, `subtree`, `nodeDetails`, `nodeAncestors`, `utamErrorHint`, `snapshotHeader` | The snapshot queries.                                                                                                                               |
 | `buildPageObjectIndex(options?)`, `lookupPageObject`, `searchPageObjects`                                                                          | The page-object index and its queries.                                                                                                              |
-| `ensureGitignore`, `mergeGitignore`                                                                                                                | The `.gitignore` rule, shaped like `ensureForceignore` and `mergeForceignore` and sharing their merge.                                              |
+| `ensureGitignore`, `mergeGitignore`, `GITIGNORE_FILE`, `SIMPLY_UTAM_GITIGNORE_RULES`                                                               | The `.gitignore` rule, shaped like `ensureForceignore` and `mergeForceignore` and sharing their merge.                                              |
+| `generateSnapshotGuide`, `generateSnapshotSteps`                                                                                                   | The usage guide and the capture step, as `init` scaffolds them.                                                                                     |
 | `DomSnapshotError`                                                                                                                                 | Thrown for input that isn't a readable snapshot, an unknown handle, or a selector that can't be parsed.                                             |
 | `DOM_SNAPSHOT_FORMAT`, `DOM_SNAPSHOT_VERSION`, `LATEST_SNAPSHOT`, `DEFAULT_OUTPUT_LIMIT`, `SNAPSHOT_MASK_ENV`, `SNAPSHOT_RUN_ID_ENV`               | `'simply-utam-dom-snapshot'`, `1`, `'.utam/snapshots/latest.json'`, `200` (lines of text output), `'UTAM_SNAPSHOT_MASK'`, `'UTAM_SNAPSHOT_RUN_ID'`. |
 | `DomSnapshot`, `DomNode`, `SnapshotPage`, `SnapshotBrowser`, `SelectorScope`, `QueryResult`, option and result types                               | Types. `SnapshotBrowser` and `SnapshotPage` are structural.                                                                                         |

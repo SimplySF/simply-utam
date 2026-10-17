@@ -25,6 +25,7 @@ import {
   resolveUtamTestIgnoreRules,
   type ForceignoreResult,
 } from '../forceignore/index.js';
+import { ensureGitignore, type GitignoreResult } from '../gitignore/index.js';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -102,6 +103,11 @@ export interface ScaffoldOptions {
    * Exact line that ends the .forceignore customization region. Defaults to '# -- END CUSTOMIZATION'.
    */
   forceignoreRegionEnd?: string;
+
+  /**
+   * If false, leaves .gitignore untouched. Defaults to true.
+   */
+  gitignore?: boolean;
 }
 
 /**
@@ -137,6 +143,17 @@ export interface ScaffoldResult {
    * What happened to .forceignore. Absent when the forceignore option is false.
    */
   forceignore?: ForceignoreResult;
+
+  /**
+   * What happened to .gitignore. Absent when the gitignore option is false.
+   */
+  gitignore?: GitignoreResult;
+
+  /**
+   * True when an existing wdio.conf.mjs was kept and doesn't capture DOM snapshots: its hooks have to
+   * be added by hand.
+   */
+  snapshotHooksMissing: boolean;
 }
 
 /**
@@ -257,6 +274,27 @@ export function generateHelloSteps(templatesDir = DEFAULT_TEMPLATES_DIR): string
   } catch {
     return `import { Given } from '@wdio/cucumber-framework';\nimport { goToApplication } from '@simplysf/simply-utam';\n\nGiven('I open the Salesforce application {string}', async (appName) => {\n  // Authenticates via Salesforce CLI frontdoor URL and opens the application home page\n  await goToApplication(appName);\n});\n`;
   }
+}
+
+/**
+ * Generates the SNAPSHOTS.md usage guide for DOM snapshots by loading its external template.
+ *
+ * @param templatesDir - Optional custom directory containing the template file.
+ * @returns The guide's Markdown text.
+ */
+export function generateSnapshotGuide(templatesDir = DEFAULT_TEMPLATES_DIR): string {
+  return loadTemplate('SNAPSHOTS.md', templatesDir);
+}
+
+/**
+ * Generates the dom-snapshot.steps.mjs step definitions (`I capture the DOM snapshot`) by loading
+ * their external template.
+ *
+ * @param templatesDir - Optional custom directory containing the template file.
+ * @returns The step definitions' JavaScript module text.
+ */
+export function generateSnapshotSteps(templatesDir = DEFAULT_TEMPLATES_DIR): string {
+  return loadTemplate('dom-snapshot.steps.mjs', templatesDir);
 }
 
 /**
@@ -415,15 +453,41 @@ function planUtamTests(
   };
 }
 
-function recordForceignore(
-  forceignore: ForceignoreResult | undefined,
+/**
+ * The DOM snapshot guide and capture step, in the UTAM test folder. They're new files, so an existing
+ * project gets them too.
+ */
+function planSnapshotFiles(testDir: string, templatesDir: string): Array<{ relativePath: string; content: string }> {
+  return [
+    { relativePath: path.join(testDir, 'SNAPSHOTS.md'), content: generateSnapshotGuide(templatesDir) },
+    {
+      relativePath: path.join(testDir, 'step_definitions', 'dom-snapshot.steps.mjs'),
+      content: generateSnapshotSteps(templatesDir),
+    },
+  ];
+}
+
+/** Whether a wdio.conf.mjs that scaffolding kept captures DOM snapshots on failure. */
+function lacksSnapshotHooks(projectDir: string, skippedFiles: string[]): boolean {
+  if (!skippedFiles.includes('wdio.conf.mjs')) {
+    return false;
+  }
+  try {
+    return !fs.readFileSync(path.join(projectDir, 'wdio.conf.mjs'), 'utf-8').includes('captureDomSnapshot');
+  } catch {
+    return false;
+  }
+}
+
+function recordIgnoreFile(
+  ignoreFile: ForceignoreResult | GitignoreResult | undefined,
   createdFiles: string[],
   modifiedFiles: string[],
 ): void {
-  if (forceignore?.action === 'created') {
-    createdFiles.push(forceignore.path);
-  } else if (forceignore?.action === 'appended' || forceignore?.action === 'inserted') {
-    modifiedFiles.push(forceignore.path);
+  if (ignoreFile?.action === 'created') {
+    createdFiles.push(ignoreFile.path);
+  } else if (ignoreFile?.action === 'appended' || ignoreFile?.action === 'inserted') {
+    modifiedFiles.push(ignoreFile.path);
   }
 }
 
@@ -500,14 +564,16 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
   ];
 
   const utamTests = planUtamTests(projectDir, sourceDir, templatesDir, force);
-  filesToCreate.push(...utamTests.files);
+  filesToCreate.push(...utamTests.files, ...planSnapshotFiles(utamTests.testDirs[0], templatesDir));
 
   const { createdFiles, skippedFiles } = writeScaffoldFiles(projectDir, filesToCreate, force, dryRun);
   const modifiedFiles: string[] = [];
   let updatedPackageJson: Record<string, unknown> | undefined;
 
   const forceignore = updateForceignore(projectDir, sourceDir, utamTests.testDirs, sfdxProject, options);
-  recordForceignore(forceignore, createdFiles, modifiedFiles);
+  recordIgnoreFile(forceignore, createdFiles, modifiedFiles);
+  const gitignore = options?.gitignore === false ? undefined : ensureGitignore({ projectDir, dryRun });
+  recordIgnoreFile(gitignore, createdFiles, modifiedFiles);
 
   if (packageJsonData) {
     const injection = injectWireitConfiguration(packageJsonData, templatesDir);
@@ -531,5 +597,7 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     updatedPackageJson,
     missingDependencies,
     forceignore,
+    gitignore,
+    snapshotHooksMissing: lacksSnapshotHooks(projectDir, skippedFiles),
   });
 }

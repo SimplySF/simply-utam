@@ -197,11 +197,16 @@ function findBlockEnd(lines: Line[], headerIndex: number): number {
 /**
  * Finds the index of the region's end marker, or a warning when the region is malformed.
  */
-function findRegionEnd(lines: Line[], regionStart: string, regionEnd: string): { index?: number; warning?: string } {
+function findRegionEnd(
+  lines: Line[],
+  regionStart: string,
+  regionEnd: string,
+  fileName: string,
+): { index?: number; warning?: string } {
   if (!regionStart || !regionEnd) {
     // An empty marker would match every blank line.
     return {
-      warning: `A customization region marker is empty, so UTAM rules were added at the end of ${FORCEIGNORE_FILE}.`,
+      warning: `A customization region marker is empty, so UTAM rules were added at the end of ${fileName}.`,
     };
   }
   const starts = findMarker(lines, regionStart);
@@ -213,7 +218,7 @@ function findRegionEnd(lines: Line[], regionStart: string, regionEnd: string): {
     return { index: ends[0] };
   }
   return {
-    warning: `The customization region ('${regionStart}' … '${regionEnd}') is malformed, so UTAM rules were added at the end of ${FORCEIGNORE_FILE}.`,
+    warning: `The customization region ('${regionStart}' … '${regionEnd}') is malformed, so UTAM rules were added at the end of ${fileName}.`,
   };
 }
 
@@ -247,9 +252,39 @@ function needsSeparator(lines: Line[], index: number): boolean {
  * @returns The merged content and a description of what changed.
  */
 export function mergeForceignore(content: string, options?: MergeForceignoreOptions): MergeForceignoreResult {
-  const rules = options?.rules ?? SIMPLY_UTAM_FORCEIGNORE_RULES;
-  const regionStart = (options?.regionStart ?? DEFAULT_FORCEIGNORE_REGION.start).trim();
-  const regionEnd = (options?.regionEnd ?? DEFAULT_FORCEIGNORE_REGION.end).trim();
+  return mergeIgnoreRules(content, {
+    rules: options?.rules ?? SIMPLY_UTAM_FORCEIGNORE_RULES,
+    regionStart: options?.regionStart,
+    regionEnd: options?.regionEnd,
+    header: FORCEIGNORE_HEADER,
+    fileName: FORCEIGNORE_FILE,
+  });
+}
+
+/** What {@link mergeIgnoreRules} needs to know about an ignore file. */
+export interface IgnoreFileMerge {
+  rules: readonly ForceignoreRule[];
+  regionStart?: string;
+  regionEnd?: string;
+  /** The comment line that heads the added rules. */
+  header: string;
+  /** The file's name, for warnings. */
+  fileName: string;
+}
+
+/**
+ * Adds missing rules to an ignore file's content (`.forceignore`, `.gitignore`) without changing any
+ * existing line: under the first header comment if there is one, otherwise in a new block above the
+ * customization region's end marker, or at the end.
+ *
+ * @param content - The file's current content; an empty string for a new file.
+ * @param merge - The rules, region markers, header and file name.
+ * @returns The merged content and a description of what changed.
+ */
+export function mergeIgnoreRules(content: string, merge: IgnoreFileMerge): MergeForceignoreResult {
+  const { rules, header, fileName } = merge;
+  const regionStart = (merge.regionStart ?? DEFAULT_FORCEIGNORE_REGION.start).trim();
+  const regionEnd = (merge.regionEnd ?? DEFAULT_FORCEIGNORE_REGION.end).trim();
 
   const bom = content.startsWith(BYTE_ORDER_MARK) ? BYTE_ORDER_MARK : '';
   const body = content.slice(bom.length);
@@ -269,15 +304,15 @@ export function mergeForceignore(content: string, options?: MergeForceignoreOpti
   let newLines: string[];
   let placement: ForceignorePlacement;
 
-  const headerIndex = lines.findIndex((line) => line.text.trim() === FORCEIGNORE_HEADER);
+  const headerIndex = lines.findIndex((line) => line.text.trim() === header);
   if (headerIndex === -1) {
-    const region = findRegionEnd(lines, regionStart, regionEnd);
+    const region = findRegionEnd(lines, regionStart, regionEnd, fileName);
     if (region.warning) {
       warnings.push(region.warning);
     }
     placement = region.index === undefined ? 'end' : 'region';
     insertAt = region.index ?? lines.length;
-    newLines = [...(needsSeparator(lines, insertAt) ? [''] : []), FORCEIGNORE_HEADER, ...addedPatterns];
+    newLines = [...(needsSeparator(lines, insertAt) ? [''] : []), header, ...addedPatterns];
   } else {
     placement = 'block';
     insertAt = findBlockEnd(lines, headerIndex);
@@ -361,7 +396,7 @@ export function resolveUtamTestIgnoreRules(testDirs: string[], packageDirectorie
  * holds the file), the temporary file is removed and the file is written in place instead. An error
  * from that write is thrown.
  */
-function writeFileSafely(filePath: string, content: string): void {
+export function writeFileSafely(filePath: string, content: string): void {
   const exists = fs.existsSync(filePath);
   const target = exists ? fs.realpathSync(filePath) : filePath;
   if (exists) {
