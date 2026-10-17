@@ -29,7 +29,7 @@ import {
   type PathResult,
 } from '../src/index.js';
 import { getNode, type Located } from '../src/snapshot/locate.js';
-import { adapter } from '../src/snapshot/selector.js';
+import { adapter, matchSelector, scopeMatches } from '../src/snapshot/selector.js';
 import {
   activeRecordHome,
   el,
@@ -228,6 +228,45 @@ describe('find --css', () => {
     expect(ids('a:focus')).toEqual(['a']);
   });
 
+  it('matches a %d child-position placeholder as any position', () => {
+    const page = snapshotOf([el('ul', {}, { children: [el('li', { class: 'a' }), el('li', { class: 'b' })] })]);
+    const result = querySnapshot(page, 'li:nth-child(%d)');
+    expect(result.matches.map((match) => match.attrs?.class)).toEqual(['a', 'b']);
+    expect(result.notes).toContain('%s/%d placeholders match any value.');
+    expect(querySnapshot(page, 'li:nth-of-type( %d )').matches).toHaveLength(2);
+  });
+
+  it('keeps the rest of a selector list when a live-state pseudo-class is a whole item or compound', () => {
+    const page = snapshotOf([el('ul', {}, { children: [el('li', { class: 'a' }), el('button', {})] })]);
+    const tags = (css: string): string[] => querySnapshot(page, css).matches.map((match) => match.tag);
+    // Dropping the pseudo-class leaves any element in its place: over-matching, as the note says.
+    expect(tags(':hover, li')).toEqual(['html', 'body', 'ul', 'li', 'button']);
+    expect(tags('li, :focus')).toEqual(['html', 'body', 'ul', 'li', 'button']);
+    expect(tags('ul > :focus')).toEqual(['li', 'button']);
+    expect(tags(':focus')).toEqual(['html', 'body', 'ul', 'li', 'button']);
+    expect(tags('ul :is(:hover)')).toEqual(['li', 'button']);
+  });
+
+  it('leaves live-state names inside attribute values and strings alone', () => {
+    const page = snapshotOf([el('button', { title: ':checked items' }), el('button', { title: 'x' })]);
+    const result = querySnapshot(page, 'button[title=":checked items"]');
+    expect(result.matches.map((match) => match.attrs?.title)).toEqual([':checked items']);
+    expect(result.notes).toEqual([]);
+    expect(querySnapshot(page, "button[title=':hover']:hover").notes).toEqual([
+      "Ignored :hover: a snapshot doesn't record live state, so this may over-match.",
+    ]);
+  });
+
+  it('matches page-object selectors without notes, and skips one it cannot read or a scope it cannot find', () => {
+    for (const css of ['one-record-home-flexipage2', '.active.lafPageHost one-record-home-flexipage2'])
+      expect(scopeMatches(snapshot, css, { kind: 'document' })).toEqual(matchSelector(snapshot, css).matches);
+    expect(scopeMatches(snapshot, 'records-highlights2', { kind: 'shadow', within: copy('new') })).toEqual(
+      matchSelector(snapshot, 'records-highlights2', { kind: 'shadow', within: copy('new') }).matches,
+    );
+    expect(scopeMatches(snapshot, 'a[', { kind: 'document' })).toEqual([]);
+    expect(scopeMatches(snapshot, 'span', { kind: 'shadow', within: 'n99999' })).toEqual([]);
+  });
+
   it("tests attributes against the node's own, not names an object inherits", () => {
     expect(querySnapshot(snapshot, '[constructor]').matches).toEqual([]);
     expect(querySnapshot(snapshot, '[toString=x]').matches).toEqual([]);
@@ -333,6 +372,16 @@ describe('path', () => {
     expect(path(label('new')).lines[1]).toBe(
       `  ⚠ root selector "one-record-home-flexipage2" matches 2 in the document; utam.load takes the first, ${copy('old')} (hidden). See find --css "one-record-home-flexipage2".`,
     );
+  });
+
+  it("quotes a root selector with a double quote in it as one shell word in find --css's suggestion", () => {
+    const flexipage = {
+      root: true,
+      selector: { css: 'one-record-home-flexipage2:not([data-copy="none"])' },
+      elements: [],
+    };
+    const warning = path(label('new'), indexWith({ flexipage })).lines.find((line) => line.includes('⚠ root selector'));
+    expect(warning).toMatch(/See find --css 'one-record-home-flexipage2:not\(\[data-copy="none"\]\)'\.$/);
   });
 
   it('shows a project root page object on a plain container, and drops the warning for the root it scopes', () => {

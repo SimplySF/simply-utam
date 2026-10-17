@@ -113,7 +113,8 @@ function installedPageObjectPackages(projectDir: string): Record<string, string>
  * `.utam/snapshots/latest.json`, replaced in one step through a temporary file and a rename. The run
  * id comes from `UTAM_SNAPSHOT_RUN_ID`, or the current time.
  * A name already taken gets a number; files are created exclusively, so two workers can't both take
- * one name. Records the installed `salesforce-pageobjects` version in `meta.pageObjectPackages`.
+ * one name. Records the installed `salesforce-pageobjects` version in the file's
+ * `meta.pageObjectPackages`, leaving `snapshot` unchanged.
  *
  * @param snapshot The snapshot to write.
  * @param options Where and how to write it.
@@ -124,12 +125,16 @@ export async function writeDomSnapshot(snapshot: DomSnapshot, options: WriteDomS
   const fs = options.fs ?? nodeFs;
   const env = options.env ?? process.env;
   const packages = options.pageObjectPackages ?? installedPageObjectPackages(projectDir);
-  if (Object.keys(packages).length > 0) snapshot.meta.pageObjectPackages = packages;
+  // The caller's snapshot is left as it is; only the file gets the versions.
+  const written =
+    Object.keys(packages).length > 0
+      ? { ...snapshot, meta: { ...snapshot.meta, pageObjectPackages: packages } }
+      : snapshot;
 
   const dir = path.join(SNAPSHOTS_DIR, cleanPart(env[SNAPSHOT_RUN_ID_ENV] ?? '') || snapshotRunId());
   await fs.mkdir(path.join(projectDir, dir), { recursive: true });
 
-  const json = serializeDomSnapshot(snapshot);
+  const json = serializeDomSnapshot(written);
   const { name, numbered } = baseName(snapshot);
   for (let n = 1; ; n++) {
     const file = path.join(dir, numbered ? `${name}--${n}.json` : n === 1 ? `${name}.json` : `${name}-${n}.json`);

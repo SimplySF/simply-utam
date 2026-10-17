@@ -62,33 +62,62 @@ export const adapter: Adapter = {
 // Pseudo-classes about live state that a snapshot can't judge; they're dropped, so the selector may over-match.
 // Longer names come first, and the guard stops `:focus` matching the start of `:focus-within`.
 const LIVE_STATE = /:(focus-within|focus-visible|focus|hover|active|visited|checked)(?![\w-])/g;
-// What dropping a live-state pseudo-class can leave behind: an empty argument in a list, then an empty
-// `:not()`, `:is()`, `:where()` or `:has()`, which is dropped too.
-const EMPTY_ARGUMENT = /(\(\s*,\s*)|(\s*,\s*(?=[,)]))/g;
-const EMPTY_PSEUDO = /:(not|is|where|has)\(\s*\)/g;
+// A live-state pseudo-class that is a whole compound, such as `:hover` in `:hover, a` or `a > :focus`,
+// leaves this mark: any element, or, as a whole argument of `:not()`, `:is()`, `:where()` or `:has()`,
+// nothing, which drops a pseudo-class left with no arguments too.
+const WHOLE_COMPOUND = '\uE001';
+const COMPOUND_START = /[\s>+~,(]/;
+const LOGICAL_PSEUDO = /:(not|is|where|has)\(([^()]*)\)/g;
+// Strings and attribute tests, which the rewrites below must not read as syntax.
+const VALUE = /(["'])(?:\\.|(?!\1).)*\1|\[(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\]"'])*\]/g;
+const MASKED_VALUE = /\uE000(\d+)\uE000/g;
+
+/** Rewrite a selector's syntax only: its strings and attribute tests are kept as they are. */
+function outsideValues(selector: string, rewrite: (syntax: string) => string): string {
+  const values: string[] = [];
+  const masked = selector.replace(VALUE, (value) => `\uE000${values.push(value) - 1}\uE000`);
+  return rewrite(masked).replace(MASKED_VALUE, (_match, i: string) => values[Number(i)]);
+}
+
+function dropLiveState(syntax: string): string {
+  // Dropped, a pseudo-class that is a whole compound leaves any element in its place.
+  const dropped = (offset: number, whole: string): string =>
+    offset === 0 || COMPOUND_START.test(whole[offset - 1]) ? WHOLE_COMPOUND : '';
+  let out = syntax.replace(LIVE_STATE, (_match, _name, offset: number, whole: string) => dropped(offset, whole));
+  let before: string;
+  do {
+    before = out;
+    out = out.replace(LOGICAL_PSEUDO, (_match, name: string, args: string, offset: number, whole: string) => {
+      const kept = args.split(',').filter((arg) => arg.trim() !== WHOLE_COMPOUND);
+      return kept.length > 0 ? `:${name}(${kept.join(',').trim()})` : dropped(offset, whole);
+    });
+  } while (out !== before);
+  return out.replaceAll(WHOLE_COMPOUND, '*');
+}
 
 /** A selector made ready to check against a snapshot, with what it can't check. */
 export type PreparedSelector = { selector: string; notes: string[] };
 
 /**
- * Rewrite a page object's selector for the snapshot: `%s`/`%d` placeholders in an attribute test
- * match any value, and live-state pseudo-classes are dropped. Says what it changed.
+ * Rewrite a page object's selector for the snapshot: `%s`/`%d` placeholders in an attribute test or
+ * a child-position argument match any value, and live-state pseudo-classes are dropped. Says what it
+ * changed.
  *
  * @param selector The CSS selector, as a page object or a user writes it.
  */
 export function prepareSelector(selector: string): PreparedSelector {
   const notes: string[] = [];
   let out = selector.replace(/\[\s*([\w-]+)\s*[~|^$*]?=\s*(["']?)[^\]]*%[sd][^\]]*\2\s*\]/g, '[$1]');
+  out = outsideValues(out, (syntax) => syntax.replace(/(:nth-[\w-]+\()\s*%d\s*\)/g, '$1n)'));
   if (out !== selector) notes.push('%s/%d placeholders match any value.');
-  const live = [...new Set([...out.matchAll(LIVE_STATE)].map((m) => `:${m[1]}`))];
-  if (live.length > 0) {
-    out = out.replace(LIVE_STATE, '').replace(EMPTY_ARGUMENT, (_match, open?: string) => (open ? '(' : ''));
-    let before: string;
-    do {
-      before = out;
-      out = out.replace(EMPTY_PSEUDO, '');
-    } while (out !== before);
-    notes.push(`Ignored ${live.join(', ')}: a snapshot doesn't record live state, so this may over-match.`);
+  const live = new Set<string>();
+  outsideValues(out, (syntax) => {
+    for (const match of syntax.matchAll(LIVE_STATE)) live.add(`:${match[1]}`);
+    return syntax;
+  });
+  if (live.size > 0) {
+    out = outsideValues(out, dropLiveState);
+    notes.push(`Ignored ${[...live].join(', ')}: a snapshot doesn't record live state, so this may over-match.`);
   }
   return { selector: out, notes };
 }
@@ -217,6 +246,33 @@ function scopeNodes(roots: Located[]): Located[] {
   return out;
 }
 
+/** The nodes a search in `scope` tests, in document order. */
+function scopeCandidates(snapshot: DomSnapshot, scope: SelectorScope): Located[] {
+  if (scope.kind === 'document') return scopeNodes([locate(snapshot).values().next().value!]);
+  const host = getNode(snapshot, scope.within);
+  if (scope.kind === 'shadow' && host.shadow.length === 0)
+    throw new DomSnapshotError(`${scope.within} has no shadow root in this snapshot.`);
+  return scopeNodes(scope.kind === 'shadow' ? host.shadow : host.light);
+}
+
+/**
+ * The nodes a selector matches in a scope, as {@link matchSelector} finds them but without its notes,
+ * and none for a selector that can't be read or a scope that isn't in the snapshot: for checking
+ * page objects' selectors, where one that can't be checked is skipped.
+ *
+ * @param snapshot The snapshot.
+ * @param selector The CSS selector, as a page object writes it.
+ * @param scope Where to search.
+ */
+export function scopeMatches(snapshot: DomSnapshot, selector: string, scope: SelectorScope): Located[] {
+  try {
+    const test = compiledFor(prepareSelector(selector).selector);
+    return scopeCandidates(snapshot, scope).filter((node) => test(node));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Every node a selector matches in a scope, in document order, as `querySelectorAll` would find them:
  * combinators don't cross shadow roots, and ancestors above the scope still count. The first match
@@ -249,16 +305,7 @@ export function matchSelector(
 ): LocatedMatches {
   const prepared = prepareSelector(selector);
   const test = compiledFor(prepared.selector);
-  let roots: Located[];
-  if (scope.kind === 'document') {
-    roots = [locate(snapshot).values().next().value!];
-  } else {
-    const host = getNode(snapshot, scope.within);
-    if (scope.kind === 'shadow' && host.shadow.length === 0)
-      throw new DomSnapshotError(`${scope.within} has no shadow root in this snapshot.`);
-    roots = scope.kind === 'shadow' ? host.shadow : host.light;
-  }
-  const candidates = scopeNodes(roots);
+  const candidates = scopeCandidates(snapshot, scope);
   const matches = candidates.filter((node) => test(node));
   const tested = [...prepared.selector.matchAll(/\[\s*([\w-]+)\s*[~|^$*]?=/g)].map((m) => m[1]);
   const maskedAttributes = [...new Set(tested)].filter((name) =>

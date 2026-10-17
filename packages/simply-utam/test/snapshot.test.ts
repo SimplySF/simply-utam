@@ -185,6 +185,12 @@ describe('snapshot find, path, tree and node', () => {
     expect((result as FindResult).visible.map((node) => node.id)).toEqual(['n4']);
   });
 
+  it('refuses --shadow without --css and --within, rather than ignoring it', async () => {
+    await expect(run(SnapshotFind, ['--text', 'Save', '--shadow'])).rejects.toMatchObject({ oclif: { exit: 2 } });
+    await expect(run(SnapshotFind, ['--css', 'h1', '--shadow'])).rejects.toMatchObject({ oclif: { exit: 2 } });
+    await expect(run(SnapshotFind, ['--css', 'h1'])).resolves.toBeDefined();
+  });
+
   it('reads --file instead of the latest snapshot', async () => {
     const other = path.join(projectDir, 'other.json');
     fs.writeFileSync(

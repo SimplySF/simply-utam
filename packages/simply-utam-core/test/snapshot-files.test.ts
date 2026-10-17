@@ -253,8 +253,11 @@ describe('writeDomSnapshot', () => {
       '{"name":"salesforce-pageobjects","version":"12.0.0"}',
     );
     const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
-    await writeDomSnapshot(snapshot, { projectDir: dir, env });
-    expect(snapshot.meta.pageObjectPackages).toEqual({ 'salesforce-pageobjects': '12.0.0' });
+    const file = await writeDomSnapshot(snapshot, { projectDir: dir, env });
+    const written = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')) as DomSnapshot;
+    expect(written.meta.pageObjectPackages).toEqual({ 'salesforce-pageobjects': '12.0.0' });
+    // The caller's snapshot isn't changed, so writing it again, or attaching it elsewhere, sees what it was given.
+    expect(snapshot.meta.pageObjectPackages).toBeUndefined();
   });
 
   /** A file system in memory; `rename` throws `renameError` when set. */

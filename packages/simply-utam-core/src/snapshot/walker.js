@@ -212,10 +212,34 @@ function domSnapshotWalker(input) {
     // An option has no box of its own in a closed select; it's as visible as the select.
     if (tag === 'option' || tag === 'optgroup') return false;
     // `checkVisibility` is false for `display: contents`, whose children still render.
-    if (getComputedStyle(el).display === 'contents') return false;
-    if (isVisibleNative) return !isVisibleNative(el);
     const style = getComputedStyle(el);
-    return style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
+    if (style.display === 'contents') return false;
+    const hidden = isVisibleNative
+      ? !isVisibleNative(el)
+      : style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
+    // `visibility` is inherited but can be overridden: a descendant set back to `visible` still
+    // renders. Such an element isn't the top of a hidden subtree; its children are judged on their own.
+    if (hidden && hiddenByVisibilityOnly(style) && hasVisibleDescendant(el)) return false;
+    return hidden;
+  }
+
+  function hiddenByVisibilityOnly(style) {
+    return style.visibility !== 'visible' && style.display !== 'none' && style.opacity !== '0';
+  }
+
+  // A light or shadow descendant whose own `visibility` is `visible`, under no `display: none` or
+  // `opacity: 0`.
+  function hasVisibleDescendant(el) {
+    const children = (node) => [...node.children, ...(node.shadowRoot ? node.shadowRoot.children : [])];
+    const stack = children(el);
+    while (stack.length > 0) {
+      const child = stack.pop();
+      const style = getComputedStyle(child);
+      if (style.display === 'none' || style.opacity === '0') continue;
+      if (style.visibility === 'visible') return true;
+      stack.push(...children(child));
+    }
+    return false;
   }
 
   function shouldKeep(el, tag, inHidden) {

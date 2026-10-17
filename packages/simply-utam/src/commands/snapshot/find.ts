@@ -49,7 +49,8 @@ export default class SnapshotFind extends Command {
     within: Flags.string({ summary: 'With --css: search under this node (its light DOM).', dependsOn: ['css'] }),
     shadow: Flags.boolean({
       summary: "With --css and --within: search the node's shadow root instead.",
-      default: false,
+      // No default: oclif checks dependsOn against a default value too.
+      dependsOn: ['css', 'within'],
     }),
     all: Flags.boolean({ summary: 'List hidden matches in full rather than as a count.', default: false }),
     ...fileFlag,

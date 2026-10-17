@@ -232,6 +232,20 @@ describe('walker: visibility', () => {
     expect(byTag(snapshot, 'c-a')[0].hidden).toBe(true);
     expect(byTag(snapshot, 'c-b')[0].hidden).toBeUndefined();
   });
+
+  it('judges the children of a visibility: hidden element on their own when one is set back to visible', () => {
+    const body = `<c-panel style="visibility: hidden"><c-label>Hidden</c-label><c-action style="visibility: visible"></c-action></c-panel>
+       <c-gone style="visibility: hidden"><c-inner></c-inner><c-under style="display: none"><c-x style="visibility: visible"></c-x></c-under></c-gone>`;
+    for (const noCheckVisibility of [false, true]) {
+      const snapshot = walk(body, { noCheckVisibility });
+      expect(byTag(snapshot, 'c-panel')[0].hidden).toBeUndefined();
+      expect(byTag(snapshot, 'c-label')[0].hidden).toBe(true);
+      expect(byTag(snapshot, 'c-action')[0]).toMatchObject({ rect: [1, 3, 10, 10] });
+      expect(byTag(snapshot, 'c-action')[0].hidden).toBeUndefined();
+      // A visible descendant under display: none doesn't render, so the subtree stays hidden.
+      expect(byTag(snapshot, 'c-gone')[0].hidden).toBe(true);
+    }
+  });
 });
 
 describe('walker: shadow roots', () => {

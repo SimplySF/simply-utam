@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { clip } from './describe.js';
+import { clip, shellQuote } from './describe.js';
 import type { DomSnapshot } from './format.js';
 import type { Located } from './locate.js';
 import {
@@ -24,15 +24,10 @@ import {
   type PageObjectIndex,
 } from './page-object-index.js';
 import type { QueryResult } from './query-result.js';
-import { matchSelector, type SelectorScope } from './selector.js';
+import { scopeMatches, type SelectorScope } from './selector.js';
 
 // Lazy and anchored on the text after it, so a selector with a quote in it, like `[title='Save']`, is kept whole.
 const UTAM_NOT_FOUND = /Can't find elements? with locator '(.+?)' inside its scope (element|shadow root)/;
-
-/** A selector as one POSIX shell word: double-quoted, or single-quoted when it has a double quote. */
-function shellQuote(selector: string): string {
-  return selector.includes('"') ? `'${selector.replaceAll("'", "'\\''")}'` : `"${selector}"`;
-}
 
 /** Where UTAM searched, from its not-found error, and the elements that may have declared it. */
 export type UtamErrorHint = {
@@ -43,11 +38,7 @@ export type UtamErrorHint = {
 };
 
 function firstMatch(snapshot: DomSnapshot, selector: string, scope: SelectorScope): Located | undefined {
-  try {
-    return matchSelector(snapshot, selector, scope).matches[0];
-  } catch {
-    return undefined;
-  }
+  return scopeMatches(snapshot, selector, scope)[0];
 }
 
 /** A root page object's element's parent node, found as UTAM finds it: the first match at each level. */

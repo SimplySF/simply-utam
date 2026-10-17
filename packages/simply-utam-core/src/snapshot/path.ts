@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { clip, describeNode } from './describe.js';
+import { clip, describeNode, shellQuote } from './describe.js';
 import { findNodes, type FindResult } from './find.js';
 import type { DomSnapshot, ShadowMode } from './format.js';
 import { getNode, type Located } from './locate.js';
@@ -29,7 +29,7 @@ import {
   type PageObjectMatch,
 } from './page-object-index.js';
 import { DEFAULT_OUTPUT_LIMIT, limitLines, type QueryOutputOptions, type QueryResult } from './query-result.js';
-import { matchSelector, nodeMatchesSelector, prepareSelector, type SelectorScope } from './selector.js';
+import { nodeMatchesSelector, prepareSelector, scopeMatches } from './selector.js';
 
 export type PathOptions = QueryOutputOptions & {
   /** The page-object index; without it, the path has no annotations. */
@@ -130,14 +130,6 @@ function routeTo(
     };
   }
   return undefined;
-}
-
-function scopeMatches(snapshot: DomSnapshot, selector: string, scope: SelectorScope): Located[] {
-  try {
-    return matchSelector(snapshot, selector, scope).matches;
-  } catch {
-    return [];
-  }
 }
 
 /** A root page object's selector (or its implementations'), when UTAM could load the wrong copy. */
@@ -389,7 +381,7 @@ function stepLines(step: PathStep, depth: number): string[] {
   if (step.rootSelectorMatches) {
     const r = step.rootSelectorMatches;
     lines.push(
-      `${indent}  ⚠ root selector "${clip(r.selector, 60)}" matches ${r.count} in the document; utam.load takes the first, ${r.first}${r.firstHidden ? ' (hidden)' : ''}. See find --css "${r.selector}".`,
+      `${indent}  ⚠ root selector "${clip(r.selector, 60)}" matches ${r.count} in the document; utam.load takes the first, ${r.first}${r.firstHidden ? ' (hidden)' : ''}. See find --css ${shellQuote(r.selector)}.`,
     );
   }
   for (const m of step.scopeMismatches ?? []) {

@@ -69,8 +69,13 @@ export const config = {
         error,
       });
       if (snapshot) {
-        allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
-        console.log(`DOM snapshot written to ${await writeDomSnapshot(snapshot)}`);
+        try {
+          allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
+          console.log(`DOM snapshot written to ${await writeDomSnapshot(snapshot)}`);
+        } catch (writeError) {
+          // A snapshot that can't be saved mustn't cost the screenshot below.
+          console.warn(`DOM snapshot not saved: ${writeError?.message ?? writeError}`);
+        }
       }
       await browser.takeScreenshot();
     }

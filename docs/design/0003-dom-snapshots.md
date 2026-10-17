@@ -393,7 +393,13 @@ fails. It captures the snapshot first, before anything else changes the page:
 
 ```js
 import allureReporter from '@wdio/allure-reporter';
-import { captureDomSnapshot, pruneDomSnapshots, snapshotRunId, writeDomSnapshot } from '@simplysf/simply-utam';
+import {
+  captureDomSnapshot,
+  pruneDomSnapshots,
+  serializeDomSnapshot,
+  snapshotRunId,
+  writeDomSnapshot,
+} from '@simplysf/simply-utam';
 
 // …
 onPrepare: async function () {
@@ -405,13 +411,20 @@ afterStep: async function (step, scenario, { error }) {
   if (error) {
     const snapshot = await captureDomSnapshot({ trigger: 'failure', scenario: scenario.name, step: step.text, error });
     if (snapshot) {
-      allureReporter.addAttachment('dom-snapshot.json', JSON.stringify(snapshot), 'application/json');
-      console.log(`DOM snapshot written to ${await writeDomSnapshot(snapshot)}`);
+      try {
+        allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
+        console.log(`DOM snapshot written to ${await writeDomSnapshot(snapshot)}`);
+      } catch (writeError) {
+        console.warn(`DOM snapshot not saved: ${writeError?.message ?? writeError}`);
+      }
     }
     await browser.takeScreenshot();
   }
 },
 ```
+
+`writeDomSnapshot` can throw (a full disk, a `latest.json` another program holds open on Windows), so
+the hook catches it: a snapshot that can't be saved never costs the screenshot.
 
 Core doesn't import Allure. The hook in the test project does; `@wdio/allure-reporter` is already a
 dependency `init` checks for.
@@ -435,7 +448,11 @@ And I capture the DOM snapshot
 And I capture the DOM snapshot "after opening Account"
 ```
 
-A `Before` hook in the same file records the scenario's name for the file name. Run only that
+A `Before` hook in the same file records the scenario's name for the file name. The step imports
+`@simplysf/simply-utam` when it runs, not when the file loads: `init` adds the file to existing
+projects, and one whose installed `@simplysf/simply-utam` predates DOM snapshots would otherwise fail
+to load its step definitions, and so every scenario. Instead only the capture step fails, saying to
+upgrade. Run only that
 scenario (`wdio run wdio.conf.mjs --spec features/account.feature:12`). The earlier steps take the
 browser to the page and the snapshot is written. A step not written yet after it is undefined and
 fails the scenario (the scaffold leaves `cucumberOpts.ignoreUndefinedDefinitions` off), but only once
@@ -644,9 +661,11 @@ and warns when that one is hidden, naming the first visible match instead. The s
 As in the browser, combinators don't cross a shadow root, and ancestors above the scope still count
 for combinators inside it. Where the snapshot can't judge a selector, the output says so:
 
-- `%s` and `%d` placeholders in an attribute test match any value.
+- `%s` and `%d` placeholders in an attribute test, and `%d` in a child-position argument
+  (`li:nth-child(%d)`), match any value.
 - Live-state pseudo-classes (`:hover`, `:focus`, `:checked`, …) are ignored, so the selector may
-  over-match.
+  over-match. One that is a whole compound (`:hover, a` or `ul > :focus`) stands for any element;
+  the same names inside an attribute value or a string are left alone.
 - A test on an attribute whose value is masked can't be checked, so a masked node may be missing.
 - A tag, class or id that no node in the snapshot has may be on a plain wrapper the walker pruned,
   so the live page may match differently.

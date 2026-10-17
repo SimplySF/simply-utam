@@ -26,6 +26,16 @@ export function clip(value: string, max = 60): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
+/**
+ * A value as one POSIX shell word, for a command the output suggests: double-quoted, or
+ * single-quoted when it has a double quote.
+ *
+ * @param value The text, such as a selector.
+ */
+export function shellQuote(value: string): string {
+  return value.includes('"') ? `'${value.replaceAll("'", "'\\''")}'` : `"${value}"`;
+}
+
 // Aura and LWC bookkeeping: never useful in a selector, and on every node of a Lightning page.
 const NOISE_ATTRS = new Set(['data-aura-rendered-by', 'data-data-rendering-service-uid', 'data-aura-class']);
 
