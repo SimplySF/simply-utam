@@ -74,7 +74,9 @@ Core takes one new runtime dependency, `css-select`, for the selector check (see
 
 This is experimental: the MVP is what we need to use it on real authoring and failure work, and its
 commands, output and format can still change. An agent evaluation of the interface (Evidence,
-Appendix C) shaped it. **Later phases** are listed but not designed here.
+Appendix C) shaped it. **Hand-driven capture**, from a browser a person drives, comes after the
+MVP and has its own section: the console route is designed there, and the Chrome route is outlined.
+The other **later phases** are listed but not designed here.
 
 This document records what the feature is and why: its decisions, the evidence, the risks, the open
 questions and the later phases. Exact output wording lives in the code, its tests and the usage
@@ -342,7 +344,7 @@ label, or use `full` on a dev org.
     "truncated": null, // or { "reasons": ["nodes" | "hiddenNodes" | "time", …] }
     "focus": "0.1.3.s.0.2", // the focus element's address, when a focus was found
     "pageObjectPackages": { "salesforce-pageobjects": "12.0.0" }, // added when written inside a project
-    "org": { "apiVersion": "66.0", "instanceUrl": "https://…" }, // hand-driven capture only (Later phases); see Open questions
+    "org": { "apiVersion": "66.0", "instanceUrl": "https://…" }, // Chrome route only (Hand-driven capture); see Open questions
   },
   "root": {/* node */},
 }
@@ -481,9 +483,13 @@ them to existing projects too, in the project's UTAM test folder.
   every worker in a run uses the same folder, to `snapshotRunId()`, the current time as
   `20261016T120000`. In a project without the hook, the current time is used the same way. Run ids
   must sort in time order, since pruning keeps the ones that sort last; numbers in a custom id
-  compare as numbers (`build-9` before `build-10`).
+  compare as numbers (`build-9` before `build-10`). A `runId` option overrides both: captures made
+  outside a test run pass `MANUAL_RUN_ID` (`manual`), so they collect in `.utam/snapshots/manual/`
+  (see Hand-driven capture).
 - `<name>` is `<scenario>--<step>` for failures, and `<scenario>--<label or number>` for the step and
-  the custom command. Each part is cut down to letters, digits and `-`, and capped at 60 characters.
+  the custom command. A capture with no scenario, such as one from `browser.domSnapshot` or the
+  console, uses `manual` in its place: `manual--<label or number>`. Each part is cut down to letters,
+  digits and `-`, and capped at 60 characters.
   A number is appended if the name is already taken; files are created with the exclusive `wx` flag,
   so two workers can't both take the same name.
 - It also writes `.utam/snapshots/latest.json`, a copy of the most recent snapshot, which the query
@@ -495,7 +501,8 @@ them to existing projects too, in the project's UTAM test folder.
 - It adds `pageObjectPackages`, the installed `salesforce-pageobjects` version, when it resolves from
   the project.
 - `pruneDomSnapshots({ keepRuns })` deletes all but the newest `keepRuns` run folders. The scaffolded
-  `onPrepare` hook keeps 10.
+  `onPrepare` hook keeps 10. It never deletes `manual/` and doesn't count it as a run, so captures
+  made by hand neither push out test runs nor get pruned by them; deleting them is up to the person.
 - The file system is an injectable sink, so tests don't touch disk.
 
 Snapshots must not be committed. `init` adds `.utam/snapshots/` to `.gitignore` (creating the file
@@ -828,6 +835,10 @@ simply-utam snapshot lookup --search "record layout"
   error names the locator but not the page object, so this is the shortest way from the error to
   the page.
 
+The commands follow one rule as the topic grows: `snapshot <verb>` reads snapshots (and the
+page-object index), and `snapshot <source> <verb>` produces them, one topic per capture source (see
+Hand-driven capture).
+
 | Exit code | Meaning                                                                                                                                                     |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0         | Success, including a `find` with no matches (an empty result is an answer).                                                                                 |
@@ -872,9 +883,11 @@ The recipes:
 
 Beyond the commands, how to read their output, and the recipes, the guide sets out:
 
-- **Where snapshots come from.** Only a test run writes them, on failure or at a capture step, so
-  check the header: `latest.json` may come from another run, scenario or step. Get the snapshot from
-  a run you need anyway: a failing step, a best first attempt, or a capture step after one that waits.
+- **Where snapshots come from.** A test run writes them, on failure or at a capture step, and a
+  person can capture one from their own browser (see Hand-driven capture), so check the header:
+  `latest.json` may come from another run, scenario or step. Get the snapshot from a run you need
+  anyway: a failing step, a best first attempt, or a capture step after one that waits. For a page
+  no scenario reaches yet, ask the person to capture it from the console.
 - **Writing a step.** `find` the target by its label, `path` to it, load the outermost root page
   object on the path and follow it down (`lookup`), attach your own below the last one, and test each
   hop with `find --css --within` (and `--shadow`). With hidden matches, scope to the visible copy
@@ -914,8 +927,7 @@ build-time tooling the CLI uses, not what a test run imports.
 | `DOM_SNAPSHOT_FORMAT`, `DOM_SNAPSHOT_VERSION`, `LATEST_SNAPSHOT`, `DEFAULT_OUTPUT_LIMIT`, `SNAPSHOT_MASK_ENV`, `SNAPSHOT_RUN_ID_ENV`               | `'simply-utam-dom-snapshot'`, `1`, `'.utam/snapshots/latest.json'`, `200` (lines of text output), `'UTAM_SNAPSHOT_MASK'`, `'UTAM_SNAPSHOT_RUN_ID'`. |
 | `DomSnapshot`, `DomNode`, `SnapshotPage`, `SnapshotBrowser`, `SelectorScope`, `QueryResult`, option and result types                               | Types. `SnapshotBrowser` and `SnapshotPage` are structural.                                                                                         |
 
-**Later**, with the hand-driven capture routes: `devToolsPage`, `launchExploreBrowser` and
-`domSnapshotScript`.
+Hand-driven capture adds its own exports (see that section).
 
 **Runtime dependency.** This design adds `css-select` as a runtime dependency of core.
 `querySnapshot` runs it through an adapter over the snapshot tree, which gives full CSS selector
@@ -925,25 +937,172 @@ be one more place to disagree with the browser. AGENTS.md asks for discussion be
 new runtime dependency; this design is where that discussion happens (see Open questions). Tests add
 `jsdom` and `@lwc/synthetic-shadow` as devDependencies (see Testing).
 
+## Hand-driven capture
+
+In the MVP, only a test run writes snapshots. That covers a failing step and any state a scenario
+reaches, and the evaluation sessions needed nothing else. Two cases it doesn't cover well:
+
+- **A page no scenario reaches yet.** Exploring a page before writing its steps means writing steps
+  to get there first, or pausing a test with `browser.debug()`: an edit to a step definition, a test
+  run started with `DEBUG`, and the edit removed afterwards.
+- **An agent taking the capture.** `browser.domSnapshot` runs in the REPL, which needs a person to
+  type into it. A person can get a page into the right state, but the agent can't then capture it
+  itself.
+
+Hand-driven capture lets a person drive a page in a browser and capture it with the same walker,
+without a test run. There are two routes: the **console** (paste a snippet into the browser's
+DevTools console), designed here and built first, and **Chrome** (a CLI capture over the DevTools
+protocol), outlined here and designed when it's built. The console route needs no browser setup,
+works in any browser, and is what an agent's browser tool can run; the Chrome route removes the
+copy and paste.
+
+A page driven by hand isn't necessarily the page the test sees. A different user, profile, window
+size or feature flag can render a different DOM. The test run stays the faithful capture; the guide
+says so, and the header's URL and viewport show where a capture came from.
+
+### Command structure
+
+Commands that read snapshots are `snapshot <verb>`, as in the MVP. Commands that produce them are
+`snapshot <source> <verb>`, one oclif topic per capture source, since each source has its own
+lifecycle:
+
+```text
+simply-utam snapshot
+├─ find · node · path · tree · lookup     read snapshots and the page-object index (MVP)
+├─ console                                capture by pasting into the DevTools console
+│  ├─ snippet    print the capture snippet, or copy it
+│  └─ import     save what the snippet produced
+└─ chrome                                 capture over the DevTools protocol (later)
+   ├─ start      launch a Chrome logged in as the test user
+   ├─ capture    capture one of its tabs
+   └─ stop       close it
+```
+
+- **Test runs** are the third source. They have no commands: the scaffolded hooks and the capture
+  step write their snapshots.
+- **Every source writes through `writeDomSnapshot`**, so the read commands never depend on where a
+  snapshot came from.
+- **Not one `snapshot capture --from console|chrome`.** The sources share no verbs: the console takes
+  two steps with a person in between, and Chrome needs a start and a stop. One command would carry
+  flags that apply to only one source each.
+- **`console import` reads any snapshot file**, such as one downloaded from CI, since checking and
+  saving a file is the same work. If importing from elsewhere becomes common, it can move up to
+  `snapshot import`.
+
+### The console route
+
+**In use.**
+
+1. `simply-utam snapshot console snippet --copy` puts the snippet on the clipboard. Without `--copy`
+   it prints it.
+2. The person opens DevTools, checks the console's context selector says `top`, pastes and presses
+   Enter. Chrome asks them to type `allow pasting` the first time. The snippet copies the snapshot to
+   the clipboard and prints a one-line summary.
+3. `simply-utam snapshot console import --label "account list"` reads the clipboard, checks the
+   snapshot, saves it, and prints the path and the header that every read command prints.
+
+An agent runs steps 1 and 3; only step 2 needs a person. A snippet saved as a DevTools Snippet
+(Sources → Snippets) can be run again without pasting, as long as it's from a compatible version.
+
+**The snippet** is `(walker)(options)`, wrapped:
+
+- **Same walker, same world.** It runs the walker's source text, exactly as `captureDomSnapshot`
+  sends it, in the page's main world, where WebDriver's `execute` runs it too, so it sees the same
+  DOM a test capture does. The walker options are built by the same code `captureDomSnapshot` uses,
+  with `trigger: 'manual'`.
+- **Masked in the page.** The mask mode is fixed when the snippet is generated, because masking runs
+  in the walker. Record data in `labels` and `structure` modes never reaches the clipboard.
+- **The JSON goes to the clipboard**, through the console's `copy()`. Where `copy` isn't defined,
+  as in an agent's browser tool or a bookmarklet, it downloads `dom-snapshot-<time>.json` through a
+  Blob link instead, for `import --file`.
+- **It returns a summary, not the snapshot**: its size, the mask, any truncation, and the import
+  command to run next. An agent's browser tool that runs it gets that line, not the whole snapshot,
+  in its context (Appendix B).
+- **ASCII only.** Non-ASCII characters in the walker's source (such as the mask's `•`) are written as
+  `\u` escapes, so no clipboard or terminal encoding can change the snippet.
+- **No network calls.** The snippet writes only to the clipboard or a download.
+
+**`snippet` flags:** `--mask` (default `UTAM_SNAPSHOT_MASK`, read through an injectable `env`, then
+`labels`), `--focus` (default `auto`, as for the other captures), `--max-nodes`, `--max-hidden-nodes`
+and `--copy`. It warns on `full`, as capture does.
+
+**`import`:**
+
+- **Input** is the clipboard by default, `--file <path>`, or `--file -` for standard input. The clipboard is
+  read with `pbpaste` on macOS, `wl-paste` or `xclip` on Linux, and PowerShell's `Get-Clipboard` on
+  Windows (and written with their counterparts for `snippet --copy`). With none available, it exits
+  with 2 and says to use `--file` or `-`.
+- **Checks** the JSON with `parseDomSnapshot`, so text that isn't a snapshot, or a snippet from a
+  newer version, fails with the reason. It warns when the mask is `full`.
+- **`--label`** sets the label at import time, so one snippet serves every capture. The rest of
+  `meta` is kept as captured, so an imported failure snapshot from CI keeps its scenario, step and
+  error.
+- **Saves** through `writeDomSnapshot` with `runId: MANUAL_RUN_ID`: `.utam/snapshots/manual/`, named
+  `manual--<label or number>`, and copied to `latest.json` (see Files).
+- **Prints** the path and the header; `--json` returns the path and `meta`. `--project-dir` as on the
+  other commands.
+- **Exit codes:** 0 when saved; 2 for bad input (an empty clipboard, text that isn't a snapshot, a
+  newer version, no clipboard tool).
+
+**Where the code goes.** Core builds the snippet and imports the snapshot; the CLI owns the
+clipboard, which nothing but a person's terminal needs:
+
+| Export                                                  | Description                                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `domSnapshotSnippet(options?)`                          | The console snippet: the walker with its options, wrapped to copy or download the JSON and return a summary. ASCII only. |
+| `importDomSnapshot(json, options?)`                     | Parses snapshot JSON with `parseDomSnapshot` and applies `label`, for `writeDomSnapshot`. Throws `DomSnapshotError`.     |
+| `MANUAL_RUN_ID`                                         | `'manual'`: the run id for captures made outside a test run, which pruning keeps.                                        |
+| `DomSnapshotSnippetOptions`, `ImportDomSnapshotOptions` | Option types. `WriteDomSnapshotOptions` gains `runId`.                                                                   |
+
+The clipboard helper in the CLI takes an injectable command runner, so tests don't touch the real
+clipboard. `SNAPSHOTS.md` gains a "Capture by hand" section for the console route, beside the REPL
+route it already has.
+
+**Testing.**
+
+- The generated snippet run in jsdom: with a stubbed `copy`, the copied text passes
+  `parseDomSnapshot` and matches what `captureDomSnapshot` produces for the same page and options, apart from `capturedAt`;
+  without `copy`, the download fires; the return value is the summary, not the JSON; the snippet is
+  ASCII only.
+- `importDomSnapshot`: label applied, the rest of `meta` kept, bad input and newer versions rejected.
+- `writeDomSnapshot` with `runId`, `manual--` names, and `pruneDomSnapshots` keeping `manual/` and
+  not counting it.
+- The commands: `snippet` with and without `--copy` and `--mask`; `import` from a fake clipboard, a
+  file and standard input; exit code 2 for each bad input; `--json`.
+
+### The Chrome route (later)
+
+Designed when it's built; Appendix B has the spike's findings. In outline:
+
+- **`snapshot chrome start`** launches Chrome with a throwaway profile and a debugging port, and logs
+  it in as the test user through `TestEnvironment.buildFrontdoorUrl`, navigated over the DevTools
+  protocol so the session ID never goes on Chrome's command line. It writes the port to a state file
+  for `capture`, and `stop` closes it.
+- **`snapshot chrome capture`** picks the tab (`--tab` for a URL match, required when there's more
+  than one), runs the walker through a `devToolsPage` that implements `SnapshotPage` over Node's
+  built-in `WebSocket`, and saves it the same way `console import` does. It also works with a Chrome
+  the person started with the flag themselves.
+- Its exports would be `devToolsPage` and a launcher, both taking injectable `fetch` and `WebSocket`.
+  It's the route that fills `meta.org`.
+
 ## Later phases
 
 Listed so the MVP doesn't box them out. Each one needs its own design before it's built.
 
-| Enhancement                   | What it adds, and why it's later                                                                                                                                                                                                                                                                                                                                                                                       |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Hand-driven capture           | `simply-utam explore` (a logged-in Chrome to drive by hand) and `snapshot capture` over the DevTools protocol (`devToolsPage`); `snapshot script` to paste into any browser's console, and `snapshot save` to file what it produced. Later because no session needed to drive a page by hand: a deliberately failing first attempt, or a capture step, reached every state. Spike findings for them are in Appendix B. |
-| Other page-object packages    | Index an in-house library's page-object package, found through the generator's `namespaces` or a `pageObjectPackages` option and `--page-objects` flag. Later because no project in the sessions used one.                                                                                                                                                                                                             |
-| Profiles                      | Record the profile that selects each implementation, and read the project's configured profiles. Later because the scaffold configures none and no session needed one.                                                                                                                                                                                                                                                 |
-| Checks across snapshots       | Run one `find --css` over several snapshots (each kind of page a step runs on), so a scope checked on one page is checked on the others. See Open questions.                                                                                                                                                                                                                                                           |
-| `find --compare <handle>`     | Compares a visible copy's ancestors with a hidden copy's below the point where they join, and tests each differing ancestor as a scope with `querySnapshot`. Held in reserve: built only if agents still struggle to pick a scope with `node --ancestors` and `find --css`.                                                                                                                                            |
-| Live page object check        | In a paused test or an `explore` Chrome, loads a candidate page object with UTAM itself and reports which of its elements resolve, element by element. Would turn "reachable through" annotations into proven routes.                                                                                                                                                                                                  |
-| Live failure replay           | When a step fails, pauses the session and walks the failing page object's chain with UTAM to show how far it got. Builds on the live check.                                                                                                                                                                                                                                                                            |
-| Comparison with a passing run | Diffs a failing snapshot against the last passing one for the same step, to show what changed after a release or layout change.                                                                                                                                                                                                                                                                                        |
-| More triggers                 | `UTAM_SNAPSHOT_AFTER="<step text>"` and `UTAM_SNAPSHOT=all`, through an `afterStep` hook, without editing feature files.                                                                                                                                                                                                                                                                                               |
-| iframes and windows           | Capture each frame (switching into it) and each window, and link them to the `iframe` node. Needed for Setup pages.                                                                                                                                                                                                                                                                                                    |
-| MCP server                    | The same queries and capture as tools, so agents don't need to know the CLI.                                                                                                                                                                                                                                                                                                                                           |
-| WebdriverIO service           | The hooks and custom command as a service package, instead of scaffolded config.                                                                                                                                                                                                                                                                                                                                       |
-| Page object drafts            | Proposes a `.utam.json` for the part of a path with no page object.                                                                                                                                                                                                                                                                                                                                                    |
+| Enhancement                   | What it adds, and why it's later                                                                                                                                                                                                                                            |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Other page-object packages    | Index an in-house library's page-object package, found through the generator's `namespaces` or a `pageObjectPackages` option and `--page-objects` flag. Later because no project in the sessions used one.                                                                  |
+| Profiles                      | Record the profile that selects each implementation, and read the project's configured profiles. Later because the scaffold configures none and no session needed one.                                                                                                      |
+| Checks across snapshots       | Run one `find --css` over several snapshots (each kind of page a step runs on), so a scope checked on one page is checked on the others. See Open questions.                                                                                                                |
+| `find --compare <handle>`     | Compares a visible copy's ancestors with a hidden copy's below the point where they join, and tests each differing ancestor as a scope with `querySnapshot`. Held in reserve: built only if agents still struggle to pick a scope with `node --ancestors` and `find --css`. |
+| Live page object check        | In a paused test or a `snapshot chrome` Chrome, loads a candidate page object with UTAM itself and reports which of its elements resolve, element by element. Would turn "reachable through" annotations into proven routes.                                                |
+| Live failure replay           | When a step fails, pauses the session and walks the failing page object's chain with UTAM to show how far it got. Builds on the live check.                                                                                                                                 |
+| Comparison with a passing run | Diffs a failing snapshot against the last passing one for the same step, to show what changed after a release or layout change.                                                                                                                                             |
+| More triggers                 | `UTAM_SNAPSHOT_AFTER="<step text>"` and `UTAM_SNAPSHOT=all`, through an `afterStep` hook, without editing feature files.                                                                                                                                                    |
+| iframes and windows           | Capture each frame (switching into it) and each window, and link them to the `iframe` node. Needed for Setup pages.                                                                                                                                                         |
+| MCP server                    | The same queries and capture as tools, so agents don't need to know the CLI.                                                                                                                                                                                                |
+| WebdriverIO service           | The hooks and custom command as a service package, instead of scaffolded config.                                                                                                                                                                                            |
+| Page object drafts            | Proposes a `.utam.json` for the part of a path with no page object.                                                                                                                                                                                                         |
 
 ## Alternatives considered
 
@@ -957,7 +1116,7 @@ Listed so the MVP doesn't box them out. Each one needs its own design before it'
   give an agent a live page, mostly through the accessibility tree. That tree flattens shadow DOM,
   so it loses shadow boundaries and component tags, which are exactly what a UTAM selector needs. They
   know nothing about page objects, aren't tied to test runs or failures, and log in separately from
-  the test user. The pasted-script capture route (Later phases) would let one of them run the walker.
+  the test user. The console snippet (Hand-driven capture) lets one of them run the walker.
 - **No selector evaluation at all, leaving every check to a live run**: each live run is slow, and a
   root scoped to the wrong copy fails with a wrong value, not an error, so the agent learns little
   from it. Evaluating CSS over the snapshot answers "which element does this selector find first?"
@@ -1142,6 +1301,12 @@ guide. Both should be correct by the evaluation's checks. They also show whether
 the gap the sessions found: T3 should write a page object for the last hop rather than step code,
 and F2 should wrap the shipped root with its interface type and `"wait": true`.
 
+**After the stack.** The console route (Hand-driven capture) lands as its own pull request, with the
+same hardening: `domSnapshotSnippet`, `importDomSnapshot`, `MANUAL_RUN_ID` and `writeDomSnapshot`'s
+`runId`, the `manual--` names and pruning's exception for `manual/`, the `snapshot console` topic
+with `snippet` and `import`, and the guide's "Capture by hand" section. The Chrome route follows,
+after its own design pass.
+
 ## Testing
 
 The evaluation build's tests are the starting point; each PR fills them out to this list.
@@ -1232,10 +1397,11 @@ Measured on a scratch org; kept here because the limits and transfer choices res
 
 ## Appendix B: notes for the hand-driven routes
 
-What the spike found for hand-driven capture, for when it's designed:
+What the spike found for hand-driven capture. The console route (Hand-driven capture) is designed
+from these; the Chrome route will be:
 
 - **Launching Chrome.** Chrome 136 and later ignore `--remote-debugging-port` on the default
-  profile, so `explore` needs a throwaway `--user-data-dir`, which also keeps the user's own sessions
+  profile, so `snapshot chrome start` needs a throwaway `--user-data-dir`, which also keeps the user's own sessions
   away from the debugging port. Port `0` lets Chrome pick a free port and write it to
   `DevToolsActivePort` in the profile folder; a fixed port could already be held by another Chrome.
   The port listens on `127.0.0.1`, but any local process can control that Chrome while it runs.
@@ -1249,7 +1415,8 @@ What the spike found for hand-driven capture, for when it's designed:
   `--target` match is reliable.
 - **Pasted script.** Chrome asks you to type `allow pasting` the first time. An agent's browser tool
   that runs the script would get the whole snapshot back into its context, so the script needs a mode
-  that saves a file and returns a summary.
+  that saves a file and returns a summary. The console snippet returns a summary and copies or
+  downloads the JSON.
 - **Attaching chromedriver** to that Chrome with `debuggerAddress` works, and `execute` works, but
   each attach opens a blank tab and starts the session there: the live page object check would have
   to find the user's page among the window handles by URL, switch to it, and close the blank tab. The

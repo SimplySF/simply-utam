@@ -22,6 +22,7 @@ import {
   DOM_SNAPSHOT_FORMAT,
   DomSnapshotError,
   LATEST_SNAPSHOT,
+  MANUAL_RUN_ID,
   captureDomSnapshot,
   parseDomSnapshot,
   pruneDomSnapshots,
@@ -227,6 +228,18 @@ describe('writeDomSnapshot', () => {
     expect(await write(unlabeled, dir)).toBe(run('S--2.json'));
   });
 
+  it('writes to the runId folder when given, naming a capture with no scenario manual', async () => {
+    const dir = tempDir();
+    const labeled = parseDomSnapshot(rawSnapshot({ label: 'account list' }));
+    const unlabeled = parseDomSnapshot(rawSnapshot());
+    const manual = (file: string): string => path.join('.utam', 'snapshots', 'manual', file);
+    const options = { projectDir: dir, runId: MANUAL_RUN_ID, env, pageObjectPackages: {} };
+    expect(await writeDomSnapshot(labeled, options)).toBe(manual('manual--account-list.json'));
+    expect(await writeDomSnapshot(unlabeled, options)).toBe(manual('manual--1.json'));
+    const failure = parseDomSnapshot(rawSnapshot({ trigger: 'failure', step: 'Then x' }));
+    expect(await writeDomSnapshot(failure, options)).toBe(manual('scenario--Then-x.json'));
+  });
+
   it('gives two writers racing for one name a file each', async () => {
     const dir = tempDir();
     const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S', label: 'x' }));
@@ -358,6 +371,19 @@ describe('pruneDomSnapshots', () => {
     const removed = await pruneDomSnapshots({ projectDir: dir, keepRuns: 2 });
     expect(removed).toEqual([path.join('.utam', 'snapshots', '20261014T090000')]);
     expect(fs.readdirSync(snapshots).sort()).toEqual(['20261015T090000', '20261016T090000', 'latest.json']);
+  });
+
+  it('keeps the manual folder and does not count it as a run', async () => {
+    const dir = tempDir();
+    const snapshots = path.join(dir, '.utam', 'snapshots');
+    for (const run of ['20261015T090000', '20261016T090000', MANUAL_RUN_ID, 'run-9'])
+      fs.mkdirSync(path.join(snapshots, run), { recursive: true });
+    const removed = await pruneDomSnapshots({ projectDir: dir, keepRuns: 1 });
+    expect(removed).toEqual([
+      path.join('.utam', 'snapshots', '20261015T090000'),
+      path.join('.utam', 'snapshots', '20261016T090000'),
+    ]);
+    expect(fs.readdirSync(snapshots).sort()).toEqual(['manual', 'run-9']);
   });
 
   it('compares numbers in custom run ids as numbers, so build-10 is newer than build-9', async () => {

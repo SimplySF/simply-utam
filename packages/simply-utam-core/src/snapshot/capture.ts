@@ -28,31 +28,17 @@ export type SnapshotBrowser = {
   execute(script: string, ...args: unknown[]): Promise<unknown>;
 };
 
-export type CaptureDomSnapshotOptions = {
+export type CaptureDomSnapshotOptions = WalkerOptions & {
   /** The browser to capture. Defaults to WebdriverIO's global `browser`. */
   browser?: SnapshotBrowser;
   /** Any other way to run the walker; used instead of `browser` when given. */
   page?: SnapshotPage;
-  /** Defaults to `manual`. */
-  trigger?: SnapshotTrigger;
-  label?: string;
   scenario?: string;
   step?: string;
   /** The failed step's error; its message is copied into `meta.error`, without terminal color codes. */
   error?: unknown;
-  /** Defaults to `UTAM_SNAPSHOT_MASK`, then `labels`. */
-  mask?: SnapshotMask;
-  maxNodes?: number;
-  maxHiddenNodes?: number;
-  timeBudgetMs?: number;
-  /** `none`, `auto`, or a CSS selector. */
-  focus?: string;
   /** The backstop around the whole capture. Defaults to 10 s. */
   timeoutMs?: number;
-  /** Where `UTAM_SNAPSHOT_MASK` is read from. Defaults to `process.env`. */
-  env?: EnvLike;
-  /** Where warnings go. Defaults to `console.warn`. */
-  log?: (message: string) => void;
 };
 
 export const SNAPSHOT_MASK_ENV = 'UTAM_SNAPSHOT_MASK';
@@ -73,9 +59,52 @@ function browserPage(browser: SnapshotBrowser): SnapshotPage {
   };
 }
 
-function resolveMask(options: CaptureDomSnapshotOptions): SnapshotMask {
+/** The options every way of running the walker shares. */
+export type WalkerOptions = {
+  /** Defaults to `manual`. */
+  trigger?: SnapshotTrigger;
+  label?: string;
+  /** Defaults to `UTAM_SNAPSHOT_MASK`, then `labels`. */
+  mask?: SnapshotMask;
+  maxNodes?: number;
+  maxHiddenNodes?: number;
+  timeBudgetMs?: number;
+  /** `none`, `auto`, or a CSS selector. */
+  focus?: string;
+  /** Where `UTAM_SNAPSHOT_MASK` is read from. Defaults to `process.env`. */
+  env?: EnvLike;
+  /** Where warnings go. Defaults to `console.warn`. */
+  log?: (message: string) => void;
+};
+
+function resolveMask(options: WalkerOptions): SnapshotMask {
   const value = options.mask ?? (options.env ?? process.env)[SNAPSHOT_MASK_ENV];
   return value === 'structure' || value === 'full' ? value : 'labels';
+}
+
+/** The default warning sink. */
+export function warn(message: string): void {
+  // eslint-disable-next-line no-console -- the default sink; `log` lets a caller redirect it
+  console.warn(message);
+}
+
+/**
+ * The expression that runs the walker with these options, `(<walker>)(<options>)`, as every way of
+ * capturing sends it to a page. Warns through `log` when the mask is `full`.
+ */
+export function walkerExpression(options: WalkerOptions): string {
+  const mask = resolveMask(options);
+  if (mask === 'full') (options.log ?? warn)('DOM snapshot: mask "full" keeps record data in the snapshot.');
+  const walkerOptions = {
+    trigger: options.trigger ?? 'manual',
+    label: options.label,
+    mask,
+    maxNodes: options.maxNodes,
+    maxHiddenNodes: options.maxHiddenNodes,
+    timeBudgetMs: options.timeBudgetMs,
+    focus: options.focus,
+  };
+  return `(${walkerSource()})(${JSON.stringify(walkerOptions)})`;
 }
 
 // Assertion libraries color their messages; the snapshot is read as text, not in a terminal.
@@ -100,20 +129,9 @@ function errorMessage(error: unknown): string | undefined {
  * @param options What to capture and how.
  */
 export async function captureDomSnapshot(options: CaptureDomSnapshotOptions = {}): Promise<DomSnapshot | undefined> {
-  // eslint-disable-next-line no-console -- the default sink; `log` lets a caller redirect it
-  const log = options.log ?? ((message: string): void => console.warn(message));
+  const log = options.log ?? warn;
   try {
-    const mask = resolveMask(options);
-    if (mask === 'full') log('DOM snapshot: mask "full" keeps record data in the snapshot.');
-    const walkerOptions = {
-      trigger: options.trigger ?? 'manual',
-      label: options.label,
-      mask,
-      maxNodes: options.maxNodes,
-      maxHiddenNodes: options.maxHiddenNodes,
-      timeBudgetMs: options.timeBudgetMs,
-      focus: options.focus,
-    };
+    const source = walkerExpression({ ...options, log });
     const timeoutMs = options.timeoutMs ?? 10_000;
     let page = options.page;
     if (!page) {
@@ -121,7 +139,6 @@ export async function captureDomSnapshot(options: CaptureDomSnapshotOptions = {}
       if (!browser || typeof browser.execute !== 'function') throw new Error('no browser to capture');
       page = browserPage(browser);
     }
-    const source = `(${walkerSource()})(${JSON.stringify(walkerOptions)})`;
     let timer: NodeJS.Timeout | undefined;
     const json = await Promise.race([
       page.evaluate(source, timeoutMs),

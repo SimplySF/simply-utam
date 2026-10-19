@@ -36,7 +36,14 @@ export {
   type SnapshotPage,
 } from './capture.js';
 export {
+  domSnapshotSnippet,
+  importDomSnapshot,
+  type DomSnapshotSnippetOptions,
+  type ImportDomSnapshotOptions,
+} from './console.js';
+export {
   LATEST_SNAPSHOT,
+  MANUAL_RUN_ID,
   SNAPSHOT_RUN_ID_ENV,
   pruneDomSnapshots,
   snapshotRunId,

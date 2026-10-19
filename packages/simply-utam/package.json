@@ -75,7 +75,12 @@
     "devPlugins": [],
     "topics": {
       "snapshot": {
-        "description": "Query DOM snapshots and the page-object index."
+        "description": "Capture and query DOM snapshots, and look up page objects.",
+        "subtopics": {
+          "console": {
+            "description": "Capture DOM snapshots by pasting a snippet into a browser's DevTools console."
+          }
+        }
       }
     }
   },

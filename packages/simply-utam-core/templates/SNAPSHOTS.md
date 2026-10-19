@@ -12,16 +12,20 @@ read or script over the JSON: the `npx simply-utam snapshot` commands answer que
 
 ## Snapshot lifecycle
 
-- **Where they come from.** Only a test run writes snapshots, in three ways:
+- **Where they come from.** A test run writes snapshots in three ways, and a person can capture one
+  from their own browser:
   - **On failure.** When a step throws, the `afterStep` hook in `wdio.conf.mjs` captures the page
     before anything else happens.
   - **On demand.** The step `And I capture the DOM snapshot` (or `... snapshot "<label>"`) captures
     the page wherever you put it in a scenario.
   - **While paused.** `await browser.domSnapshot("<label>")` in the REPL of `browser.debug()` (see
-    "Capture by hand while paused"). It needs a person at the terminal.
+    "Capture by hand"). It needs a person at the terminal.
+  - **From the browser console.** A person pastes a snippet into the DevTools console of any page,
+    and `snapshot console import` saves it (see "Capture by hand"). No test run needed.
 - **Where they go.** Each run gets a folder, `.utam/snapshots/<run>/`, with one file per capture,
-  named `<scenario>--<step or label>.json`; a `browser.domSnapshot` capture doesn't know its
-  scenario, so it's `scenario--<label>.json`. Every capture is also copied to
+  named `<scenario>--<step or label>.json`; a capture that doesn't know its scenario is
+  `manual--<label>.json`. Captures from the console go to `.utam/snapshots/manual/`, which pruning
+  never deletes. Every capture is also copied to
   `.utam/snapshots/latest.json`, which the commands read by default; `--file <path>` reads another.
 - **`latest.json` is only the most recent capture.** It may come from an earlier run, another
   scenario, or another step. Every command prints a header naming the snapshot's file, trigger,
@@ -51,16 +55,34 @@ runs `wdio run wdio.conf.mjs` with the arguments after `--`.
 | A failing step                              | Run it. The failure snapshot shows the page at the moment it failed.                                                                                                                           |
 | A step with no definition yet               | Write your best first attempt and run it. If it fails, its failure snapshot is the page you need. Or add `And I capture the DOM snapshot` before it, if you'd rather look first.               |
 | A snapshot where the target isn't there yet | The capture was too early. Capture after a step that waits for something on the page: `utam.load` waits for its root, and `waitFor…` methods (elements marked `"wait": true`) wait for theirs. |
-| A page state no step reaches yet            | Add the steps that reach it, then capture after them.                                                                                                                                          |
+| A page state no step reaches yet            | Add the steps that reach it, then capture after them. Or, to look before writing any steps, ask a person to capture it from the console (see "Capture by hand").                               |
 
 Remove any capture step you added to a feature file before you finish.
 
-### Capture by hand while paused
+### Capture by hand
 
-For a person at the terminal, not an agent: the REPL needs someone to type into it. Add
-`await browser.debug();` to a step definition where you want to stop, and run the scenario with
-`DEBUG` set (`DEBUG=1 npm run test:ui -- --spec …`), so the step can stay paused for up to 30 minutes
-instead of timing out. In the REPL, click around the page as you need, then capture it:
+A page a person drives by hand isn't necessarily the page the test sees: a different user, profile,
+window size or feature flag can render a different DOM. A capture from a test run is the faithful
+one; capture by hand to explore a page, and confirm with a live run.
+
+**From the browser console.** Works on any page, in any browser, with no test run. An agent runs
+the two commands; a person runs the snippet:
+
+1. `npx simply-utam snapshot console snippet --copy` puts the snippet on the clipboard (without
+   `--copy` it prints it). `--mask` sets the mask mode, which is fixed in the snippet.
+2. The person opens DevTools on the page, checks the console's context selector says `top`, pastes
+   and presses Enter. Chrome asks to type `allow pasting` the first time. The snippet copies the
+   snapshot to the clipboard and prints a one-line summary. Where the console's `copy` isn't
+   available, it downloads `dom-snapshot-<time>.json` instead.
+3. `npx simply-utam snapshot console import --label "<label>"` saves it and prints its header. For a
+   download, add `--file <path>`; `--file -` reads standard input.
+
+The snippet can be saved as a DevTools Snippet (Sources → Snippets) and run again on each page.
+
+**While paused.** For a person at the terminal, not an agent: the REPL needs someone to type into
+it. Add `await browser.debug();` to a step definition where you want to stop, and run the scenario
+with `DEBUG` set (`DEBUG=1 npm run test:ui -- --spec …`), so the step can stay paused for up to 30
+minutes instead of timing out. In the REPL, click around the page as you need, then capture it:
 
 ```js
 await browser.domSnapshot('after opening Account');

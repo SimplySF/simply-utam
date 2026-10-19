@@ -24,6 +24,8 @@ import { serializeDomSnapshot, type DomSnapshot } from './format.js';
 export const SNAPSHOT_RUN_ID_ENV = 'UTAM_SNAPSHOT_RUN_ID';
 /** Where snapshots are written, relative to the project. */
 export const SNAPSHOTS_DIR = '.utam/snapshots';
+/** The run id for captures made outside a test run, such as from the console; pruning keeps its folder. */
+export const MANUAL_RUN_ID = 'manual';
 /** A copy of the most recent snapshot, relative to the project: the query commands' default. */
 export const LATEST_SNAPSHOT = `${SNAPSHOTS_DIR}/latest.json`;
 
@@ -39,6 +41,8 @@ export type SnapshotFileSystem = {
 export type WriteDomSnapshotOptions = {
   /** The project folder. Defaults to the current directory. */
   projectDir?: string;
+  /** The run folder's id, such as `MANUAL_RUN_ID`. Defaults to `UTAM_SNAPSHOT_RUN_ID`, then the current time. */
+  runId?: string;
   /** Where `UTAM_SNAPSHOT_RUN_ID` is read from. Defaults to `process.env`. */
   env?: EnvLike;
   fs?: SnapshotFileSystem;
@@ -88,12 +92,17 @@ async function replaceFile(fs: SnapshotFileSystem, file: string, data: string): 
   }
 }
 
-/** `<scenario>--<step>` for a failure; `<scenario>--<label>`, or the scenario numbered, otherwise. */
+/**
+ * `<scenario>--<step>` for a failure; `<scenario>--<label>`, or the scenario numbered, otherwise. A
+ * capture with no scenario, such as one taken by hand, uses `manual` in its place.
+ */
 function baseName(snapshot: DomSnapshot): { name: string; numbered: boolean } {
   const { meta } = snapshot;
-  const scenario = cleanPart(meta.scenario ?? '') || 'scenario';
-  if (meta.trigger === 'failure')
+  if (meta.trigger === 'failure') {
+    const scenario = cleanPart(meta.scenario ?? '') || 'scenario';
     return { name: `${scenario}--${cleanPart(meta.step ?? '') || 'step'}`, numbered: false };
+  }
+  const scenario = cleanPart(meta.scenario ?? '') || 'manual';
   const label = cleanPart(meta.label ?? '');
   return label ? { name: `${scenario}--${label}`, numbered: false } : { name: scenario, numbered: true };
 }
@@ -111,7 +120,7 @@ function installedPageObjectPackages(projectDir: string): Record<string, string>
 /**
  * Write a snapshot to `.utam/snapshots/<run id>/<name>.json`, and a copy as
  * `.utam/snapshots/latest.json`, replaced in one step through a temporary file and a rename. The run
- * id comes from `UTAM_SNAPSHOT_RUN_ID`, or the current time.
+ * id comes from `runId`, then `UTAM_SNAPSHOT_RUN_ID`, then the current time.
  * A name already taken gets a number; files are created exclusively, so two workers can't both take
  * one name. Records the installed `salesforce-pageobjects` version in the file's
  * `meta.pageObjectPackages`, leaving `snapshot` unchanged.
@@ -131,7 +140,7 @@ export async function writeDomSnapshot(snapshot: DomSnapshot, options: WriteDomS
       ? { ...snapshot, meta: { ...snapshot.meta, pageObjectPackages: packages } }
       : snapshot;
 
-  const dir = path.join(SNAPSHOTS_DIR, cleanPart(env[SNAPSHOT_RUN_ID_ENV] ?? '') || snapshotRunId());
+  const dir = path.join(SNAPSHOTS_DIR, cleanPart(options.runId ?? env[SNAPSHOT_RUN_ID_ENV] ?? '') || snapshotRunId());
   await fs.mkdir(path.join(projectDir, dir), { recursive: true });
 
   const json = serializeDomSnapshot(written);
@@ -159,7 +168,8 @@ export async function writeDomSnapshot(snapshot: DomSnapshot, options: WriteDomS
 /**
  * Delete all but the newest `keepRuns` run folders under `.utam/snapshots/`. Run folders are
  * named by run id, so run ids must sort in time order: a timestamp does, and numbers in a custom id
- * compare as numbers (`build-9` before `build-10`). The newest sort last. `latest.json` is kept.
+ * compare as numbers (`build-9` before `build-10`). The newest sort last. `latest.json` is kept, and
+ * so is the `manual` folder of captures made by hand, which isn't counted as a run.
  *
  * @param options The project, how many runs to keep, and the file system.
  * @returns The run folders deleted, relative to the project folder.
@@ -176,7 +186,7 @@ export async function pruneDomSnapshots(options: PruneDomSnapshotsOptions = {}):
     throw error;
   }
   const runs = entries
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && entry.name !== MANUAL_RUN_ID)
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
   const removed = runs.slice(0, Math.max(0, runs.length - keepRuns)).map((run) => path.join(SNAPSHOTS_DIR, run));
