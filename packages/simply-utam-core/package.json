@@ -67,7 +67,7 @@
     "@cucumber/gherkin": "^42.0.1",
     "@cucumber/messages": "^34.2.1",
     "@salesforce/core": "^9.3.6",
-    "prettier": "^3.9.6"
+    "prettier": "^3.9.10"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.10",
