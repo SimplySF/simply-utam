@@ -32,7 +32,7 @@ export default class SnapshotLookup extends Command {
     'Show the page objects for a tag, with their import paths, methods and elements; or search them.';
 
   public static override description =
-    "Reads salesforce-pageobjects and the project's own page objects (from utam.config.json). A tag maps to a page object through a root selector, an element typed as that page object, or the naming convention. Where a tag maps to an implementation of an interface, the interface is reported, since test code loads the interface. Also accepts a page object name (such as recordHomeFlexipage2) instead of a tag. With --search, lists the page objects whose name, import path, tags or description contain every word given.";
+    "Reads the project's own page objects (from utam.config.json) and the page-object packages that generator.config.json namespaces and .utam/namespace-map.json map to, such as salesforce-pageobjects. A tag maps to a page object through a root selector, an element typed as that page object, or the naming convention. Where a tag maps to an implementation of an interface, the interface is reported, since test code loads the interface. Also accepts a page object name (such as recordHomeFlexipage2) instead of a tag. With --search, lists the page objects whose name, import path, tags or description contain every word given.";
 
   public static override examples = [
     '<%= config.bin %> <%= command.id %> lightning-input',

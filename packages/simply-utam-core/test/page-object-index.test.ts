@@ -18,8 +18,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { buildPageObjectIndex, lookupPageObject, searchPageObjects } from '../src/index.js';
+import { buildPageObjectIndex, lookupPageObject, searchPageObjects, type PageObjectIndex } from '../src/index.js';
 import { selectorLastParts, selectorTags } from '../src/snapshot/page-object-index.js';
+import { SPO_EXPORTS, withCompiledPageObjects } from './snapshot-fixtures.js';
 
 type Files = Record<string, unknown>;
 
@@ -36,8 +37,8 @@ function writeProject(files: Files): string {
 const SPO = 'node_modules/salesforce-pageobjects';
 
 /** A cut-down `salesforce-pageobjects`: its manifest and a few sources, laid out as 12.0.0 ships them. */
-const shippedPageObjects: Files = {
-  [`${SPO}/package.json`]: { name: 'salesforce-pageobjects', version: '12.0.0' },
+const shippedPageObjects: Files = withCompiledPageObjects(SPO, {
+  [`${SPO}/package.json`]: { name: 'salesforce-pageobjects', version: '12.0.0', exports: SPO_EXPORTS },
   [`${SPO}/dist/utam.manifest.json`]: {
     pageObjects: {
       'utam-lightning/pageObjects/input': 'package/dist/lightning/input.utam.json',
@@ -94,7 +95,7 @@ const shippedPageObjects: Files = {
     root: true,
     selector: { css: 'access-from-tab-set' },
   },
-};
+});
 
 /** The scaffolded project files, with one hand-written page object. */
 const projectFiles: Files = {
@@ -274,15 +275,21 @@ describe('buildPageObjectIndex', () => {
     expect(page.methods.find((method) => method.name === 'getPhoneText')?.returns).toBe('string');
   });
 
-  it('warns and indexes only the project when salesforce-pageobjects is missing', () => {
+  it('warns, naming where it was mapped, and indexes only the project when salesforce-pageobjects is missing', () => {
     const bare = project(projectFiles);
     const result = buildPageObjectIndex({ projectDir: bare });
-    expect(result.warnings[0]).toMatch(/salesforce-pageobjects is not installed/);
+    expect(result.warnings[0]).toBe(
+      `salesforce-pageobjects is not installed in ${bare}, but generator.config.json maps namespace "lightning" to it; it isn't indexed.`,
+    );
     expect(result.entries.has('my-app/pageObjects/recordPage')).toBe(true);
   });
 
   it('indexes nothing of the project without a utam.config.json', () => {
-    const shippedOnly = project({ ...shippedPageObjects, 'package.json': { name: 'my-app' } });
+    const shippedOnly = project({
+      ...shippedPageObjects,
+      'package.json': { name: 'my-app' },
+      'generator.config.json': projectFiles['generator.config.json'],
+    });
     const result = buildPageObjectIndex({ projectDir: shippedOnly });
     expect([...result.entries.values()].every((entry) => entry.source === 'salesforce-pageobjects')).toBe(true);
     expect(result.warnings).toEqual([]);
@@ -430,12 +437,12 @@ describe('buildPageObjectIndex: compose summaries', () => {
     );
   });
 
-  it("warns when salesforce-pageobjects has no readable manifest, and skips a manifest entry it can't read", () => {
+  it("warns when a package has neither a manifest nor sources, and skips a manifest entry it can't read", () => {
     const noManifest = buildPageObjectIndex({
       projectDir: project({ ...projectFiles, [`${SPO}/package.json`]: { name: 'salesforce-pageobjects' } }),
     });
     expect(noManifest.warnings).toContain(
-      "salesforce-pageobjects has no readable dist/utam.manifest.json; it isn't indexed.",
+      "salesforce-pageobjects has no readable .utam.json page objects; it isn't indexed.",
     );
     const missingSource = buildPageObjectIndex({
       projectDir: project({
@@ -448,6 +455,193 @@ describe('buildPageObjectIndex: compose summaries', () => {
     });
     expect(missingSource.entries.has('utam-x/pageObjects/gone')).toBe(false);
     expect(missingSource.warnings.filter((warning) => warning.includes('salesforce-pageobjects'))).toEqual([]);
+  });
+});
+
+describe('buildPageObjectIndex: page-object packages', () => {
+  const SHARED = 'node_modules/shared-pageobjects';
+  const ACME = 'node_modules/@acme/page-objects';
+  const modal = { root: true, selector: { css: 'c-modal' }, description: 'The shared modal.' };
+  /**
+   * A shared package whose components share `c` with the project, without a manifest: sources beside
+   * their components, compiled to `pageObjects/`, and moved there by the namespace map.
+   */
+  const sharedPackage: Files = {
+    [`${SHARED}/package.json`]: { name: 'shared-pageobjects', version: '2.1.0' },
+    [`${SHARED}/src/modal/__utam__/modal.utam.json`]: modal,
+    [`${SHARED}/dist/modal/__utam__/modal.utam.json`]: modal,
+    [`${SHARED}/pageObjects/modal.js`]: '',
+    [`${SHARED}/src/card/__utam__/card.utam.json`]: { root: true, selector: { css: 'c-card' } },
+    [`${SHARED}/test/__utam__/card.utam.json`]: { root: true, selector: { css: 'c-test-card' } },
+    [`${SHARED}/pageObjects/card.js`]: '',
+    [`${SHARED}/src/draft/__utam__/draft.utam.json`]: { root: true, selector: { css: 'c-draft' } },
+  };
+  /** A scoped package with its own namespace, whose `exports` map moves its compiled files. */
+  const acmePackage: Files = {
+    [`${ACME}/package.json`]: {
+      name: '@acme/page-objects',
+      version: '1.0.0',
+      exports: { './package.json': './package.json', './pageObjects/*': './build/*.js' },
+    },
+    [`${ACME}/src/__utam__/banner.utam.json`]: { root: true, selector: { css: 'acme-banner' } },
+    [`${ACME}/build/banner.js`]: '',
+  };
+  const configs: Files = {
+    'generator.config.json': {
+      namespaces: {
+        c: 'my-app/pageObjects/',
+        acme: '@acme/page-objects/pageObjects/',
+        lightning: 'salesforce-pageobjects/lightning/pageObjects/',
+      },
+    },
+    '.utam/namespace-map.json': {
+      'my-app/pageObjects/modal': 'shared-pageobjects/pageObjects/modal',
+      'my-app/pageObjects/card': 'shared-pageobjects/pageObjects/card',
+    },
+  };
+  const dir = project({
+    ...shippedPageObjects,
+    ...projectFiles,
+    ...configs,
+    ...sharedPackage,
+    ...acmePackage,
+  });
+  const index = buildPageObjectIndex({ projectDir: dir });
+  const bySource = (source: string): string[] =>
+    [...index.entries.values()].filter((entry) => entry.source === source).map((entry) => entry.name);
+
+  it('finds packages from the generator namespaces and the namespace map, not the project prefix', () => {
+    expect([...new Set([...index.entries.values()].map((entry) => entry.source))]).toEqual([
+      '@acme/page-objects',
+      'salesforce-pageobjects',
+      'shared-pageobjects',
+      'project',
+    ]);
+    expect(index.warnings.filter((warning) => !warning.includes('broken.utam.json'))).toEqual([]);
+  });
+
+  it('names a source by the import path the namespace map gives it, when that path resolves', () => {
+    expect(index.entries.get('shared-pageobjects/pageObjects/modal')).toMatchObject({
+      importPath: 'shared-pageobjects/pageObjects/modal',
+      source: 'shared-pageobjects',
+      root: true,
+    });
+  });
+
+  it("resolves import paths through a package's exports map, for a scoped package", () => {
+    expect(index.entries.get('@acme/page-objects/pageObjects/banner')?.importPath).toBe(
+      '@acme/page-objects/pageObjects/banner',
+    );
+  });
+
+  it('indexes a package shipping one source twice once, and gives a same-named source no import path', () => {
+    expect(bySource('shared-pageobjects').sort()).toEqual([
+      'shared-pageobjects/pageObjects/card',
+      'shared-pageobjects/pageObjects/modal',
+      'shared-pageobjects/src/draft/__utam__/draft.utam.json',
+      'shared-pageobjects/test/__utam__/card.utam.json',
+    ]);
+    expect(index.entries.get('shared-pageobjects/test/__utam__/card.utam.json')?.importPath).toBeUndefined();
+  });
+
+  it("indexes a source whose import path doesn't resolve without one, and lookup says so", () => {
+    const draft = index.entries.get('shared-pageobjects/src/draft/__utam__/draft.utam.json')!;
+    expect(draft.importPath).toBeUndefined();
+    expect(lookupPageObject(index, 'c-draft').lines).toContain(
+      "  import path: none found; no compiled page object for it resolves from the project's node_modules",
+    );
+  });
+
+  /** A project with the shared package's modal as a page object no root selector reaches. */
+  const withSharedModal = (files: Files): PageObjectIndex =>
+    buildPageObjectIndex({
+      projectDir: project({
+        ...projectFiles,
+        ...configs,
+        [`${SHARED}/package.json`]: { name: 'shared-pageobjects' },
+        [`${SHARED}/src/modal/__utam__/modal.utam.json`]: { elements: [] },
+        [`${SHARED}/pageObjects/modal.js`]: '',
+        ...files,
+      }),
+    });
+
+  it("links a project element typed by the project's name for a rewritten page object", () => {
+    const typed = withSharedModal({
+      'test/__utam__/page.utam.json': {
+        elements: [{ name: 'dialog', type: 'my-app/pageObjects/modal', selector: { css: 'c-modal.dialog' } }],
+      },
+    });
+    expect(lookupPageObject(typed, 'c-modal').json.matches.map((match) => [match.entry.name, match.via])).toEqual([
+      ['shared-pageobjects/pageObjects/modal', 'typed element'],
+    ]);
+  });
+
+  it('matches the naming convention through the namespace map', () => {
+    expect(
+      lookupPageObject(withSharedModal({}), 'c-modal').json.matches.map((match) => [match.entry.name, match.via]),
+    ).toEqual([['shared-pageobjects/pageObjects/modal', 'convention']]);
+  });
+
+  it("indexes a manifest package's page objects without import paths when none resolves, still linking them", () => {
+    const uncompiled = Object.fromEntries(
+      Object.entries(shippedPageObjects).filter(([file]) => !file.endsWith('.cjs')),
+    );
+    const result = buildPageObjectIndex({
+      projectDir: project({
+        ...uncompiled,
+        ...projectFiles,
+        'test/__utam__/form.utam.json': {
+          elements: [
+            {
+              name: 'name',
+              type: 'salesforce-pageobjects/lightning/pageObjects/input',
+              selector: { css: 'lightning-input' },
+            },
+          ],
+        },
+      }),
+    });
+    expect(result.entries.get('utam-lightning/pageObjects/input')?.importPath).toBeUndefined();
+    expect(result.tags.get('lightning-input')?.map((item) => item.name)).toEqual(['utam-lightning/pageObjects/input']);
+  });
+
+  it('ranks matches by source: the project, then packages in configuration order', () => {
+    const ranked = buildPageObjectIndex({
+      projectDir: project({
+        ...projectFiles,
+        ...configs,
+        ...acmePackage,
+        [`${ACME}/src/__utam__/banner.utam.json`]: { root: true, selector: { css: 'x-shared' } },
+        [`${SHARED}/package.json`]: { name: 'shared-pageobjects' },
+        [`${SHARED}/src/modal/__utam__/modal.utam.json`]: { root: true, selector: { css: 'x-shared' } },
+        [`${SHARED}/pageObjects/modal.js`]: '',
+        'test/__utam__/shared.utam.json': { root: true, selector: { css: 'x-shared' } },
+      }),
+    });
+    expect(lookupPageObject(ranked, 'x-shared').json.matches.map((match) => match.entry.source)).toEqual([
+      'project',
+      '@acme/page-objects',
+      'shared-pageobjects',
+    ]);
+  });
+
+  it('indexes no package, and warns about none, when no namespace maps to one', () => {
+    const plain = buildPageObjectIndex({
+      projectDir: project({
+        ...shippedPageObjects,
+        ...projectFiles,
+        'generator.config.json': { namespaces: { c: 'my-app/pageObjects/' } },
+      }),
+    });
+    expect([...plain.entries.values()].every((entry) => entry.source === 'project')).toBe(true);
+    expect(plain.warnings.filter((warning) => !warning.includes('broken.utam.json'))).toEqual([]);
+  });
+
+  it('warns once for a missing package, naming each place that maps it', () => {
+    const missing = project({ ...projectFiles, ...configs, ...acmePackage });
+    expect(buildPageObjectIndex({ projectDir: missing }).warnings).toContain(
+      `shared-pageobjects is not installed in ${missing}, but .utam/namespace-map.json maps "my-app/pageObjects/modal" to it and .utam/namespace-map.json maps "my-app/pageObjects/card" to it; it isn't indexed.`,
+    );
   });
 });
 

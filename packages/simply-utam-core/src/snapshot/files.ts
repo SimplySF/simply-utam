@@ -15,10 +15,10 @@
  */
 
 import * as nodeFs from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import type { EnvLike } from '../test-environment.js';
 import { serializeDomSnapshot, type DomSnapshot } from './format.js';
+import { discoverPageObjectPackages, readNamespaceConfig } from './page-object-packages.js';
 
 /** Set once per test run (the scaffolded `onPrepare` hook does), so every worker writes to one folder. */
 export const SNAPSHOT_RUN_ID_ENV = 'UTAM_SNAPSHOT_RUN_ID';
@@ -41,7 +41,10 @@ export type SnapshotFileSystem = {
 export type WriteDomSnapshotOptions = {
   /** The project folder. Defaults to the current directory. */
   projectDir?: string;
-  /** The run folder's id, such as `MANUAL_RUN_ID`. Defaults to `UTAM_SNAPSHOT_RUN_ID`, then the current time. */
+  /**
+   * The run folder's id, such as `MANUAL_RUN_ID`. Defaults to `UTAM_SNAPSHOT_RUN_ID`, then the time this
+   * process first wrote a snapshot.
+   */
   runId?: string;
   /** Where `UTAM_SNAPSHOT_RUN_ID` is read from. Defaults to `process.env`. */
   env?: EnvLike;
@@ -80,15 +83,20 @@ export function snapshotRunId(date = new Date()): string {
 
 const MAX_NAME_TRIES = 1000;
 
-/** Replace `file` in one step, so a reader never sees it half-written while another worker writes it. */
+/**
+ * Replace `file` in one step, so a reader never sees it half-written while another worker writes it.
+ * Where the rename can't replace it (on Windows, while another process has it open or renames onto
+ * it too), the temporary file is removed and `file` is written in place instead, as
+ * `ensureForceignore` does.
+ */
 async function replaceFile(fs: SnapshotFileSystem, file: string, data: string): Promise<void> {
   const temp = `${file}.${process.pid}-${Math.random().toString(36).slice(2, 10)}.tmp`;
   await fs.writeFile(temp, data);
   try {
     await fs.rename(temp, file);
-  } catch (error) {
+  } catch {
     await fs.rm(temp, { recursive: true, force: true });
-    throw error;
+    await fs.writeFile(file, data);
   }
 }
 
@@ -107,23 +115,23 @@ function baseName(snapshot: DomSnapshot): { name: string; numbered: boolean } {
   return label ? { name: `${scenario}--${label}`, numbered: false } : { name: scenario, numbered: true };
 }
 
+/** The version of each page-object package the index reads for this project. */
+/** The run id for captures made outside a run that set one: the time of this process's first capture. */
+let processRunId: string | undefined;
+
 function installedPageObjectPackages(projectDir: string): Record<string, string> {
-  try {
-    const require = createRequire(path.join(path.resolve(projectDir), 'package.json'));
-    const pkg = require('salesforce-pageobjects/package.json') as { version: string };
-    return { 'salesforce-pageobjects': pkg.version };
-  } catch {
-    return {};
-  }
+  const dir = path.resolve(projectDir);
+  const { packages } = discoverPageObjectPackages(dir, readNamespaceConfig(dir));
+  return Object.fromEntries(packages.flatMap((pkg) => (pkg.version ? [[pkg.name, pkg.version]] : [])));
 }
 
 /**
  * Write a snapshot to `.utam/snapshots/<run id>/<name>.json`, and a copy as
  * `.utam/snapshots/latest.json`, replaced in one step through a temporary file and a rename. The run
- * id comes from `runId`, then `UTAM_SNAPSHOT_RUN_ID`, then the current time.
+ * id comes from `runId`, then `UTAM_SNAPSHOT_RUN_ID`, then the time this process first wrote a snapshot.
  * A name already taken gets a number; files are created exclusively, so two workers can't both take
- * one name. Records the installed `salesforce-pageobjects` version in the file's
- * `meta.pageObjectPackages`, leaving `snapshot` unchanged.
+ * one name. Records the version of each page-object package the project's namespaces map to in the
+ * file's `meta.pageObjectPackages`, leaving `snapshot` unchanged.
  *
  * @param snapshot The snapshot to write.
  * @param options Where and how to write it.
@@ -140,7 +148,11 @@ export async function writeDomSnapshot(snapshot: DomSnapshot, options: WriteDomS
       ? { ...snapshot, meta: { ...snapshot.meta, pageObjectPackages: packages } }
       : snapshot;
 
-  const dir = path.join(SNAPSHOTS_DIR, cleanPart(options.runId ?? env[SNAPSHOT_RUN_ID_ENV] ?? '') || snapshotRunId());
+  // Without a run id, captures share one folder per process, so pruning counts them as one run.
+  const dir = path.join(
+    SNAPSHOTS_DIR,
+    cleanPart(options.runId ?? env[SNAPSHOT_RUN_ID_ENV] ?? '') || (processRunId ??= snapshotRunId()),
+  );
   await fs.mkdir(path.join(projectDir, dir), { recursive: true });
 
   const json = serializeDomSnapshot(written);

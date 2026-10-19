@@ -20,7 +20,13 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { Config } from '@oclif/core';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { ClipboardUnavailableError, systemClipboard, type Clipboard, type CommandRunner } from '../src/clipboard.js';
+import {
+  ClipboardUnavailableError,
+  runCommand,
+  systemClipboard,
+  type Clipboard,
+  type CommandRunner,
+} from '../src/clipboard.js';
 import SnapshotConsoleImport, { type ImportResult } from '../src/commands/snapshot/console/import.js';
 import SnapshotConsoleSnippet, { type SnippetResult } from '../src/commands/snapshot/console/snippet.js';
 
@@ -211,6 +217,32 @@ describe('systemClipboard', () => {
     expect(await systemClipboard({ platform: 'linux', run: failing }).read()).toBe('from xsel');
     expect(run.calls).toEqual(['xclip', 'xsel']);
   });
+
+  it('says a paste tool that ran but failed may have found the clipboard empty', async () => {
+    const run: CommandRunner = async (command) => {
+      if (command === 'wl-paste') return { code: 1, stdout: '' };
+      throw Object.assign(new Error(`spawn ${command} ENOENT`), { code: 'ENOENT' });
+    };
+    await expect(systemClipboard({ platform: 'linux', run }).read()).rejects.toThrow(
+      'no clipboard tool worked (tried wl-paste, xclip, xsel); wl-paste ran but failed, as it does when the clipboard is empty',
+    );
+    await expect(
+      systemClipboard({ platform: 'linux', run: async () => ({ code: 1, stdout: '' }) }).write('x'),
+    ).rejects.toThrow('no clipboard tool worked (tried wl-copy, xclip, xsel); wl-copy, xclip, xsel ran but failed');
+  });
+
+  it('collects output when reading, and leaves a writing tool nothing to hold open', async () => {
+    expect(await runCommand(process.execPath, ['-e', 'process.stdout.write("pasted")'])).toEqual({
+      code: 0,
+      stdout: 'pasted',
+    });
+    // A writer that leaves a process behind holding its output, as xclip does, still finishes.
+    const lingering = `require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], { detached: true, stdio: ['ignore', 'inherit', 'ignore'] }).unref()`;
+    const started = Date.now();
+    const result = await runCommand(process.execPath, ['-e', lingering], 'snippet');
+    expect(result.code).toBe(0);
+    expect(Date.now() - started).toBeLessThan(4000);
+  }, 10_000);
 
   it('uses PowerShell on Windows, and says what it tried when nothing works', async () => {
     const run = runner({});

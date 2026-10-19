@@ -158,9 +158,30 @@ export function recordPageSnapshot(meta: Record<string, unknown> = {}, withHidde
 
 const SPO = 'node_modules/salesforce-pageobjects';
 
+/** `exports` as `salesforce-pageobjects` 12.0.0 declares them, cut down to what `require` resolves. */
+export const SPO_EXPORTS = { './package.json': './package.json', './*': { require: './dist/*.cjs' } };
+
+/**
+ * The compiled page objects a manifest package ships, one per manifest entry, so their import paths
+ * resolve: `dist/<folder>/<name>.utam.json` compiles to `dist/<folder>/pageObjects/<name>.cjs`.
+ *
+ * @param packageDir The package's folder, relative to the project.
+ * @param files The package's files, its manifest among them.
+ */
+export function withCompiledPageObjects(packageDir: string, files: Record<string, unknown>): Record<string, unknown> {
+  const manifest = files[`${packageDir}/dist/utam.manifest.json`] as { pageObjects: Record<string, string> };
+  const compiled: Record<string, unknown> = {};
+  for (const source of Object.values(manifest.pageObjects)) {
+    const relative = source.replace(/^package\//, '');
+    const name = path.posix.basename(relative, '.utam.json');
+    compiled[`${packageDir}/${path.posix.dirname(relative)}/pageObjects/${name}.cjs`] = '';
+  }
+  return { ...files, ...compiled };
+}
+
 /** `salesforce-pageobjects` with the record home interface, its implementation and the highlights panel. */
-export const shippedPageObjects: Record<string, unknown> = {
-  [`${SPO}/package.json`]: { name: 'salesforce-pageobjects', version: '12.0.0' },
+export const shippedPageObjects: Record<string, unknown> = withCompiledPageObjects(SPO, {
+  [`${SPO}/package.json`]: { name: 'salesforce-pageobjects', version: '12.0.0', exports: SPO_EXPORTS },
   [`${SPO}/dist/utam.manifest.json`]: {
     pageObjects: {
       'utam-global/pageObjects/recordHomeFlexipage2': 'package/dist/global/recordHomeFlexipage2.utam.json',
@@ -187,12 +208,14 @@ export const shippedPageObjects: Record<string, unknown> = {
   [`${SPO}/dist/records/highlights2.utam.json`]: {
     elements: [{ name: 'entityLabel', public: true, type: 'container', selector: { css: "[slot='entityLabel']" } }],
   },
-};
+});
 
 const project: Record<string, unknown> = {
   'package.json': { name: 'my-app' },
   'utam.config.json': { pageObjectsRootDir: './', pageObjectsFileMask: ['**/__utam__/**/*.utam.json'] },
-  'generator.config.json': { namespaces: { c: 'my-app/pageObjects/' } },
+  'generator.config.json': {
+    namespaces: { c: 'my-app/pageObjects/', lightning: 'salesforce-pageobjects/lightning/pageObjects/' },
+  },
 };
 
 const dirs: string[] = [];
@@ -210,7 +233,7 @@ export function indexWith(pageObjects: Record<string, unknown> = {}): PageObject
   for (const [file, content] of Object.entries(files)) {
     const full = path.join(dir, file);
     fs.mkdirSync(path.dirname(full), { recursive: true });
-    fs.writeFileSync(full, JSON.stringify(content));
+    fs.writeFileSync(full, typeof content === 'string' ? content : JSON.stringify(content));
   }
   return buildPageObjectIndex({ projectDir: dir });
 }

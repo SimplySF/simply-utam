@@ -29,7 +29,7 @@ Requires Node.js 22 or later.
 - Every `snapshot` command but `lookup` reads `.utam/snapshots/latest.json` (or `--file`) and prints a header naming it, with a failed step's error and, for UTAM's not-found error, the `find --css` that repeats its search. All take `--json`, `--limit` and `--project-dir`, and exit 2 on bad input.
 - `simply-utam snapshot console snippet`: Prints the snippet to paste into a browser's DevTools console to capture a DOM snapshot of any page, with no test run, or copies it with `--copy`. `--mask` fixes the mask mode in the snippet. The snippet copies the masked snapshot to the clipboard, or downloads it where the console's `copy` isn't available.
 - `simply-utam snapshot console import`: Saves the snapshot the snippet copied (or `--file <path>`, `--file -` for standard input) to `.utam/snapshots/manual/` and `latest.json`, with an optional `--label`, and prints its header. Exits 2 on bad input.
-- `simply-utam snapshot lookup`: Shows the page objects for a custom element tag or a page object name, from `salesforce-pageobjects` and the project's own page objects: import path, methods and what they do, and public and private elements with their light or shadow scope. `--search <words>` finds page objects by name, tag or description. Needs no snapshot. Takes `--json`, `--limit` and `--project-dir`. See [design 0003](../../docs/design/0003-dom-snapshots.md).
+- `simply-utam snapshot lookup`: Shows the page objects for a custom element tag or a page object name, from the project's own page objects and the page-object packages its namespaces map to (`salesforce-pageobjects` through the scaffolded `lightning` namespace): import path, methods and what they do, and public and private elements with their light or shadow scope. `--search <words>` finds page objects by name, tag or description. Needs no snapshot. Takes `--json`, `--limit` and `--project-dir`. See [design 0003](../../docs/design/0003-dom-snapshots.md).
 
 ## DOM snapshots in an existing project
 
@@ -71,12 +71,17 @@ export const config = {
         error,
       });
       if (snapshot) {
+        // Saving and attaching each get their own try: neither failing may cost the other, or the
+        // screenshot below.
         try {
-          allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
           console.log(`DOM snapshot written to ${await writeDomSnapshot(snapshot)}`);
         } catch (writeError) {
-          // A snapshot that can't be saved mustn't cost the screenshot below.
           console.warn(`DOM snapshot not saved: ${writeError?.message ?? writeError}`);
+        }
+        try {
+          allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
+        } catch (attachError) {
+          console.warn(`DOM snapshot not attached to the Allure report: ${attachError?.message ?? attachError}`);
         }
       }
       await browser.takeScreenshot();

@@ -63,7 +63,8 @@ Add a DOM snapshot feature to `@simplysf/simply-utam-core`:
   from the REPL while paused.
 - **Files**: one folder per test run, plus `latest.json`, with pruning of old runs.
 - A **page-object index** built from the installed `salesforce-pageobjects` package and the
-  project's own page objects.
+  project's own page objects. After the MVP, it reads every page-object package the project's
+  namespace configuration maps to, `salesforce-pageobjects` included (see Page-object packages).
 - **Queries** over a snapshot and the index: `find` (including a CSS selector check with UTAM's
   `findElement` semantics), `path`, `tree`, `node` and `lookup`.
 - A **usage guide** for the commands, the workflow, and the two page-object authoring recipes agents
@@ -76,7 +77,9 @@ This is experimental: the MVP is what we need to use it on real authoring and fa
 commands, output and format can still change. An agent evaluation of the interface (Evidence,
 Appendix C) shaped it. **Hand-driven capture**, from a browser a person drives, comes after the
 MVP and has its own section: the console route is designed there, and the Chrome route is outlined.
-The other **later phases** are listed but not designed here.
+**Page-object packages**, which generalizes the index beyond `salesforce-pageobjects`, also comes
+after the MVP and is designed in its own section. The other **later phases** are listed but not
+designed here.
 
 This document records what the feature is and why: its decisions, the evidence, the risks, the open
 questions and the later phases. Exact output wording lives in the code, its tests and the usage
@@ -413,11 +416,17 @@ afterStep: async function (step, scenario, { error }) {
   if (error) {
     const snapshot = await captureDomSnapshot({ trigger: 'failure', scenario: scenario.name, step: step.text, error });
     if (snapshot) {
+      // Saving and attaching each get their own try: neither failing may cost the other, or the
+      // screenshot below.
       try {
-        allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
         console.log(`DOM snapshot written to ${await writeDomSnapshot(snapshot)}`);
       } catch (writeError) {
         console.warn(`DOM snapshot not saved: ${writeError?.message ?? writeError}`);
+      }
+      try {
+        allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
+      } catch (attachError) {
+        console.warn(`DOM snapshot not attached to the Allure report: ${attachError?.message ?? attachError}`);
       }
     }
     await browser.takeScreenshot();
@@ -481,7 +490,8 @@ them to existing projects too, in the project's UTAM test folder.
 - Snapshots go to `.utam/snapshots/<runId>/<name>.json`. `runId` comes from `UTAM_SNAPSHOT_RUN_ID`
   (through the injectable `env`), which the scaffolded `onPrepare` hook sets once per test run, so
   every worker in a run uses the same folder, to `snapshotRunId()`, the current time as
-  `20261016T120000`. In a project without the hook, the current time is used the same way. Run ids
+  `20261016T120000`. In a project without the hook, each process uses the time of its first capture,
+  so one worker's captures share a folder and pruning counts them as one run. Run ids
   must sort in time order, since pruning keeps the ones that sort last; numbers in a custom id
   compare as numbers (`build-9` before `build-10`). A `runId` option overrides both: captures made
   outside a test run pass `MANUAL_RUN_ID` (`manual`), so they collect in `.utam/snapshots/manual/`
@@ -494,12 +504,13 @@ them to existing projects too, in the project's UTAM test folder.
   so two workers can't both take the same name.
 - It also writes `.utam/snapshots/latest.json`, a copy of the most recent snapshot, which the query
   commands read by default. It's written to a temporary file in the same folder and renamed over
-  `latest.json`, so a reader never sees it half-written. With more than one worker, `latest.json` is
+  `latest.json`, so a reader never sees it half-written. Where the rename can't replace it (on
+  Windows, while another process has it open), it's written in place instead. With more than one worker, `latest.json` is
   whichever finished last. The
   file inside the run folder is always correct, and every command prints a header saying which
   snapshot it read (see CLI).
 - It adds `pageObjectPackages`, the installed `salesforce-pageobjects` version, when it resolves from
-  the project.
+  the project. Page-object packages extends this to every package the index reads.
 - `pruneDomSnapshots({ keepRuns })` deletes all but the newest `keepRuns` run folders. The scaffolded
   `onPrepare` hook keeps 10. It never deletes `manual/` and doesn't count it as a run, so captures
   made by hand neither push out test runs nor get pruned by them; deleting them is up to the person.
@@ -522,7 +533,8 @@ it.
   `**/__utam__/**/*.utam.json`), not from a fixed folder name.
 - **`salesforce-pageobjects`**, resolved from the test project. Version 12.0.0 ships
   `dist/utam.manifest.json` (page object name → source path) and 1,638 `.utam.json` sources, 445 of
-  them root page objects.
+  them root page objects. In the MVP its name is fixed; Page-object packages replaces that with
+  every package the namespace configuration maps to.
 
 Parsing all of them takes well under a second, so the MVP builds the index each time and doesn't
 cache it.
@@ -601,7 +613,7 @@ The MVP doesn't record which profile selects each implementation (see Later phas
 | `importPath`      | What test code imports, and what a `.utam.json` `type` names.                                                                                                             |
 | `root`            | Whether `utam.load` can load it directly. Only root page objects can.                                                                                                     |
 | `selector`        | A root page object's root selector.                                                                                                                                       |
-| `source`          | `project` or `salesforce-pageobjects`.                                                                                                                                    |
+| `source`          | `project` or `salesforce-pageobjects` (with Page-object packages, the name of any package).                                                                               |
 | `outputFile`      | For a project page object: its compiled file.                                                                                                                             |
 | `byConvention`    | Matched by naming convention only.                                                                                                                                        |
 | `description`     | The source's description, in full.                                                                                                                                        |
@@ -1085,13 +1097,153 @@ Designed when it's built; Appendix B has the spike's findings. In outline:
 - Its exports would be `devToolsPage` and a launcher, both taking injectable `fetch` and `WebSocket`.
   It's the route that fills `meta.org`.
 
+## Page-object packages
+
+The MVP's index reads exactly two sources: the project's own page objects and
+`salesforce-pageobjects`, whose name is a constant in the index. That leaves two gaps:
+
+- **Other packages are invisible.** A project that consumes an in-house or shared page-object
+  package (one whose components share the `c` namespace, mapped in `.utam/namespace-map.json`, or
+  one with its own namespace) gets no `lookup`, `path` annotations or tag matches for it, although
+  its build already knows where those page objects come from.
+- **Salesforce is assumed.** A project that doesn't use `salesforce-pageobjects` gets a warning that
+  it isn't installed, about a package it never asked for.
+
+This section generalizes the index so every page-object package, `salesforce-pageobjects` included,
+is found the same way: from the namespace configuration the project already has. It's built
+after the MVP stack, as one change, and adds no option, flag or file.
+
+### Where packages come from
+
+Both namespace files name import prefixes, for different reasons, and the index reads both:
+
+| File                                 | What it maps                                                    | Prefixes that name a package                                  |
+| ------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------- |
+| `generator.config.json` `namespaces` | A component namespace to the import prefix the generator writes | The values, except those under the project's own package name |
+| `.utam/namespace-map.json`           | A project prefix to an external one, rewritten after generation | The values; the keys are the project's own prefixes           |
+
+The generator's `namespaces` cover packages with their own namespace (`lightning` →
+`salesforce-pageobjects/lightning/pageObjects/`). The namespace map covers packages whose components
+share `c` with the project, which the generator can't tell apart, so the build's `rewrite` task
+moves them (`<appName>/pageObjects/shared` → `shared-components-pageobjects/pageObjects/shared`).
+
+From each prefix, the package name is its first path segment, or its first two for a scoped package
+(`@acme/page-objects/…`). The index resolves each name once from the project, with `createRequire`,
+as it resolves `salesforce-pageobjects` today; several prefixes into one package index it once. A
+package that doesn't resolve gets a warning naming it and the file and entry that mapped it.
+
+The namespace map is read through the loader `rewrite` already uses (made internal to core rather
+than private to the rewriter), so the index and the build agree on what the file says and on
+longest-prefix-first order. The index reads the default path, `.utam/namespace-map.json`; `build
+--namespace-map` and `rewrite --config` can point elsewhere (see Open questions).
+
+### `salesforce-pageobjects` is one package among others
+
+The index no longer names `salesforce-pageobjects`. It's indexed when a namespace maps to it, like
+any other package:
+
+- **Salesforce projects get it with no extra step.** The scaffolded `generator.config.json` maps
+  `lightning` to it, and one mapping is enough: the manifest covers the whole package, every
+  namespace it ships.
+- **Other projects aren't told about it.** No mapping, no package, no warning.
+- **Salesforce defaults stay in the scaffolder**, which already adds the dependency and the
+  `lightning` mapping. The index stays neutral.
+- **Removing the `lightning` mapping drops it from the index.** That's the intended result: the
+  generator no longer types anything as one of its page objects either.
+
+The Salesforce-specific rules become rules for a layout instead of a name: the manifest import-path
+rule (Names and import paths) and the naming convention's `utam-<namespace>/pageObjects/<name>`
+candidate (Tags) apply to any package that ships `dist/utam.manifest.json`.
+
+### Reading a package
+
+A package is read in one of two layouts:
+
+- **With a manifest** (`dist/utam.manifest.json`): as `salesforce-pageobjects` is read today, by
+  manifest name, with the import path from the source's folder under `dist/`.
+- **Without one**: every `*.utam.json` under the package's folder, skipping `node_modules`. The
+  prefix describes the compiled JavaScript test code imports, not where the sources sit, which may
+  be anywhere in the package (`src/**/__utam__/`), so the search isn't limited to the folder the
+  prefix names. Each entry's `name` is its import path, as for project page objects, or
+  `<package>/<file>` when it has none.
+
+**Import paths are checked, not assumed.** For each file without a manifest, the candidate import
+paths are each prefix that names the package plus the file's name without `.utam.json`, and the
+namespace map applied to the project's import path for that name. A namespace map entry is a string
+prefix, not a folder (`my-app/pageObjects/modal` → `shared-pageobjects/pageObjects/modal` rewrites
+`my-app/pageObjects/modal` itself), so the second form is the one a map-found package usually
+needs. With a manifest, the candidate is the path the manifest rule gives. The index keeps the first
+candidate `require.resolve` finds from the project, which respects the package's `exports` map and
+confirms the compiled file ships. `require` resolves with its own conditions, so a package that
+exports its page objects to `import` only resolves nothing, and its entries get no import paths.
+`salesforce-pageobjects` 12.0.0 exports `./*` to `dist/*.cjs` for `require`, so its import paths
+resolve; checking all 1,640 or so entries this way takes about 60 ms. A file whose candidate doesn't resolve
+is still indexed, without an `importPath` (already optional): its tags and typed elements still help
+`lookup` and `path`, and the output says it has no known import path. A source that only exists for
+the package's own tests then shows up as noise instead of a wrong answer, and a manifest package
+laid out differently from `salesforce-pageobjects` gets entries without import paths instead of
+wrong ones.
+
+- **Two copies of one source** (a package shipping both `src/` and `dist/`): identical files are
+  indexed once, the first in path order.
+- **Two sources with one name** in different folders: the first in path order takes the import
+  path; the other is indexed without one.
+- **Candidates are still names.** A candidate that doesn't resolve is registered as another name for
+  its entry, so a `type` that names it still links, and the entry still shows no import path.
+
+### The namespace map in matching
+
+The rewrite also changes what the project's own page objects say, so the index applies it in two
+places besides discovery:
+
+- **The naming convention.** For `c-modal`, the generator's `c` mapping gives
+  `my-app/pageObjects/modal`, but with the namespace map entry above, the page object is
+  `shared-pageobjects/pageObjects/modal`. The convention's candidates go through the namespace map,
+  longest prefix first, as the rewriter does. Both this and the next point work through the same
+  extra names, registered once the packages and the project are read.
+- **Typed elements before a rewrite.** If `lookup` or `path` runs before the build's `rewrite` task,
+  the project's generated `type` values still use the project prefix. The index registers the
+  pre-rewrite form as another name for the rewritten entry, so the link holds either way.
+
+### What else changes
+
+- **`source`** on an entry is `project` or the package's name.
+- **Ranking**: the project's own page objects first, then packages in the order they're found:
+  the generator's `namespaces` in file order, then the namespace map, longest prefix first.
+- **`meta.pageObjectPackages`** records the version of each package the index would read, not only
+  `salesforce-pageobjects`, from the same discovery.
+- **Public surface**: none. `buildPageObjectIndex` keeps its options, and `source` is already a
+  string. The README's description of `buildPageObjectIndex`, the `lookup` command's description and
+  the usage guide change their wording from `salesforce-pageobjects` to the packages the namespaces
+  map to.
+- **A package with neither a manifest nor a readable `.utam.json`** gets a warning instead of the
+  MVP's "no readable manifest" one.
+
+### Alternatives considered for packages
+
+- **Explicit configuration**: a `pageObjectPackages` option, a `--package` flag, or a file such as
+  `.utam/page-objects.json`, each listing packages with a layout and an import prefix. Predictable,
+  and it handles a package no namespace maps to. Not now: every package seen so far is mapped, since
+  the generator and `rewrite` need the mapping anyway. A package only hand-written step code uses can
+  get a placeholder entry in the generator's `namespaces` whose key matches no component, which the
+  generator ignores, at the cost of a mapping a reader can't tell from a real one. If that becomes
+  common, explicit configuration is the next step, as a second source over the same package reader.
+- **Scanning `package.json` dependencies** for packages that ship a manifest or `*.utam.json`:
+  finds the most, but is slower, picks up packages by mistake, and still can't tell what to import
+  without a manifest or a mapping. At most a hint ("found X; no namespace maps to it").
+- **Keeping `salesforce-pageobjects` as an implicit default**: saves a project that removes the
+  `lightning` mapping from losing it, but brings back the Salesforce assumption and the warning for
+  projects that don't use it.
+- **Limiting the search to the folder the prefix names**: simpler, but finds nothing when a package
+  keeps its sources away from its compiled output, which UTAM's own layout (`__utam__` beside the
+  component, compiled to `pageObjects/`) makes likely.
+
 ## Later phases
 
 Listed so the MVP doesn't box them out. Each one needs its own design before it's built.
 
 | Enhancement                   | What it adds, and why it's later                                                                                                                                                                                                                                            |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Other page-object packages    | Index an in-house library's page-object package, found through the generator's `namespaces` or a `pageObjectPackages` option and `--page-objects` flag. Later because no project in the sessions used one.                                                                  |
 | Profiles                      | Record the profile that selects each implementation, and read the project's configured profiles. Later because the scaffold configures none and no session needed one.                                                                                                      |
 | Checks across snapshots       | Run one `find --css` over several snapshots (each kind of page a step runs on), so a scope checked on one page is checked on the others. See Open questions.                                                                                                                |
 | `find --compare <handle>`     | Compares a visible copy's ancestors with a hidden copy's below the point where they join, and tests each differing ancestor as a scope with `querySnapshot`. Held in reserve: built only if agents still struggle to pick a scope with `node --ancestors` and `find --css`. |
@@ -1255,6 +1407,22 @@ defensible.
     shortfalls were page-object authoring, which the recipes now cover, and the acceptance check
     reruns T3 and F2.
 
+### Page-object packages
+
+15. **Where do packages other than `salesforce-pageobjects` keep their sources?** The layout without
+    a manifest assumes a package ships its `.utam.json` files, and that a candidate import path for
+    each one resolves to its compiled page object. No such package has been checked: none is
+    installed in this repository or the testbed. If UTAM-compiled packages usually ship a manifest,
+    the manifest layout covers more than assumed. Both layouts are built, and a wrong assumption
+    costs only import paths, not entries. Options: check one real package (such as the one the
+    scaffolded namespace map names) and adjust the layout to it; wait for a project to report one.
+    Recommendation: check one real package before the next release.
+16. **Should the index follow a namespace map at another path?** `build --namespace-map` and
+    `rewrite --config` take any path, but the index reads `.utam/namespace-map.json`. Options: read
+    only the default; add a `namespaceMapPath` option and flag to the index and the commands that
+    build it. Recommendation: the default only, until a project moves the file; the option is a
+    small addition when one does.
+
 ## Evidence
 
 **The spike** ran a throwaway walker on a scratch org's record page, a related list, and a console
@@ -1347,6 +1515,14 @@ The evaluation build's tests are the starting point; each PR fills them out to t
   summaries, container getters, the naming convention, both name forms, import paths from
   `utam.config.json` and `namespaces`, interfaces and implementations, project page objects named by
   import path with their compiled file, lookup by name and short name, and `--search` ranking.
+- **Page-object packages** with fixture projects and packages: packages found from the generator's
+  `namespaces` and from the namespace map's values, the project's own prefixes skipped, scoped
+  package names, several prefixes into one package, a mapped package that isn't installed, no
+  `salesforce-pageobjects` and no warning when nothing maps to it, both layouts, import paths kept
+  only when they resolve (including through an `exports` map), duplicate and same-named sources, the
+  convention and pre-rewrite `type` values going through the namespace map, a manifest package
+  whose compiled files are missing, ranking by configuration order, and `pageObjectPackages`
+  listing each package.
 - **Selector matching**: each scope (document, light, shadow), combinators not crossing a shadow
   root, ancestors above the scope counting, document order with hidden matches, placeholders,
   live-state pseudo-classes, masked attribute values, and an unparseable selector. The same selectors

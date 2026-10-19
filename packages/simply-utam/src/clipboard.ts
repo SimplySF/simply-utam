@@ -54,37 +54,49 @@ const WRITE_TOOLS: Partial<Record<NodeJS.Platform, Tool[]>> = {
   ],
 };
 
-/** Runs a command, collecting its standard output. */
+/**
+ * Runs a command, collecting its standard output when it's given no input. A command given input is
+ * writing, and its output is ignored: `xclip` and `wl-copy` leave a process behind to serve the
+ * clipboard, and one holding the output pipe would keep `close` from firing until the clipboard changes.
+ */
 export const runCommand: CommandRunner = (command, args, input) =>
   new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+    const reading = input === undefined;
+    const child = spawn(command, args, { stdio: ['pipe', reading ? 'pipe' : 'ignore', 'ignore'], windowsHide: true });
     const chunks: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+    child.stdout?.on('data', (chunk: Buffer) => chunks.push(chunk));
     child.on('error', reject);
     child.on('close', (code) => resolve({ code, stdout: Buffer.concat(chunks).toString('utf8') }));
     // A tool that exits without reading its input closes the pipe; `close` still reports how it exited.
-    child.stdin.on('error', () => undefined);
-    child.stdin.end(input ?? '');
+    child.stdin?.on('error', () => undefined);
+    child.stdin?.end(input ?? '');
   });
 
 /** Thrown when no clipboard tool for this platform works. */
 export class ClipboardUnavailableError extends Error {}
 
 async function firstWorking(tools: Tool[], run: CommandRunner, input?: string): Promise<string> {
+  // Tools that ran but exited with an error, rather than not being installed.
+  const failed: string[] = [];
   for (const tool of tools) {
     try {
       // Tools are tried one at a time: the first that works is the one to use.
       // eslint-disable-next-line no-await-in-loop
       const result = await run(tool.command, tool.args, input);
       if (result.code === 0) return result.stdout;
+      failed.push(tool.command);
     } catch {
       // Not installed; try the next one.
     }
   }
+  if (tools.length === 0) throw new ClipboardUnavailableError('no clipboard tool for this platform');
   const tried = tools.map((tool) => tool.command).join(', ');
-  throw new ClipboardUnavailableError(
-    tried ? `no clipboard tool worked (tried ${tried})` : 'no clipboard tool for this platform',
-  );
+  // Paste tools such as wl-paste and xclip exit with an error when the clipboard holds no text.
+  const ranButFailed =
+    failed.length === 0
+      ? ''
+      : `; ${failed.join(', ')} ran but failed${input === undefined ? ', as it does when the clipboard is empty' : ''}`;
+  throw new ClipboardUnavailableError(`no clipboard tool worked (tried ${tried})${ranButFailed}`);
 }
 
 /**

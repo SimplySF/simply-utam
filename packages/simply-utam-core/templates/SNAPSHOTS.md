@@ -252,7 +252,9 @@ That's how you attach your own page object below a shipped one: write it without
 
 With `--search`, lists page objects
 whose name, import path, tags or description contain every word, when you don't know the name yet.
-Reads `salesforce-pageobjects` and your project's page objects; needs no snapshot.
+Reads your project's page objects and the page-object packages your namespaces map to
+(`salesforce-pageobjects` through `lightning` in `generator.config.json`, a shared package through
+`.utam/namespace-map.json`); needs no snapshot.
 
 ### Exit codes
 

@@ -55,6 +55,38 @@ describe('scaffolded wdio.conf.mjs', () => {
   });
 });
 
+describe('scaffolded wdio.conf.mjs Allure attachment', () => {
+  it("still saves the DOM snapshot when it can't be attached to the Allure report", async () => {
+    vi.doMock('wdio-utam-service', () => ({ UtamWdioService: class {} }));
+    vi.doMock('@wdio/allure-reporter', () => ({
+      default: {
+        addAttachment: vi.fn(() => {
+          throw new Error('no allure reporter');
+        }),
+      },
+    }));
+    const writeDomSnapshot = vi.fn(async () => '.utam/snapshots/r/S--I-click-Save.json');
+    vi.doMock('@simplysf/simply-utam', () => ({
+      captureDomSnapshot: vi.fn(async () => ({ meta: {}, root: { address: '0', tag: 'html' } })),
+      pruneDomSnapshots: vi.fn(),
+      serializeDomSnapshot,
+      snapshotRunId: vi.fn(),
+      writeDomSnapshot,
+    }));
+    const takeScreenshot = vi.fn(async () => '');
+    vi.stubGlobal('browser', { takeScreenshot });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const { config } = (await import(WDIO_CONFIG)) as { config: { afterStep: Hook } };
+    await config.afterStep({ text: 'I click Save' }, { name: 'S' }, { error: 'boom' });
+
+    expect(writeDomSnapshot).toHaveBeenCalledOnce();
+    expect(takeScreenshot).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith('DOM snapshot not attached to the Allure report: no allure reporter');
+  });
+});
+
 describe('scaffolded dom-snapshot.steps.mjs', () => {
   async function loadSteps(api: Record<string, unknown>): Promise<Map<string, Hook>> {
     const steps = new Map<string, Hook>();

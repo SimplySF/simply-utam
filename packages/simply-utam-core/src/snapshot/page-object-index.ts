@@ -17,6 +17,12 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
+import {
+  discoverPageObjectPackages,
+  readNamespaceConfig,
+  type NamespaceConfig,
+  type PageObjectPackage,
+} from './page-object-packages.js';
 
 /** An element declared in a page object. */
 export type PageObjectElement = {
@@ -135,8 +141,6 @@ type UtamElementJson = {
   shadow?: { elements?: UtamElementJson[] };
 };
 
-const SALESFORCE_PAGEOBJECTS = 'salesforce-pageobjects';
-
 /** Split on a separator outside brackets, parentheses and quotes. */
 function splitTopLevel(value: string, isSeparator: (char: string) => boolean): string[] {
   const parts: string[] = [];
@@ -190,12 +194,25 @@ function camelCase(value: string): string {
   return value.replace(/-([a-z0-9])/g, (_, char: string) => char.toUpperCase());
 }
 
-function readJson<T>(file: string): T | undefined {
+function readText(file: string): string | undefined {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as T;
+    return fs.readFileSync(file, 'utf8');
   } catch {
     return undefined;
   }
+}
+
+function parseJson<T>(text: string): T | undefined {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+function readJson<T>(file: string): T | undefined {
+  const text = readText(file);
+  return text === undefined ? undefined : parseJson<T>(text);
 }
 
 /** The element names a method's `compose` statements use on its own page object. */
@@ -509,52 +526,122 @@ function addEntry(index: PageObjectIndex, entry: PageObjectEntry): void {
   if (entry.importPath) index.aliases.set(entry.importPath, entry.name);
 }
 
-/** `salesforce-pageobjects`, through its manifest, resolved from the project. */
-function indexSalesforcePageObjects(index: PageObjectIndex, projectDir: string): void {
-  let packageDir: string;
-  try {
-    const require = createRequire(path.join(projectDir, 'package.json'));
-    packageDir = path.dirname(require.resolve(`${SALESFORCE_PAGEOBJECTS}/package.json`));
-  } catch {
-    index.warnings.push(
-      `${SALESFORCE_PAGEOBJECTS} is not installed in ${projectDir}; only the project's own page objects are indexed.`,
-    );
-    return;
-  }
-  const manifest = readJson<{ pageObjects?: Record<string, string> }>(
-    path.join(packageDir, 'dist', 'utam.manifest.json'),
-  );
-  if (!manifest?.pageObjects) {
-    index.warnings.push(`${SALESFORCE_PAGEOBJECTS} has no readable dist/utam.manifest.json; it isn't indexed.`);
-    return;
-  }
-  for (const [name, source] of Object.entries(manifest.pageObjects)) {
+/** Whether test code in the project can import `specifier`: it resolves through the package's `exports`. */
+function importable(projectDir: string): (specifier: string) => boolean {
+  const require = createRequire(path.join(projectDir, 'package.json'));
+  return (specifier) => {
+    try {
+      require.resolve(specifier);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
+/** An import prefix and a page object's name, joined the way `rewrite` and the generator write them. */
+function joinPrefix(prefix: string, name: string): string {
+  return prefix.endsWith('/') ? `${prefix}${name}` : `${prefix}/${name}`;
+}
+
+/** Register `name` as another name for `entryName`, unless it already names a page object. */
+function addAlias(index: PageObjectIndex, name: string, entryName: string): void {
+  if (!index.aliases.has(name)) index.aliases.set(name, entryName);
+}
+
+/**
+ * A package with `dist/utam.manifest.json`, read by manifest name. The import path is the source's
+ * folder under `dist/`, then `pageObjects/`, then its name, kept only when it resolves.
+ */
+function indexManifestPackage(
+  index: PageObjectIndex,
+  pkg: PageObjectPackage,
+  manifest: Record<string, string>,
+  resolves: (specifier: string) => boolean,
+): void {
+  for (const [name, source] of Object.entries(manifest)) {
     const relative = source.replace(/^package\//, '');
-    const file = path.join(packageDir, relative);
+    const file = path.join(pkg.dir, relative);
     const json = readJson<UtamJson>(file);
     if (!json) continue;
     const underDist = path.posix.relative('dist', relative);
-    const importPath = `${SALESFORCE_PAGEOBJECTS}/${path.posix.dirname(underDist)}/pageObjects/${path.posix.basename(underDist, '.utam.json')}`;
-    addEntry(index, readEntry(json, { name, importPath, source: SALESFORCE_PAGEOBJECTS, file }));
+    const candidate = `${pkg.name}/${path.posix.dirname(underDist)}/pageObjects/${path.posix.basename(underDist, '.utam.json')}`;
+    const importPath = resolves(candidate) ? candidate : undefined;
+    addEntry(index, readEntry(json, { name, ...(importPath ? { importPath } : {}), source: pkg.name, file }));
+    if (!importPath) addAlias(index, candidate, name);
   }
 }
 
+/** `value` with the namespace map applied, longest prefix first, as `rewrite` applies it. */
+function rewritten(value: string, namespaceMap: Array<[string, string]>): string | undefined {
+  const mapping = namespaceMap.find(([from]) => value.startsWith(from));
+  return mapping ? `${mapping[1]}${value.slice(mapping[0].length)}` : undefined;
+}
+
+/**
+ * A package without a manifest: every `.utam.json` in it, wherever its sources sit. Each one's import
+ * path is a prefix that names the package plus the file's name, or what the namespace map rewrites
+ * the project's import path for that name to, kept only when it resolves. A source whose import path
+ * doesn't resolve is still indexed, named by its file.
+ */
+function indexSourcesPackage(
+  index: PageObjectIndex,
+  pkg: PageObjectPackage,
+  config: NamespaceConfig,
+  resolves: (specifier: string) => boolean,
+): number {
+  const seen = new Set<string>();
+  let count = 0;
+  for (const file of globFiles(pkg.dir, ['**/*.utam.json'])) {
+    const text = readText(file);
+    const json = text === undefined ? undefined : parseJson<UtamJson>(text);
+    // A package that ships its sources twice (`src/` and `dist/`) is indexed once.
+    if (!json || seen.has(text!)) continue;
+    seen.add(text!);
+    count++;
+    const base = path.basename(file, '.utam.json');
+    const viaMap = rewritten(`${config.projectPrefix}${base}`, config.namespaceMap);
+    const candidates = [
+      ...new Set([
+        ...pkg.prefixes.map((prefix) => joinPrefix(prefix, base)),
+        ...(viaMap?.startsWith(`${pkg.name}/`) ? [viaMap] : []),
+      ]),
+    ];
+    const importPath = candidates.find((candidate) => !index.entries.has(candidate) && resolves(candidate));
+    const name = importPath ?? `${pkg.name}/${path.relative(pkg.dir, file).split(path.sep).join('/')}`;
+    addEntry(index, readEntry(json, { name, ...(importPath ? { importPath } : {}), source: pkg.name, file }));
+    if (!importPath) for (const candidate of candidates) addAlias(index, candidate, name);
+  }
+  return count;
+}
+
+/** One page-object package, in whichever layout it ships. */
+function indexPackage(
+  index: PageObjectIndex,
+  projectDir: string,
+  config: NamespaceConfig,
+  pkg: PageObjectPackage,
+): void {
+  const resolves = importable(projectDir);
+  const manifest = readJson<{ pageObjects?: Record<string, string> }>(
+    path.join(pkg.dir, 'dist', 'utam.manifest.json'),
+  )?.pageObjects;
+  if (manifest) {
+    indexManifestPackage(index, pkg, manifest, resolves);
+    return;
+  }
+  if (indexSourcesPackage(index, pkg, config, resolves) === 0)
+    index.warnings.push(`${pkg.name} has no readable .utam.json page objects; it isn't indexed.`);
+}
+
 /** The project's own page objects, from `utam.config.json` and the generator's `namespaces`. */
-function indexProjectPageObjects(index: PageObjectIndex, projectDir: string): void {
+function indexProjectPageObjects(index: PageObjectIndex, projectDir: string, config: NamespaceConfig): void {
   const utamConfig = readJson<{
     pageObjectsRootDir?: string;
     pageObjectsFileMask?: string[];
     pageObjectsOutputDir?: string;
   }>(path.join(projectDir, 'utam.config.json'));
-  const generatorConfig = readJson<{ namespaces?: Record<string, string> }>(
-    path.join(projectDir, 'generator.config.json'),
-  );
-  const packageName = readJson<{ name?: string }>(path.join(projectDir, 'package.json'))?.name;
-  index.namespaces = generatorConfig?.namespaces ?? {};
   if (!utamConfig) return;
-  const projectPrefix =
-    Object.values(index.namespaces).find((prefix) => packageName && prefix.startsWith(`${packageName}/`)) ??
-    (packageName ? `${packageName}/pageObjects/` : 'pageObjects/');
   const rootDir = path.resolve(projectDir, utamConfig.pageObjectsRootDir ?? '.');
   const outputDir = utamConfig.pageObjectsOutputDir ?? 'pageObjects';
   for (const file of globFiles(rootDir, utamConfig.pageObjectsFileMask ?? ['**/__utam__/**/*.utam.json'])) {
@@ -564,7 +651,7 @@ function indexProjectPageObjects(index: PageObjectIndex, projectDir: string): vo
       continue;
     }
     const base = path.basename(file, '.utam.json');
-    const importPath = `${projectPrefix}${base}`;
+    const importPath = `${config.projectPrefix}${base}`;
     addEntry(
       index,
       readEntry(json, {
@@ -575,6 +662,19 @@ function indexProjectPageObjects(index: PageObjectIndex, projectDir: string): vo
         file,
       }),
     );
+  }
+}
+
+/**
+ * Before the build's `rewrite` task runs, the project's sources still name a rewritten page object
+ * by its project prefix, so that name is registered for it too. The naming convention's candidates
+ * go through the same names.
+ */
+function addPreRewriteAliases(index: PageObjectIndex, namespaceMap: Array<[string, string]>): void {
+  for (const [alias, entryName] of [...index.aliases]) {
+    for (const [from, to] of namespaceMap) {
+      if (alias.startsWith(to)) addAlias(index, `${from}${alias.slice(to.length)}`, entryName);
+    }
   }
 }
 
@@ -606,7 +706,8 @@ function linkEntries(index: PageObjectIndex): void {
 }
 
 /**
- * Index `salesforce-pageobjects` and the project's own page objects by the tags they cover.
+ * Index the project's own page objects, and the page-object packages its namespace configuration
+ * maps to, by the tags they cover.
  *
  * @param options Where the project is.
  */
@@ -619,8 +720,13 @@ export function buildPageObjectIndex(options: BuildPageObjectIndexOptions = {}):
     namespaces: {},
     warnings: [],
   };
-  indexSalesforcePageObjects(index, projectDir);
-  indexProjectPageObjects(index, projectDir);
+  const config = readNamespaceConfig(projectDir);
+  index.namespaces = config.namespaces;
+  const { packages, warnings } = discoverPageObjectPackages(projectDir, config);
+  index.warnings.push(...warnings);
+  for (const pkg of packages) indexPackage(index, projectDir, config, pkg);
+  indexProjectPageObjects(index, projectDir, config);
+  addPreRewriteAliases(index, config.namespaceMap);
   linkEntries(index);
   return index;
 }
@@ -667,6 +773,13 @@ export function matchPageObjects(index: PageObjectIndex, query: string): PageObj
   return resolvePageObject(index, query).map((entry) => ({ entry, via: 'name' }));
 }
 
+/** `project` first, then each package in the order it was indexed. */
+function sourceOrder(index: PageObjectIndex): Map<string, number> {
+  const order = new Map<string, number>([['project', 0]]);
+  for (const entry of index.entries.values()) if (!order.has(entry.source)) order.set(entry.source, order.size);
+  return order;
+}
+
 function matchTag(index: PageObjectIndex, tag: string): PageObjectMatch[] {
   const matches = new Map<string, PageObjectMatch>();
   for (const item of index.tags.get(tag.toLowerCase()) ?? []) {
@@ -706,9 +819,12 @@ function matchTag(index: PageObjectIndex, tag: string): PageObjectMatch[] {
       }
     }
   }
-  // The project's own first, then root selectors, then typed elements.
+  // The project's own first, then packages in the order the configuration names them; within each,
+  // root selectors, then typed elements.
+  const order = sourceOrder(index);
   const rank = (match: PageObjectMatch): number =>
-    (match.entry.source === 'project' ? 0 : 10) + ['root selector', 'typed element', 'convention'].indexOf(match.via);
+    (order.get(match.entry.source) ?? order.size) * 10 +
+    ['root selector', 'typed element', 'convention'].indexOf(match.via);
   return [...matches.values()].sort((a, b) => rank(a) - rank(b));
 }
 

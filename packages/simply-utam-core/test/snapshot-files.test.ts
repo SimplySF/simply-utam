@@ -17,7 +17,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
   DOM_SNAPSHOT_FORMAT,
   DomSnapshotError,
@@ -257,18 +257,27 @@ describe('writeDomSnapshot', () => {
     );
   });
 
-  it('records the installed salesforce-pageobjects version', async () => {
+  it('records the version of each page-object package a namespace maps to', async () => {
     const dir = tempDir();
-    fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"p"}');
-    fs.mkdirSync(path.join(dir, 'node_modules', 'salesforce-pageobjects'), { recursive: true });
-    fs.writeFileSync(
-      path.join(dir, 'node_modules', 'salesforce-pageobjects', 'package.json'),
-      '{"name":"salesforce-pageobjects","version":"12.0.0"}',
-    );
+    const files: Record<string, string> = {
+      'package.json': '{"name":"p"}',
+      'generator.config.json': '{"namespaces":{"lightning":"salesforce-pageobjects/lightning/pageObjects/"}}',
+      '.utam/namespace-map.json': '{"p/pageObjects/shared":"shared-pageobjects/pageObjects/shared"}',
+      'node_modules/salesforce-pageobjects/package.json': '{"name":"salesforce-pageobjects","version":"12.0.0"}',
+      'node_modules/shared-pageobjects/package.json': '{"name":"shared-pageobjects","version":"2.1.0"}',
+      'node_modules/unmapped-pageobjects/package.json': '{"name":"unmapped-pageobjects","version":"1.0.0"}',
+    };
+    for (const [file, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+      fs.writeFileSync(path.join(dir, file), content);
+    }
     const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
     const file = await writeDomSnapshot(snapshot, { projectDir: dir, env });
     const written = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')) as DomSnapshot;
-    expect(written.meta.pageObjectPackages).toEqual({ 'salesforce-pageobjects': '12.0.0' });
+    expect(written.meta.pageObjectPackages).toEqual({
+      'salesforce-pageobjects': '12.0.0',
+      'shared-pageobjects': '2.1.0',
+    });
     // The caller's snapshot isn't changed, so writing it again, or attaching it elsewhere, sees what it was given.
     expect(snapshot.meta.pageObjectPackages).toBeUndefined();
   });
@@ -325,15 +334,36 @@ describe('writeDomSnapshot', () => {
     expect(memory.calls).not.toContain(`write ${latest}`);
   });
 
-  it('removes the temporary file and rethrows when the rename fails', async () => {
-    const memory = memoryFs(Object.assign(new Error('busy'), { code: 'EBUSY' }));
+  it('removes the temporary file and writes latest.json in place when the rename fails', async () => {
+    const memory = memoryFs(Object.assign(new Error('not permitted'), { code: 'EPERM' }));
     const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
-    await expect(
-      writeDomSnapshot(snapshot, { projectDir: '/p', env, fs: memory.fileSystem, pageObjectPackages: {} }),
-    ).rejects.toThrow('busy');
+    const file = await writeDomSnapshot(snapshot, {
+      projectDir: '/p',
+      env,
+      fs: memory.fileSystem,
+      pageObjectPackages: {},
+    });
+    expect(file).toBe(run('S--1.json'));
+    const latest = path.join('/p', LATEST_SNAPSHOT);
     const temp = memory.calls.find((call) => call.startsWith('rename '))!.split(' ')[1];
-    expect(memory.calls).toContain(`rm ${temp}`);
-    expect([...memory.files.keys()].some((file) => file.endsWith('.tmp'))).toBe(false);
+    expect(memory.calls.slice(-2)).toEqual([`rm ${temp}`, `write ${latest}`]);
+    expect(memory.files.get(latest)).toBe(memory.files.get(path.join('/p', file)));
+    expect([...memory.files.keys()].some((name) => name.endsWith('.tmp'))).toBe(false);
+  });
+
+  it('puts captures with no run id in one folder per process', async () => {
+    const memory = memoryFs();
+    const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
+    const options = { projectDir: '/p', env: {}, fs: memory.fileSystem, pageObjectPackages: {} };
+    const first = await writeDomSnapshot(snapshot, options);
+    vi.useFakeTimers({ now: Date.now() + 5000 });
+    try {
+      const second = await writeDomSnapshot(snapshot, options);
+      expect(path.dirname(second)).toBe(path.dirname(first));
+      expect(path.basename(path.dirname(first))).toMatch(/^\d{8}T\d{6}$/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('names the folder and base name when every numbered name is taken', async () => {

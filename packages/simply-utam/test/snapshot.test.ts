@@ -93,6 +93,7 @@ beforeAll(async () => {
   writeFiles(projectDir, {
     'package.json': { name: 'my-app' },
     'utam.config.json': { pageObjectsRootDir: './', pageObjectsFileMask: ['**/__utam__/**/*.utam.json'] },
+    'generator.config.json': { namespaces: { lightning: 'salesforce-pageobjects/lightning/pageObjects/' } },
     'test/__utam__/recordPage.utam.json': {
       root: true,
       selector: { css: 'one-record-home-flexipage2' },
