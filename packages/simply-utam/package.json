@@ -41,7 +41,7 @@
     }
   },
   "dependencies": {
-    "@oclif/core": "^5.1.2",
+    "@oclif/core": "^5.1.8",
     "@simplysf/simply-utam-core": "workspace:*"
   },
   "devDependencies": {
