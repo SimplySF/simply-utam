@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.3](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam-core%400.1.2...%40simplysf%2Fsimply-utam-core%400.1.3) (2026-10-19)
+
+### Bug Fixes
+
+- **deps:** bump prettier from 3.9.9 to 3.9.10 ([#14](https://github.com/SimplySF/simply-utam/issues/14)) ([ca2cbaf](https://github.com/SimplySF/simply-utam/commit/ca2cbaf3d1438d5dd44dfa1ae4da9eb0a9b96ee3))
+
 ## [0.1.2](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam-core%400.1.1...%40simplysf%2Fsimply-utam-core%400.1.2) (2026-10-14)
 
 ### Bug Fixes
