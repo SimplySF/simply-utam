@@ -20,6 +20,15 @@ Under plain Node ESM that import cannot resolve, because nothing makes `my-app` 
 @wdio/runner: Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'my-app' imported from …/pageObjects/foo.js
 ```
 
+Projects that worked around this with a self-dependency (`"my-app": "file:"`) then break on upgrading
+to WebdriverIO 10, with the file rather than the package missing:
+
+```
+@wdio/runner: Error [ERR_MODULE_NOT_FOUND]: Cannot find module '…/node_modules/my-app/pageObjects/bar'
+imported from …/pageObjects/foo.js
+Did you mean to import "file:///…/pageObjects/bar.js"?
+```
+
 Two things cause it:
 
 1. **No self-reference.** Node resolves a package's own name only through its `exports` field, or
@@ -64,6 +73,36 @@ Observations:
   `simply-utam rewrite` matches by string prefix, so a scoped key rewrites a scoped type. A key and a type
   that disagree on the scope silently match nothing.
 
+### WebdriverIO 9 and 10
+
+The self-dependency works only under a loader that adds the missing `.js`, and WebdriverIO used to
+supply one without being asked. In `@wdio/cli` 9.32.0, `Launcher.initialize()` always appends
+`--import <tsx>` to `NODE_OPTIONS`, so every worker runs under `tsx`. In 10.1.0 it does so only when
+`shouldEnableTsx()` finds TypeScript: a `.ts` config file, a `--tsConfigPath` argument, or a `.ts` path in
+`specs`, `exclude`, `suites` or `cucumberOpts.require`. The scaffolded project (`wdio.conf.mjs`,
+`*.feature`, `*.steps.mjs`) matches none of these, so its workers run without `tsx`.
+
+Reproduced with real runs in headless Chrome: two identical projects, each a Cucumber suite with `.mjs`
+steps that import compiled UTAM page objects, with the `"my-app": "file:"` self-dependency:
+
+| WebdriverIO                                                      | Worker loader                          | Result                     |
+| ---------------------------------------------------------------- | -------------------------------------- | -------------------------- |
+| 9.32.0                                                           | `tsx`, through `NODE_OPTIONS`          | passes                     |
+| 10.1.0                                                           | none                                   | fails with the error above |
+| 10.1.0, `execArgv: ['--import', 'tsx']`                          | `tsx`, through the worker's `execArgv` | passes                     |
+| 10.1.0, the `exports` entry, with or without the self-dependency | none                                   | passes                     |
+
+Under pnpm (12.11) the self-dependency and the `execArgv` workaround need more:
+
+- `"my-app": "file:"` and `"my-app": "file:."` both fail at install. Only `"my-app": "link:."` links the
+  project to itself.
+- `--import tsx` fails with `Cannot find package 'tsx'`. `tsx` is a dependency of `@wdio/cli`, and pnpm
+  does not make it resolvable from the project, so the project has to declare `tsx` itself.
+- With the `exports` entry, the suite passes under pnpm with neither a self-dependency nor `tsx`.
+
+So the WebdriverIO 10 failure is this document's problem surfacing through a workaround that relied on
+`tsx`. The `exports` entry resolves it for both WebdriverIO majors, without a loader.
+
 ## Decision
 
 1. **`init` uses the full package name as the namespace** (`@acme/my-app`, not `my-app`), so the imports
@@ -75,7 +114,9 @@ Observations:
    that import.
 
 `exports` is chosen over a self-dependency because it is resolved by Node itself: it works under any
-loader, with no install-order step, and adds no dependency on the project itself.
+loader and any WebdriverIO major, with no install-order step, and adds no dependency on the project
+itself. The documentation keeps `execArgv: ['--import', 'tsx']` as a stopgap for a project that cannot
+change its package.json yet, with the pnpm caveat that `tsx` must then be a declared devDependency.
 
 ## Behavior
 
@@ -119,8 +160,11 @@ prints:
 ```
 The namespace "my-app" differs from the package name "@acme/my-app", so page object imports cannot
 resolve through "exports". Use the package name, or alias the namespace with a dependency
-("my-app": "file:.") and a loader that resolves extensionless paths.
+("my-app": "file:." with npm, "link:." with pnpm) and a loader that resolves extensionless paths.
 ```
+
+Under WebdriverIO 10 that loader has to be added explicitly (see
+[WebdriverIO 9 and 10](#webdriverio-9-and-10)).
 
 ### Existing projects
 
@@ -132,13 +176,14 @@ that keeps the old one.
 
 ## Alternatives considered
 
-| Alternative                                                | Why not                                                                                                                                                                 |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Self-dependency (`"my-app": "file:"`) instead of `exports` | Works only after a build and `npm i`, and only where the loader resolves extensionless paths. Plain Node fails. A fresh clone that installs before building fails.      |
-| Both `exports` and a self-dependency                       | Safe, because `exports` wins, but the dependency does nothing once `exports` is present.                                                                                |
-| A flag to choose scoped or stripped namespaces             | `--app-name` already sets the value, and `resolveAppName` runs once, in `init`. The stripped mode also cannot use `exports`, so a flag would change more than a string. |
-| Keep stripping, rewrite imports at build time              | A rewrite step could turn `my-app/…` into relative imports, but it adds a build stage and diverges from the compiler's own output.                                      |
-| Document the manual `exports` entry only                   | Every project hits the error first. `init` already edits package.json for the Wireit scripts.                                                                           |
+| Alternative                                                | Why not                                                                                                                                                                                                                 |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Self-dependency (`"my-app": "file:"`) instead of `exports` | Works only after a build and `npm i`, and only where the loader resolves extensionless paths. Plain Node and WebdriverIO 10 fail. pnpm rejects `file:` and needs `link:.`.                                              |
+| `execArgv: ['--import', 'tsx']` in `wdio.conf.mjs`         | Fixes only the missing extension, not the package name, so it still needs a self-dependency. Puts back the per-worker loader WebdriverIO 10 removed, and under pnpm needs `tsx` declared. Kept as a documented stopgap. |
+| Both `exports` and a self-dependency                       | Safe, because `exports` wins, but the dependency does nothing once `exports` is present.                                                                                                                                |
+| A flag to choose scoped or stripped namespaces             | `--app-name` already sets the value, and `resolveAppName` runs once, in `init`. The stripped mode also cannot use `exports`, so a flag would change more than a string.                                                 |
+| Keep stripping, rewrite imports at build time              | A rewrite step could turn `my-app/…` into relative imports, but it adds a build stage and diverges from the compiler's own output.                                                                                      |
+| Document the manual `exports` entry only                   | Every project hits the error first. `init` already edits package.json for the Wireit scripts.                                                                                                                           |
 
 ## Implementation plan
 
@@ -163,6 +208,8 @@ one and should read as such in the changelog.
   name, an existing stripped `generator.config.json`.
 - An integration check outside the unit suite: compile a two-page-object project and import it under plain
   Node for a scoped and an unscoped name. The findings table above is the expected result.
+- An end-to-end check outside the unit suite: a scaffolded project with `wdio.conf.mjs` and `.mjs` steps
+  runs on WebdriverIO 9 and 10, under npm and pnpm, with no `tsx` in `execArgv`.
 
 ## Resolved questions
 
