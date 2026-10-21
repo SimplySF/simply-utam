@@ -53,7 +53,7 @@ export default class Init extends Command {
     }),
     'app-name': Flags.string({
       char: 'a',
-      summary: 'Application name for UTAM namespaces (defaults to package.json name).',
+      summary: 'Application name for UTAM namespaces (defaults to package.json name, scope included).',
     }),
     force: Flags.boolean({
       char: 'f',
@@ -128,6 +128,10 @@ export default class Init extends Command {
 
     if (result.forceignore) {
       this.logForceignore(result.forceignore, flags['dry-run']);
+    }
+
+    for (const warning of result.warnings) {
+      this.warn(warning);
     }
 
     if (result.missingDependencies.length > 0) {

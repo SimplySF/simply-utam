@@ -137,6 +137,12 @@ export interface ScaffoldResult {
    * What happened to .forceignore. Absent when the forceignore option is false.
    */
   forceignore?: ForceignoreResult;
+
+  /**
+   * Problems scaffolding found but could not fix, such as an existing config that uses a different
+   * namespace than the one scaffolding would write.
+   */
+  warnings: string[];
 }
 
 /**
@@ -341,14 +347,52 @@ function resolveSourceDir(sfdxProject: SfdxProjectDetails, explicitSourceDir?: s
   return 'force-app';
 }
 
+// The full package name, scope included: page objects import each other by this name, and Node only
+// resolves a package's own name when it matches package.json "name" exactly.
 function resolveAppName(packageJsonData: Record<string, unknown> | null, explicitAppName?: string): string {
   if (explicitAppName) {
     return explicitAppName;
   }
   if (typeof packageJsonData?.['name'] === 'string') {
-    return packageJsonData['name'].replace(/^@[^/]+\//, '');
+    return packageJsonData['name'];
   }
   return 'salesforce-app';
+}
+
+/**
+ * Warns when a kept generator.config.json still uses the namespace older versions derived from a scoped
+ * package name, which dropped the scope ("my-app" for "@acme/my-app").
+ */
+function checkStrippedNamespace(
+  projectDir: string,
+  packageJsonData: Record<string, unknown> | null,
+  appName: string,
+): string | undefined {
+  const packageName = packageJsonData?.['name'];
+  if (typeof packageName !== 'string' || !packageName.startsWith('@')) {
+    return undefined;
+  }
+  const stripped = packageName.replace(/^@[^/]+\//, '');
+  if (appName === stripped) {
+    return undefined;
+  }
+  let namespace: unknown;
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(projectDir, 'generator.config.json'), 'utf-8')) as {
+      namespaces?: Record<string, unknown>;
+    };
+    namespace = config.namespaces?.['c'];
+  } catch {
+    return undefined;
+  }
+  if (namespace !== `${stripped}/pageObjects/`) {
+    return undefined;
+  }
+  return (
+    `generator.config.json uses the namespace "${stripped}", which drops the scope from "${packageName}", ` +
+    `so page object imports cannot resolve by the package's own name. Re-run with --force to use ` +
+    `"${appName}", or keep the old namespace with --app-name ${stripped}.`
+  );
 }
 
 function writeScaffoldFiles(
@@ -504,7 +548,15 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
 
   const { createdFiles, skippedFiles } = writeScaffoldFiles(projectDir, filesToCreate, force, dryRun);
   const modifiedFiles: string[] = [];
+  const warnings: string[] = [];
   let updatedPackageJson: Record<string, unknown> | undefined;
+
+  if (skippedFiles.includes('generator.config.json')) {
+    const stripped = checkStrippedNamespace(projectDir, packageJsonData, appName);
+    if (stripped) {
+      warnings.push(stripped);
+    }
+  }
 
   const forceignore = updateForceignore(projectDir, sourceDir, utamTests.testDirs, sfdxProject, options);
   recordForceignore(forceignore, createdFiles, modifiedFiles);
@@ -531,5 +583,6 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     updatedPackageJson,
     missingDependencies,
     forceignore,
+    warnings,
   });
 }

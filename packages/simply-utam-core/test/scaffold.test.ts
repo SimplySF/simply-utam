@@ -285,6 +285,106 @@ describe('scaffold service', () => {
       expect(fs.readFileSync(genPath, 'utf-8')).not.toBe('{"custom": true}');
     });
 
+    describe('namespace', () => {
+      const readNamespace = (): unknown =>
+        (
+          JSON.parse(fs.readFileSync(path.join(tempDir, 'generator.config.json'), 'utf-8')) as {
+            namespaces: Record<string, unknown>;
+          }
+        ).namespaces['c'];
+      const readNamespaceMapKeys = (): string[] =>
+        Object.keys(JSON.parse(fs.readFileSync(path.join(tempDir, '.utam', 'namespace-map.json'), 'utf-8')) as object);
+
+      it('uses an unscoped package name as is', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: 'my-app' }), 'utf-8');
+
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readNamespace()).toBe('my-app/pageObjects/');
+        expect(readNamespaceMapKeys()).toStrictEqual(['my-app/pageObjects/shared']);
+      });
+
+      it('keeps the scope of a scoped package name in the generator config and namespace map', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readNamespace()).toBe('@acme/my-app/pageObjects/');
+        expect(readNamespaceMapKeys()).toStrictEqual(['@acme/my-app/pageObjects/shared']);
+        expect(result.warnings).toStrictEqual([]);
+      });
+
+      it('uses appName over the package name', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', appName: 'custom' });
+
+        expect(readNamespace()).toBe('custom/pageObjects/');
+      });
+
+      it('falls back to salesforce-app without a package name', async () => {
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readNamespace()).toBe('salesforce-app/pageObjects/');
+      });
+
+      describe('an existing generator.config.json with the scope dropped', () => {
+        beforeEach(() => {
+          fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+          fs.writeFileSync(
+            path.join(tempDir, 'generator.config.json'),
+            JSON.stringify({ namespaces: { c: 'my-app/pageObjects/' } }),
+            'utf-8',
+          );
+        });
+
+        it('is kept, with a warning naming the new namespace and the --app-name that keeps it', async () => {
+          const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+          expect(result.skippedFiles).toContain('generator.config.json');
+          expect(readNamespace()).toBe('my-app/pageObjects/');
+          expect(result.warnings).toHaveLength(1);
+          expect(result.warnings[0]).toContain('"@acme/my-app"');
+          expect(result.warnings[0]).toContain('--app-name my-app');
+        });
+
+        it('gives no warning when --app-name asks for the old namespace', async () => {
+          const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', appName: 'my-app' });
+
+          expect(result.warnings).toStrictEqual([]);
+        });
+
+        it('is replaced, with no warning, under force', async () => {
+          const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', force: true });
+
+          expect(readNamespace()).toBe('@acme/my-app/pageObjects/');
+          expect(result.warnings).toStrictEqual([]);
+        });
+      });
+
+      it('gives no warning for an existing generator.config.json with another namespace', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+        fs.writeFileSync(
+          path.join(tempDir, 'generator.config.json'),
+          JSON.stringify({ namespaces: { c: 'something-else/pageObjects/' } }),
+          'utf-8',
+        );
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(result.warnings).toStrictEqual([]);
+      });
+
+      it('gives no warning for an existing generator.config.json that is not valid JSON', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+        fs.writeFileSync(path.join(tempDir, 'generator.config.json'), '{ not json', 'utf-8');
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(result.warnings).toStrictEqual([]);
+      });
+    });
+
     it('should not modify files on disk during dryRun', async () => {
       const result = await scaffoldProject({
         projectDir: tempDir,
