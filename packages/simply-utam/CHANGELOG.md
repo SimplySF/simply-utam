@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [0.2.0](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.1.7...%40simplysf%2Fsimply-utam%400.2.0) (2026-10-21)
+
+### Bug Fixes
+
+- let compiled page objects import each other ([#19](https://github.com/SimplySF/simply-utam/issues/19)) ([8e38a3c](https://github.com/SimplySF/simply-utam/commit/8e38a3ce0559296b90a1b55698ee7c8b686682e1))
+
+### BREAKING CHANGES
+
+- for a scoped package, init now writes the namespace with the scope
+  ("@acme/my-app" instead of "my-app"). Existing projects keep their config until they re-run
+  init --force. Pass --app-name my-app to keep the old namespace.
+
 ## [0.1.7](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.1.6...%40simplysf%2Fsimply-utam%400.1.7) (2026-10-19)
 
 ### Bug Fixes
