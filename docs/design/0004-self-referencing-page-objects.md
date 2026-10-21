@@ -1,6 +1,6 @@
 # 0004 — Self-referencing page object imports
 
-**Status:** Draft
+**Status:** Implemented (PR #19)
 **Package:** `packages/simply-utam-core`, `packages/simply-utam`
 **Date:** 2026-10-21
 
@@ -108,14 +108,14 @@ So the WebdriverIO 10 failure is this document's problem surfacing through a wor
 1. **`init` uses the full package name as the namespace** (`@acme/my-app`, not `my-app`), so the imports
    match package.json `name`. `--app-name` still overrides it.
 2. **`init` makes page objects importable by adding one `exports` entry** to the project's package.json,
-   `"./pageObjects/*": "./pageObjects/*.js"`. It adds the entry only when it can do so without changing
-   what already resolves.
-3. **`init` warns when the namespace is not the package name**, because self-referencing cannot resolve
-   that import.
+   `"./pageObjects/*": "./pageObjects/*.js"` by default. It adds the entry only when it can do so without
+   changing what already resolves.
+3. **`init` warns when the namespace is not under the package name**, because self-referencing cannot
+   resolve that import.
 
 `exports` is chosen over a self-dependency because it is resolved by Node itself: it works under any
 loader and any WebdriverIO major, with no install-order step, and adds no dependency on the project
-itself. The documentation keeps `execArgv: ['--import', 'tsx']` as a stopgap for a project that cannot
+itself. The root README keeps `execArgv: ['--import', 'tsx']` as a stopgap for a project that cannot
 change its package.json yet, with the pnpm caveat that `tsx` must then be a declared devDependency.
 
 ## Behavior
@@ -129,33 +129,43 @@ change its package.json yet, with the pnpm caveat that `tsx` must then be a decl
 3. `salesforce-app`.
 
 The result is written into `generator.config.json` (`namespaces.c`) and `.utam/namespace-map.json`, both
-from the same value, so a generated type and a map key always agree on the scope.
+from the same value, so a generated type and a map key always agree on the scope. When `init` keeps an
+existing `generator.config.json`, a new namespace map uses that file's namespace instead.
 
 ### The `exports` entry
 
-The path is `<pageObjectsOutputDir>` from `utam.config.json` (`pageObjects` by default), so
-`"./pageObjects/*": "./pageObjects/*.js"`. It is added by merging, never by replacing:
+The key is the part of the namespace after the package name, because the compiler writes imports from
+the namespace (`@acme/my-app/pageObjects/` gives `./pageObjects/*`). The target is
+`<pageObjectsOutputDir>` from `utam.config.json`, where the compiled files land, so the default is
+`"./pageObjects/*": "./pageObjects/*.js"` and an output folder of `dist/po` gives
+`"./pageObjects/*": "./dist/po/*.js"`. The namespace is read from a `generator.config.json` that `init`
+keeps, or is the one it writes. The entry is added by merging, never by replacing:
 
-| package.json `exports`                             | Action                                                                |
-| -------------------------------------------------- | --------------------------------------------------------------------- |
-| absent                                             | Add `{ "./pageObjects/*": "./pageObjects/*.js" }`.                    |
-| object of subpaths, no `./pageObjects/*`           | Add the one key. No other key is touched.                             |
-| object already covering `./pageObjects/*` or `./*` | Leave alone.                                                          |
-| string, array or conditions object (`"import"`)    | Leave alone and warn: it cannot be extended without restructuring it. |
+| package.json `exports`                          | Action                                                                |
+| ----------------------------------------------- | --------------------------------------------------------------------- |
+| absent                                          | Add `{ "./pageObjects/*": "./pageObjects/*.js" }`.                    |
+| object of subpaths without the key              | Add the one key. No other key is touched.                             |
+| object that already has the key                 | Leave alone, whatever it maps to.                                     |
+| object with a broader pattern such as `./*`     | Add the key, which takes precedence over the broader pattern.         |
+| string, array or conditions object (`"import"`) | Leave alone and warn: it cannot be extended without restructuring it. |
+
+A broader pattern is not trusted to cover page objects, because `"./*": "./*"` maps to the
+extensionless path, which plain Node cannot load.
 
 Adding `exports` to a package that had none also hides every subpath not listed (including `.` and
 `./package.json`), because `exports` closes the package to deep imports. `init` reports this when it adds
-the field. A project that deep-imports its own files must list them.
+the field. A project that imports its own root or other files must list them.
 
-The entry is skipped, with a notice, when the namespace is not the package name (see below). `init`
+The entry is skipped, with a notice, when the namespace is not under the package name (see below). `init`
 reports the edit in `modifiedFiles` like its other package.json changes, and `--dry-run` leaves the file
 alone.
 
-### When the namespace is not the package name
+### When the namespace is not under the package name
 
-This covers `--app-name my-app` on a package named `@acme/my-app`, and any package whose `name` is
-missing. A bare `my-app/…` import cannot resolve through `exports`, so `init` does not add the entry and
-prints:
+This covers `--app-name my-app` on a package named `@acme/my-app`, a kept `generator.config.json` whose
+namespace is not under the package name, and any package whose `name` is missing ("differs from no
+package name"). A bare `my-app/…` import cannot resolve through `exports`, so `init` does not add the
+entry and prints (adding "in generator.config.json" after the namespace when the config was kept):
 
 ```
 The namespace "my-app" differs from the package name "@acme/my-app", so page object imports cannot
@@ -166,13 +176,17 @@ resolve through "exports". Use the package name, or alias the namespace with a d
 Under WebdriverIO 10 that loader has to be added explicitly (see
 [WebdriverIO 9 and 10](#webdriverio-9-and-10)).
 
+A namespace with no path after the package name (`"@acme/my-app"`) gives no subpath to map, so `init`
+skips the entry and suggests `"@acme/my-app/pageObjects/"` instead.
+
 ### Existing projects
 
 `init` is write-once: it skips files that exist unless `--force` is given. A project initialised with a
 stripped namespace keeps its generated files and map keys until it re-runs `init --force`, so the default
 change does not affect it. When `init` finds an existing `generator.config.json` whose `namespaces.c` is
 the stripped form of a scoped package name, it prints a notice with the new value and the `--app-name`
-that keeps the old one.
+that keeps the old one in place of the mismatch notice, and adds no `exports` entry until the namespace
+is fixed.
 
 ## Alternatives considered
 
@@ -188,9 +202,10 @@ that keeps the old one.
 ## Implementation plan
 
 1. `resolveAppName`: stop stripping the scope. Update the `--app-name` summary and the README.
-2. A pure `ensurePageObjectExports(packageJson, outputDir)` in `scaffold`, returning the updated object
-   and what it did (`added`, `unchanged`, `skipped` with a reason). A thin step in `scaffoldProject`
-   applies it, reads `pageObjectsOutputDir` from `utam.config.json`, and records the result.
+2. A pure `ensurePageObjectExports(packageJson, outputDir, importDir)` in `scaffold`, returning the
+   updated object and what it did (`added`, `unchanged`, `skipped` with a reason). A thin step in
+   `scaffoldProject` applies it, reads the namespace from `generator.config.json` and
+   `pageObjectsOutputDir` from `utam.config.json`, and records the result.
 3. The namespace-mismatch and stripped-config notices, in `scaffoldProject`'s result and the CLI output.
 4. Public surface: export the new function from `src/index.ts`, list it in the README's `## API`
    section, and cover it in `test/index.test.ts`.
@@ -202,10 +217,14 @@ one and should read as such in the changelog.
 ## Testing
 
 - `resolveAppName`: scoped and unscoped names, `--app-name` override, missing name.
-- `ensurePageObjectExports`: absent, object without the key, object covering it by `./*`, string and
-  conditions forms, idempotence on a second run, a custom `pageObjectsOutputDir`.
+- `ensurePageObjectExports`: absent, object without the key, object with a broader `./*`, string and
+  conditions forms, idempotence on a second run, a custom `pageObjectsOutputDir`, a custom namespace
+  path.
 - `scaffoldProject`: `modifiedFiles` and `--dry-run`, a scoped package, a namespace that differs from the
-  name, an existing stripped `generator.config.json`.
+  name, an existing stripped `generator.config.json`, a kept config with another namespace or with no
+  path after the package name, a new namespace map under a kept namespace.
+- `init`: the scoped namespace and `exports` entry, and the log lines for adding the entry and for
+  creating `exports`.
 - An integration check outside the unit suite: compile a two-page-object project and import it under plain
   Node for a scoped and an unscoped name. The findings table above is the expected result.
 - An end-to-end check outside the unit suite: a scaffolded project with `wdio.conf.mjs` and `.mjs` steps
