@@ -1,8 +1,8 @@
 # 0003 — DOM snapshots for page object authoring and failure diagnosis
 
-**Status:** Draft (experimental): implemented in this PR stack, after an agent evaluation
+**Status:** Implemented (experimental)
 **Package:** `packages/simply-utam-core`, `packages/simply-utam`, scaffold templates
-**Date:** 2026-10-17
+**Date:** 2026-10-17 (updated 2026-10-19 to the shipped design)
 
 ## Problem
 
@@ -37,7 +37,8 @@ shows it.
 
 - Capture the rendered component tree, with shadow boundaries, visibility and enough metadata to
   explain where the snapshot came from.
-- Capture it automatically when a step fails, and on demand at any point in a scenario.
+- Capture it automatically when a step fails, on demand at any point in a scenario, and from a
+  browser a person drives.
 - Let an agent ask focused questions of a snapshot without reading the whole thing: "what's the
   component path to this element?", "which page object covers this tag, and how do I import it?",
   "which element would this selector find first?".
@@ -53,41 +54,39 @@ shows it.
 - Replacing a live run. A snapshot is one moment in time, so the live run stays the final check.
 - Mobile apps and Experience Cloud specifics beyond what works the same as Lightning Experience.
 
-## Decision
+## Overview
 
-Add a DOM snapshot feature to `@simplysf/simply-utam-core`:
+`@simplysf/simply-utam-core` has a DOM snapshot feature made of:
 
 - A **walker**: one self-contained function that runs inside the page and returns a compact, masked
   JSON snapshot.
-- **Capture inside a WebdriverIO test**, through `browser.execute`: on failure, at a chosen step, or
-  from the REPL while paused.
-- **Files**: one folder per test run, plus `latest.json`, with pruning of old runs.
-- A **page-object index** built from the installed `salesforce-pageobjects` package and the
-  project's own page objects. After the MVP, it reads every page-object package the project's
-  namespace configuration maps to, `salesforce-pageobjects` included (see Page-object packages).
+- **Capture**: inside a WebdriverIO test through `browser.execute` (on failure, at a chosen step, or
+  from the REPL while paused), or by hand, by pasting a snippet into a browser's DevTools console.
+- **Files**: one folder per test run, a `manual/` folder for hand captures, `latest.json`, and
+  pruning of old runs.
+- A **page-object index** built from the project's own page objects and every page-object package the
+  project's namespace configuration maps to, `salesforce-pageobjects` included.
 - **Queries** over a snapshot and the index: `find` (including a CSS selector check with UTAM's
   `findElement` semantics), `path`, `tree`, `node` and `lookup`.
 - A **usage guide** for the commands, the workflow, and the two page-object authoring recipes agents
   need to act on what the commands show.
 
-The `simply-utam` CLI exposes the queries as `simply-utam snapshot …` commands for agents and people.
-Core takes one new runtime dependency, `css-select`, for the selector check (see Public API).
+The `simply-utam` CLI exposes the queries and the console capture as `simply-utam snapshot …`
+commands. Core takes one new runtime dependency, `css-select`, for the selector check (see Public
+surface).
 
-This is experimental: the MVP is what we need to use it on real authoring and failure work, and its
-commands, output and format can still change. An agent evaluation of the interface (Evidence,
-Appendix C) shaped it. **Hand-driven capture**, from a browser a person drives, comes after the
-MVP and has its own section: the console route is designed there, and the Chrome route is outlined.
-**Page-object packages**, which generalizes the index beyond `salesforce-pageobjects`, also comes
-after the MVP and is designed in its own section. The other **later phases** are listed but not
-designed here.
+The feature is experimental: its commands, output and format can still change. An agent evaluation
+of the interface (Evidence, Appendix C) shaped it.
 
-This document records what the feature is and why: its decisions, the evidence, the risks, the open
-questions and the later phases. Exact output wording lives in the code, its tests and the usage
-guide; the examples here show the shape of the output, not its final text.
+This document records what the feature is and why. It doesn't repeat what other files own: the
+exports are listed in the [core README's DOM Snapshots
+section](../../packages/simply-utam-core/README.md#dom-snapshots), the hooks to copy into an existing
+project in the [CLI README](../../packages/simply-utam/README.md#dom-snapshots-in-an-existing-project),
+and the commands, their output and the recipes in the scaffolded usage guide
+([`templates/SNAPSHOTS.md`](../../packages/simply-utam-core/templates/SNAPSHOTS.md)). Exact output
+wording lives in the code and its tests; examples here show the shape of the output, not its text.
 
-## MVP
-
-### 1. The walker
+## 1. The walker
 
 - A single function with no imports or closures, because capture sends its source text to the page.
   It lives in a plain JavaScript file (`src/snapshot/walker.js`), which the build copies to `lib/`
@@ -101,13 +100,13 @@ guide; the examples here show the shape of the output, not its final text.
   the default modes unmasked values never leave the browser. The one exception is `meta.error`,
   which capture adds outside the browser: the failed step's error message is recorded as-is, and can
   include record values.
-- Top-level document only. Each `iframe` is recorded as a node with its `src` (query string and fragment
-  removed, record IDs masked) and marked `notCaptured`. Most Setup pages in Lightning are Visualforce pages
-  inside iframes, so the MVP doesn't cover them.
+- Top-level document only. Each `iframe` is recorded as a node with its `src` (query string and
+  fragment removed, record IDs masked) and marked `notCaptured`. Most Setup pages in Lightning are
+  Visualforce pages inside iframes, so they aren't covered yet (see Later phases).
 - It works in any current browser. Where `checkVisibility` is missing, it falls back to computed
-  `display` and `visibility`.
+  `display`, `visibility` and `opacity`.
 
-#### What it records
+### What it records
 
 The walker starts at `document.documentElement`. For each element it visits the light-DOM
 `children` and, when the element has a `shadowRoot`, that root's `children` separately. Under LWC's
@@ -143,9 +142,8 @@ space on the page. The queries then say that its content can't be reached by UTA
 
 **Shadow text.** Some components (`lightning-formatted-text`, `records-entity-label`) render their
 text straight into the shadow root, with no element around it, so no node's `text` holds it. The
-walker records it as `shadow.text`, built like `text` (the shadow root's own text nodes, trimmed and
-capped at 80 characters) and masked by the host's rules. On a record page, that's where every field
-value is: `lightning-formatted-text #shadow "•10"`.
+walker records it as `shadow.text`, built like `text` and masked by the host's rules. On a record
+page, that's where every field value is: `lightning-formatted-text #shadow "•10"`.
 
 **Addresses** are dot-separated steps from the walk's root, `document.documentElement`, which is
 `0`, so `body` is `0.1`:
@@ -166,7 +164,7 @@ comes earlier in document order. Numbering is deterministic, so every command ov
 agrees, but a handle holds for one snapshot only. Every command takes and prints handles; `node` and
 `--json` output also show the address. An address passed to a command is refused, with its handle.
 
-#### Pruning
+### Pruning
 
 - The walk's root and `body` are always kept, so the snapshot has one root node.
 - Every custom element (a tag with a `-`) and every element with a shadow root is kept.
@@ -184,7 +182,7 @@ agrees, but a handle holds for one snapshot only. Every command takes and prints
 - **Inside a hidden subtree**, only custom elements and elements with their own text, a `name`, or a
   `data-*` attribute are kept: enough for `find` to show hidden duplicates, without the full detail.
 
-#### Limits
+### Limits
 
 The walker checks its own limits as it goes and stops early rather than being cut off from outside:
 
@@ -208,27 +206,33 @@ Hidden nodes count against `maxHiddenNodes`, not `maxNodes`.
 navigation and tab bars come first, so a tight limit can keep all of that chrome and lose the record
 under test. The `focus` option chooses what gets the node budget first:
 
-| `focus`          | Walked first                                                                                                                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `none` (default) | Nothing; the walk is in document order.                                                                                                                                                                 |
-| `auto`           | The first visible match of, in turn: the console's active workspace tab (`section.tabContent.oneConsoleTab`), the standard navigation's page host (`.oneContent.lafPageHost`), `[role="main"]`, `main`. |
-| a CSS selector   | Its first visible match. Selectors are matched in the document's own tree, not inside shadow roots.                                                                                                     |
+| `focus`        | Walked first                                                                                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`         | Nothing; the walk is in document order.                                                                                                                                                                 |
+| `auto`         | The first visible match of, in turn: the console's active workspace tab (`section.tabContent.oneConsoleTab`), the standard navigation's page host (`.oneContent.lafPageHost`), `[role="main"]`, `main`. |
+| a CSS selector | Its first visible match. Selectors are matched in the document's own tree, not inside shadow roots.                                                                                                     |
 
-The focus element's subtree is walked first, and its ancestors (crossing shadow hosts) are always
-kept, so its nodes have somewhere to go; the rest of the page fills what's left of `maxNodes`. The
+`captureDomSnapshot` defaults to `none`; the console snippet defaults to `auto` (see Capture). The
+focus element's subtree is walked first, and its ancestors (crossing shadow hosts) are always kept,
+so its nodes have somewhere to go; the rest of the page fills what's left of `maxNodes`. The
 ancestors are kept even past the limit, so the node count can run a little over `maxNodes`.
 Addresses don't change, and `meta.focus` holds the focus element's address. A focus that matches
-nothing visible is ignored. `captureDomSnapshot({ focus })` passes it through.
+nothing visible is ignored.
 
 Capture also has an outside timeout (default 10 s) as a backstop. If it's ever reached, the script
 may still be running in the browser, and the next WebdriverIO command (such as the screenshot) waits
 behind it, because WebDriver Classic runs one command per session at a time. The walker's own budget
 is what keeps capture fast; the backstop only stops a caller from hanging.
 
-#### Visibility
+### Visibility
 
 - An element is hidden when `checkVisibility({ visibilityProperty: true, opacityProperty: true })`
-  is false. Hidden is marked once, on the top node of the hidden subtree.
+  is false. Hidden is marked once, on the top node of the hidden subtree, and judged only where the
+  parent is visible.
+- `visibility` is inherited but can be overridden: a descendant set back to `visible` still renders.
+  So an element hidden only by `visibility` (not `display: none` or `opacity: 0`) that has such a
+  descendant, in its light or shadow tree, isn't the top of a hidden subtree; its children are judged
+  on their own.
 - `checkVisibility` also returns false for `display: contents`, which LWC host elements can use and
   whose children still render. An element with computed `display: contents` is never marked hidden
   itself; its children are checked on their own. This covers `slot` elements too, which are
@@ -249,7 +253,7 @@ is what keeps capture fast; the backstop only stops a caller from hanging.
 - **Record page tabs.** An inactive tab (`flexipage-tab2.slds-hide`) isn't rendered until it's first
   opened, so it's a hidden node with nothing under it.
 
-#### Masking
+### Masking
 
 Snapshots are read by an LLM, which means their text goes to the model provider, and failure
 snapshots can end up in Allure reports. They must not copy record data by default.
@@ -327,7 +331,7 @@ the same text is already in the test report (see Open questions for `structure` 
 it's fixed. Because text is masked, `find --text` matches labels, not record values: search by field
 label, or use `full` on a dev org.
 
-#### Snapshot format
+## 2. Snapshot format
 
 ```jsonc
 {
@@ -347,7 +351,6 @@ label, or use `full` on a dev org.
     "truncated": null, // or { "reasons": ["nodes" | "hiddenNodes" | "time", …] }
     "focus": "0.1.3.s.0.2", // the focus element's address, when a focus was found
     "pageObjectPackages": { "salesforce-pageobjects": "12.0.0" }, // added when written inside a project
-    "org": { "apiVersion": "66.0", "instanceUrl": "https://…" }, // Chrome route only (Hand-driven capture); see Open questions
   },
   "root": {/* node */},
 }
@@ -368,17 +371,23 @@ A node, here a field value on a record page in `labels` mode:
 `mode` is one of `native`, `synthetic`, `unknown` or `unreadable`. Handles aren't stored:
 `parseDomSnapshot` adds each node's `id` (`n812`) as it reads the file, so `DomNode` in memory and in
 `--json` output has both `id` and `address`. The file keeps only `address`, so a key means the same
-thing on disk and in memory (see Open questions).
+thing on disk and in memory, and a handle can't outlive the numbering that produced it.
 
 `version` is a whole number that goes up when the format changes in a way an older reader can't
 handle. `parseDomSnapshot` rejects JSON whose `format` isn't ours or whose `version` is newer than it
 understands, and names both in the error. Adding an optional field, or a new `trigger` value, doesn't
 change `version`.
 
-### 2. Capture inside a WebdriverIO test
+## 3. Capture
 
-Capture is the walker plus a way to run JavaScript in the page. `captureDomSnapshot` takes a
-WebdriverIO `browser` or any `SnapshotPage`:
+Capture is the walker plus a way to run JavaScript in the page. There are two sources: a
+WebdriverIO test run, and a browser a person drives, through its DevTools console. Both run the same
+walker source with options built by the same code, and both save through `writeDomSnapshot`, so the
+read commands never depend on where a snapshot came from.
+
+### In a test run
+
+`captureDomSnapshot(options)` takes a WebdriverIO `browser` or any `SnapshotPage`:
 
 ```ts
 type SnapshotPage = {
@@ -387,68 +396,30 @@ type SnapshotPage = {
 };
 ```
 
-- `captureDomSnapshot(options)` returns `Promise<DomSnapshot | undefined>`. It never throws: on any
-  failure it returns `undefined` and writes a warning through the injectable `log`.
+- It returns `Promise<DomSnapshot | undefined>` and never throws: on any failure it returns
+  `undefined` and writes a warning through the injectable `log`.
 - `browser` is typed structurally (anything with `execute`), like `NavigableBrowser`, and defaults to
   the global `browser`, as `LightningNavigator` does. It's turned into a `SnapshotPage` that calls
   `browser.execute`. `SnapshotPage` is the seam tests use, and the one later capture routes plug into.
 
-**On failure.** The scaffolded `wdio.conf.mjs` already takes a screenshot in `afterStep` when a step
-fails. It captures the snapshot first, before anything else changes the page:
+**On failure.** The scaffolded `wdio.conf.mjs` already took a screenshot in `afterStep` when a step
+fails. Its hook now captures the snapshot first, before anything else changes the page, then saves
+it with `writeDomSnapshot` and attaches it to the Allure report, each in its own `try`, so neither
+failing can cost the other or the screenshot (`writeDomSnapshot` can throw on a full disk, or a
+`latest.json` another program holds open on Windows). The `onPrepare` hook sets one
+`UTAM_SNAPSHOT_RUN_ID` for every worker and prunes old runs. Core doesn't import Allure; the hook in
+the test project does, and `@wdio/allure-reporter` is already a dependency `init` checks for.
+Cucumber doesn't call `afterStep` for an undefined step, so there is no useless failure snapshot for
+a step with no definition yet.
 
-```js
-import allureReporter from '@wdio/allure-reporter';
-import {
-  captureDomSnapshot,
-  pruneDomSnapshots,
-  serializeDomSnapshot,
-  snapshotRunId,
-  writeDomSnapshot,
-} from '@simplysf/simply-utam';
-
-// …
-onPrepare: async function () {
-  // One snapshot folder per test run, shared by every worker.
-  process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshotRunId();
-  await pruneDomSnapshots({ keepRuns: 10 });
-},
-afterStep: async function (step, scenario, { error }) {
-  if (error) {
-    const snapshot = await captureDomSnapshot({ trigger: 'failure', scenario: scenario.name, step: step.text, error });
-    if (snapshot) {
-      // Saving and attaching each get their own try: neither failing may cost the other, or the
-      // screenshot below.
-      try {
-        console.log(`DOM snapshot written to ${await writeDomSnapshot(snapshot)}`);
-      } catch (writeError) {
-        console.warn(`DOM snapshot not saved: ${writeError?.message ?? writeError}`);
-      }
-      try {
-        allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
-      } catch (attachError) {
-        console.warn(`DOM snapshot not attached to the Allure report: ${attachError?.message ?? attachError}`);
-      }
-    }
-    await browser.takeScreenshot();
-  }
-},
-```
-
-`writeDomSnapshot` can throw (a full disk, a `latest.json` another program holds open on Windows), so
-the hook catches it: a snapshot that can't be saved never costs the screenshot.
-
-Core doesn't import Allure. The hook in the test project does; `@wdio/allure-reporter` is already a
-dependency `init` checks for.
-
-Cucumber doesn't call `afterStep` for an undefined step, so the hook never writes a useless failure
-snapshot for a step that has no definition yet.
-
-The scaffold sets `cucumberOpts.timeout` above `waitforTimeout` (90 s against 60 s). With the step
-timeout below it, a UTAM wait on an element with `"wait": true` outlasts the step: Cucumber fails it
-with only `function timed out`, and the failure capture runs while UTAM is still polling the page.
-With the step timeout above it, UTAM gives up first, its error names the locator it couldn't find
-(`… inside its scope element` or `… inside its scope shadow root`), and the capture shows the page
-UTAM searched.
+**Timeouts.** The step timeout must outlast UTAM's waits. If it doesn't, a UTAM wait on an element
+with `"wait": true` outlasts the step: Cucumber fails it with only `function timed out`, and the
+failure capture runs while UTAM is still polling the page. When the step outlasts the wait, UTAM
+gives up first, its error names the locator it couldn't find (`… inside its scope element` or
+`… inside its scope shadow root`), and the capture shows the page UTAM searched. The scaffold sets
+`waitforTimeout` to 60 s and `cucumberOpts.timeout` to that plus a 30 s margin. Under `DEBUG`, only
+the step timeout grows, to 30 minutes plus the margin, so a session paused in `browser.debug()`
+survives while a wrong locator still fails within a minute.
 
 **At a chosen step.** `init` scaffolds a step definition, with an optional label, as
 `dom-snapshot.steps.mjs` next to `hello.steps.mjs` in `<sourceDir>/test/utam/step_definitions/`, a
@@ -463,11 +434,9 @@ A `Before` hook in the same file records the scenario's name for the file name. 
 `@simplysf/simply-utam` when it runs, not when the file loads: `init` adds the file to existing
 projects, and one whose installed `@simplysf/simply-utam` predates DOM snapshots would otherwise fail
 to load its step definitions, and so every scenario. Instead only the capture step fails, saying to
-upgrade. Run only that
-scenario (`wdio run wdio.conf.mjs --spec features/account.feature:12`). The earlier steps take the
-browser to the page and the snapshot is written. A step not written yet after it is undefined and
-fails the scenario (the scaffold leaves `cucumberOpts.ignoreUndefinedDefinitions` off), but only once
-the steps before it, and the snapshot, are done.
+upgrade. Running only that scenario (`--spec features/account.feature:12`) takes the browser to the
+page and writes the snapshot; a step not written yet after it is undefined and fails the scenario,
+but only once the steps before it, and the snapshot, are done.
 
 The step captures the page as it is, without waiting. Lightning keeps rendering after navigation
 returns, so a capture taken too early shows the app's frame with the page half-built. Page-object
@@ -481,65 +450,200 @@ command (trigger `manual`), so it can be called from the REPL during `browser.de
 `wdio.conf.mjs` doesn't get the new hooks. When `init` keeps an existing `wdio.conf.mjs` that doesn't
 capture snapshots, it prints a note pointing to the CLI README section with the `onPrepare`, `before`
 and `afterStep` snippets to copy. The snapshot step and the usage guide are new files, so `init` adds
-them to existing projects too, in the project's UTAM test folder.
+them to existing projects too.
 
-### 3. Files
+### From the browser console
+
+A test run covers a failing step and any state a scenario reaches. It doesn't cover a page no
+scenario reaches yet, which otherwise means writing steps to get there or pausing a test with
+`browser.debug()`. And `browser.domSnapshot` runs in the REPL, which needs a person to type into it.
+The console route lets a person drive a page in any browser and capture it with the same walker,
+without a test run, and it's what an agent's browser tool can run.
+
+**In use.**
+
+1. `simply-utam snapshot console snippet --copy` puts the snippet on the clipboard. Without `--copy`
+   it prints it.
+2. The person opens DevTools, checks the console's context selector says `top`, pastes and presses
+   Enter. Chrome asks them to type `allow pasting` the first time. The snippet copies the snapshot to
+   the clipboard and prints a one-line summary.
+3. `simply-utam snapshot console import --label "account list"` reads the clipboard, checks the
+   snapshot, saves it, and prints the path and the header that every read command prints.
+
+An agent runs steps 1 and 3; only step 2 needs a person.
+
+**The snippet** is `(walker)(options)`, wrapped:
+
+- **Same walker, same world.** It runs the walker's source text, exactly as `captureDomSnapshot`
+  sends it, in the page's main world, where WebDriver's `execute` runs it too, so it sees the same
+  DOM a test capture does. The options are built by the same code, with `trigger: 'manual'`.
+  `--focus` defaults to `auto` here; `--mask`, `--max-nodes` and `--max-hidden-nodes` are the other
+  options.
+- **Masked in the page.** The mask mode is fixed when the snippet is generated (default
+  `UTAM_SNAPSHOT_MASK`, then `labels`), because masking runs in the walker. Record data in `labels`
+  and `structure` modes never reaches the clipboard. It warns on `full`, as capture does.
+- **The JSON goes to the clipboard**, through the console's `copy()`. Where `copy` isn't defined,
+  as in an agent's browser tool or a bookmarklet, it downloads `dom-snapshot-<time>.json` through a
+  Blob link instead, for `import --file`.
+- **It returns a summary, not the snapshot**: its size, the mask, any truncation, and the import
+  command to run next. An agent's browser tool that runs it gets that line, not the whole snapshot,
+  in its context.
+- **ASCII only.** Non-ASCII characters in the walker's source (such as the mask's `•`) are written as
+  `\u` escapes, so no clipboard or terminal encoding can change the snippet.
+- **No network calls.** The snippet writes only to the clipboard or a download.
+
+**`import`** reads the clipboard by default (`pbpaste`, `wl-paste` or `xclip`, or PowerShell's
+`Get-Clipboard`, with their counterparts for `snippet --copy`), or `--file <path>`, or `--file -` for
+standard input. It checks the JSON with `parseDomSnapshot` and warns when the mask is `full`.
+`--label` sets the label at import time, so one snippet serves every capture; the rest of `meta` is
+kept as captured, so a failure snapshot downloaded from CI keeps its scenario, step and error. It
+saves with `runId: MANUAL_RUN_ID` (see Files).
+
+Core builds the snippet (`domSnapshotSnippet`) and parses and labels an import
+(`importDomSnapshot`); the CLI owns the clipboard, which nothing but a person's terminal needs, behind
+an injectable command runner.
+
+A page driven by hand isn't necessarily the page the test sees: a different user, profile, window
+size or feature flag can render a different DOM. The test run stays the faithful capture; the guide
+says so, and the header's URL and viewport show where a capture came from.
+
+### Command structure
+
+Commands that read snapshots are `snapshot <verb>`. Commands that produce them are
+`snapshot <source> <verb>`, one oclif topic per capture source, since each source has its own
+lifecycle:
+
+```text
+simply-utam snapshot
+├─ find · node · path · tree · lookup     read snapshots and the page-object index
+└─ console                                capture by pasting into the DevTools console
+   ├─ snippet    print the capture snippet, or copy it
+   └─ import     save what the snippet produced
+```
+
+- **Test runs** have no commands: the scaffolded hooks and the capture step write their snapshots.
+- **Not one `snapshot capture --from …`.** Sources share no verbs: the console takes two steps with a
+  person in between, and the Chrome route (Later phases) needs a start and a stop. One command would
+  carry flags that apply to only one source each.
+- **`console import` reads any snapshot file**, such as one downloaded from CI, since checking and
+  saving a file is the same work. If importing from elsewhere becomes common, it can move up to
+  `snapshot import`.
+
+## 4. Files
 
 `writeDomSnapshot(snapshot, options?)` writes the snapshot and returns the path:
 
 - Snapshots go to `.utam/snapshots/<runId>/<name>.json`. `runId` comes from `UTAM_SNAPSHOT_RUN_ID`
-  (through the injectable `env`), which the scaffolded `onPrepare` hook sets once per test run, so
-  every worker in a run uses the same folder, to `snapshotRunId()`, the current time as
-  `20261016T120000`. In a project without the hook, each process uses the time of its first capture,
-  so one worker's captures share a folder and pruning counts them as one run. Run ids
+  (through the injectable `env`), which the scaffolded `onPrepare` hook sets once per test run to
+  `snapshotRunId()`, the current time as `20261016T120000`, so every worker in a run uses the same
+  folder. In a project without the hook, each process uses the time of its first capture. Run ids
   must sort in time order, since pruning keeps the ones that sort last; numbers in a custom id
-  compare as numbers (`build-9` before `build-10`). A `runId` option overrides both: captures made
-  outside a test run pass `MANUAL_RUN_ID` (`manual`), so they collect in `.utam/snapshots/manual/`
-  (see Hand-driven capture).
+  compare as numbers (`build-9` before `build-10`). A `runId` option overrides both: console imports
+  pass `MANUAL_RUN_ID` (`manual`), so they collect in `.utam/snapshots/manual/`.
 - `<name>` is `<scenario>--<step>` for failures, and `<scenario>--<label or number>` for the step and
   the custom command. A capture with no scenario, such as one from `browser.domSnapshot` or the
-  console, uses `manual` in its place: `manual--<label or number>`. Each part is cut down to letters,
-  digits and `-`, and capped at 60 characters.
-  A number is appended if the name is already taken; files are created with the exclusive `wx` flag,
-  so two workers can't both take the same name.
+  console, uses `manual` in its place. Each part is cut down to letters, digits and `-`, and capped
+  at 60 characters. A number is appended if the name is already taken; files are created with the
+  exclusive `wx` flag, so two workers can't both take the same name.
 - It also writes `.utam/snapshots/latest.json`, a copy of the most recent snapshot, which the query
   commands read by default. It's written to a temporary file in the same folder and renamed over
-  `latest.json`, so a reader never sees it half-written. Where the rename can't replace it (on
-  Windows, while another process has it open), it's written in place instead. With more than one worker, `latest.json` is
-  whichever finished last. The
-  file inside the run folder is always correct, and every command prints a header saying which
+  `latest.json`, so a reader never sees it half-written; where the rename can't replace it (on
+  Windows, while another process has it open), it's written in place. With more than one worker,
+  `latest.json` is whichever finished last, which is why every command prints a header saying which
   snapshot it read (see CLI).
-- It adds `pageObjectPackages`, the installed `salesforce-pageobjects` version, when it resolves from
-  the project. Page-object packages extends this to every package the index reads.
-- `pruneDomSnapshots({ keepRuns })` deletes all but the newest `keepRuns` run folders. The scaffolded
-  `onPrepare` hook keeps 10. It never deletes `manual/` and doesn't count it as a run, so captures
-  made by hand neither push out test runs nor get pruned by them; deleting them is up to the person.
+- It adds `meta.pageObjectPackages`: the version of each page-object package the index would read
+  (see Page-object index).
+- `pruneDomSnapshots({ keepRuns })` deletes all but the newest `keepRuns` run folders; the scaffold
+  keeps 10. It never deletes `manual/` and doesn't count it as a run, so hand captures neither push
+  out test runs nor get pruned by them.
 - The file system is an injectable sink, so tests don't touch disk.
 
 Snapshots must not be committed. `init` adds `.utam/snapshots/` to `.gitignore` (creating the file
-when it's missing; `--no-gitignore` skips it), add-only, reusing the add-only merging design 0002
-built for `.forceignore`: never removing or rewriting a line, adding under a `# Ignore UTAM`
-comment. The two files share one implementation of the merge rather than two. The rule is
-`.utam/snapshots/`, not `.utam/`, because `init` also scaffolds `.utam/namespace-map.json`, which the
-build's `rewrite` task reads and which belongs in git. An existing `.utam/` rule counts as covering
-it.
+when it's missing; `--no-gitignore` skips it), add-only, on the same merge design 0002 built for
+`.forceignore`: never removing or rewriting a line, adding under a `# Ignore UTAM` comment. The two
+files share one implementation of the merge. The rule is `.utam/snapshots/`, not `.utam/`, because
+`init` also scaffolds `.utam/namespace-map.json`, which belongs in git. An existing `.utam/` rule
+counts as covering it.
 
-### 4. Page-object index
+## 5. Page-object index
 
-`buildPageObjectIndex(options)` reads two kinds of source:
+`buildPageObjectIndex(options)` reads:
 
 - **The project's own page objects**, found from the project's `utam.config.json`
   (`pageObjectsRootDir` and `pageObjectsFileMask`; the scaffolded default is
   `**/__utam__/**/*.utam.json`), not from a fixed folder name.
-- **`salesforce-pageobjects`**, resolved from the test project. Version 12.0.0 ships
-  `dist/utam.manifest.json` (page object name → source path) and 1,638 `.utam.json` sources, 445 of
-  them root page objects. In the MVP its name is fixed; Page-object packages replaces that with
-  every package the namespace configuration maps to.
+- **Every page-object package the project's namespace configuration maps to** (below).
+  `salesforce-pageobjects` 12.0.0, the usual one, ships `dist/utam.manifest.json` (page object name →
+  source path) and 1,638 `.utam.json` sources, 445 of them root page objects.
 
-Parsing all of them takes well under a second, so the MVP builds the index each time and doesn't
-cache it.
+Parsing all of them takes well under a second, so the index is built each time and not cached.
 
-#### Names and import paths
+### Where packages come from
+
+Both namespace files name import prefixes, for different reasons, and the index reads both:
+
+| File                                 | What it maps                                                    | Prefixes that name a package                                  |
+| ------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------- |
+| `generator.config.json` `namespaces` | A component namespace to the import prefix the generator writes | The values, except those under the project's own package name |
+| `.utam/namespace-map.json`           | A project prefix to an external one, rewritten after generation | The values; the keys are the project's own prefixes           |
+
+The generator's `namespaces` cover packages with their own namespace (`lightning` →
+`salesforce-pageobjects/lightning/pageObjects/`). The namespace map covers packages whose components
+share `c` with the project, which the generator can't tell apart, so the build's `rewrite` task
+moves them (`<appName>/pageObjects/shared` → `shared-components-pageobjects/pageObjects/shared`).
+
+From each prefix, the package name is its first path segment, or its first two for a scoped package
+(`@acme/page-objects/…`). The index resolves each name once from the project, with `createRequire`;
+several prefixes into one package index it once. A package that doesn't resolve gets a warning
+naming it and the file and entry that mapped it. The namespace map is read through the loader
+`rewrite` uses, so the index and the build agree on what the file says and on longest-prefix-first
+order. The index reads the default path only (see Open questions).
+
+The index doesn't name `salesforce-pageobjects`. It's indexed when a namespace maps to it, like any
+other package:
+
+- **Salesforce projects get it with no extra step.** The scaffolded `generator.config.json` maps
+  `lightning` to it, and one mapping is enough: the manifest covers every namespace it ships.
+- **Other projects aren't told about it.** No mapping, no package, no warning.
+- **Salesforce defaults stay in the scaffolder**, which adds the dependency and the `lightning`
+  mapping. The index stays neutral.
+- **Removing the `lightning` mapping drops it from the index.** That's intended: the generator no
+  longer types anything as one of its page objects either.
+
+### Reading a package
+
+A package is read in one of two layouts:
+
+- **With a manifest** (`dist/utam.manifest.json`): by manifest name, with the import path from the
+  source's folder under `dist/` (see Names and import paths).
+- **Without one**: every `*.utam.json` under the package's folder, skipping `node_modules`. The
+  prefix describes the compiled JavaScript test code imports, not where the sources sit, which may
+  be anywhere in the package (`src/**/__utam__/`), so the search isn't limited to the folder the
+  prefix names. Each entry's `name` is its import path, as for project page objects, or
+  `<package>/<file>` when it has none.
+
+**Import paths are checked, not assumed.** Without a manifest, the candidate import paths for a file
+are each prefix that names the package plus the file's name without `.utam.json`, and the namespace
+map applied to the project's import path for that name. (A namespace map entry is a string prefix,
+not a folder, so the second form is the one a map-found package usually needs.) With a manifest, the
+candidate is the path the manifest rule gives. The index keeps the first candidate `require.resolve`
+finds from the project, which respects the package's `exports` map and confirms the compiled file
+ships. A package that exports its page objects to `import` only resolves nothing, so its entries get
+no import paths. `salesforce-pageobjects` 12.0.0 exports `./*` to `dist/*.cjs` for `require`, and
+checking all of its entries takes about 60 ms.
+
+A file whose candidate doesn't resolve is still indexed, without an `importPath`: its tags and typed
+elements still help `lookup` and `path`, and the output says it has no known import path. A source
+that only exists for the package's own tests then shows up as noise instead of a wrong answer. Two
+identical copies of one source (a package shipping both `src/` and `dist/`) are indexed once; of two
+different sources with one name, the first in path order takes the import path. A candidate that
+doesn't resolve is still registered as another name for its entry, so a `type` that names it links.
+
+A package with neither a manifest nor a readable `.utam.json` gets a warning. Entries are ranked the
+project's own page objects first, then packages in the order they're found: the generator's
+`namespaces` in file order, then the namespace map, longest prefix first.
+
+### Names and import paths
 
 Page objects are referred to in two forms, and the index treats them as the same page object:
 
@@ -554,8 +658,8 @@ The project's sources use import paths because the scaffolded `generator.config.
 the import path, and where it shows a manifest name too, it says that a `.utam.json` `type` uses the
 import path.
 
-For `salesforce-pageobjects`, the import path is the source file's folder under `dist/`, then
-`pageObjects/`, then its name without `.utam.json`:
+For a manifest package, the import path is the package name, the source file's folder under `dist/`,
+then `pageObjects/`, then its name without `.utam.json`:
 
 | Manifest name                                        | Source                                             | Import path                                                            |
 | ---------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -566,15 +670,28 @@ For project page objects, the import path follows `pageObjectsOutputDir` in `uta
 the generator's `namespaces`, and the entry records the compiled file that test code imports by
 relative path. Project page objects aren't in any manifest, so their `name` is their import path.
 
-#### Tags
+**The namespace map in matching.** The rewrite also changes what the project's own page objects
+say, so the index applies it in two more places, through extra names registered once the packages
+and the project are read:
+
+- **The naming convention** (see Tags). For `c-modal`, the generator's `c` mapping gives
+  `my-app/pageObjects/modal`, but with a namespace map entry the page object is
+  `shared-pageobjects/pageObjects/modal`. The convention's candidates go through the namespace map,
+  longest prefix first, as the rewriter does.
+- **Typed elements before a rewrite.** If `lookup` or `path` runs before the build's `rewrite` task,
+  the project's generated `type` values still use the project prefix. The index registers the
+  pre-rewrite form as another name for the rewritten entry, so the link holds either way.
+
+### Tags
 
 The index maps each tag to page objects from:
 
 1. **Root selectors.** A root page object's `selector.css`.
 2. **Typed elements.** Any element in any page object whose `type` is a page object. This covers
    non-root page objects, which only get a selector from the parent that uses them.
-3. **The naming convention**, as a fallback (`lightning-input` → `utam-lightning/pageObjects/input`),
-   marked `byConvention` and used only when it names a page object that exists.
+3. **The naming convention**, as a fallback (`lightning-input` → `utam-lightning/pageObjects/input`,
+   for any package that ships a manifest), marked `byConvention` and used only when it names a page
+   object that exists.
 
 For 1 and 2, a selector can list several alternatives (`lightning-primitive-input-simple,
 lightning-primitive-input-checkbox-button, …`) and each one can be compound (`.x lightning-button`,
@@ -583,18 +700,13 @@ alternative, so one selector can map to several tags. An alternative whose last 
 (`.slds-button`, `[slot='secondaryFields']`) adds no tag; `path` still finds routes through it by
 matching the whole selector (see Queries).
 
-Reading the `.utam.json` sources also has to handle:
+Reading the `.utam.json` sources also handles `%s` and `%d` argument placeholders and `returnAll`
+(neither affects the tag); elements under both `elements` and `shadow.elements`, nested to any depth,
+each recording which of the two it's declared in; `css` selectors only (`accessid`, `classchain` and
+`uiautomator` are mobile selectors with no tag); and `type` values that aren't page objects
+(`container`, `frame`, and arrays of basic types such as `["clickable", "editable"]`).
 
-- `%s` and `%d` argument placeholders in selectors (`lightning-input[data-name='%s']`). They don't
-  affect the tag.
-- `returnAll`, which doesn't change the tag either.
-- Elements under both `elements` and `shadow.elements`, nested to any depth. Each element records
-  which of the two it's declared in.
-- `css` selectors only. `accessid`, `classchain` and `uiautomator` are mobile selectors with no tag.
-- `type` values that aren't page objects: `container`, `frame`, and arrays of basic types such as
-  `["clickable", "editable"]`. Only a string naming a page object counts as a typed element.
-
-#### Interfaces
+### Interfaces
 
 Some page objects are interfaces with one implementation per profile. 89 of the 12.0.0 sources are
 interfaces, and 168 are implementations. For example, `one-record-home-flexipage2` is the root
@@ -603,31 +715,25 @@ selector of two implementations, `recordHomeTemplateDesktop` (the default) and
 `utam-global/pageObjects/recordHomeFlexipage2`, which is what test code imports, and UTAM picks the
 implementation at runtime from the configured profiles. When a tag maps to an implementation, the
 index reports the interface it implements as the page object to use, and lists its implementations.
-The MVP doesn't record which profile selects each implementation (see Later phases and Open questions).
+It doesn't record which profile selects each implementation (see Later phases and Open questions).
 
-#### Each entry
+### What an entry records
 
-| Field             | Meaning                                                                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`            | Manifest name, or the import path where there's no manifest.                                                                                                              |
-| `importPath`      | What test code imports, and what a `.utam.json` `type` names.                                                                                                             |
-| `root`            | Whether `utam.load` can load it directly. Only root page objects can.                                                                                                     |
-| `selector`        | A root page object's root selector.                                                                                                                                       |
-| `source`          | `project` or `salesforce-pageobjects` (with Page-object packages, the name of any package).                                                                               |
-| `outputFile`      | For a project page object: its compiled file.                                                                                                                             |
-| `byConvention`    | Matched by naming convention only.                                                                                                                                        |
-| `description`     | The source's description, in full.                                                                                                                                        |
-| `interface`       | Whether it's an interface; `implements` names the interface an implementation implements, and `implementations` lists an interface's.                                     |
-| `publicElements`  | Public elements: name, `type`, selector, the tags in it, `elements` or `shadow.elements`, whether it's a list or a container, and its getter with parameters.             |
-| `privateElements` | Private elements: the same fields, plus the public methods that use them (from `compose` statements).                                                                     |
-| `methods`         | Public methods: name, parameters, return type, and a one-line summary of the `compose`: each statement's action on an element, `→ chain` steps, and `waitFor(...)` calls. |
+Each entry has its names (manifest name and import path), whether it's a root page object and its
+root selector, its `source` (`project` or the package's name), its compiled file for a project page
+object, whether it matched by convention, its description, and its interface or implementations. It
+also records:
 
-Many shipped page objects keep elements private and expose them through methods, so the index
-records private elements too. Without them, "reachable through" annotations would miss most routes.
-Method summaries and parameters are there so an agent can tell what a method does and what a
-container getter takes without reading the page object's source.
+- **Public and private elements**, each with its `type`, selector, the tags in it, whether it's in
+  `elements` or `shadow.elements`, and whether it's a list or a container. Many shipped page objects
+  keep elements private and expose them through methods; without private elements, "reachable
+  through" annotations would miss most routes. A private element records the public methods that use
+  it (from `compose` statements, including `applyExternal` parameters and `elementReference` uses).
+- **Public methods**, with parameters, return type and a one-line summary of the `compose`, so an
+  agent can tell what a method does and what a container getter takes without reading the page
+  object's source.
 
-### 5. Queries
+## 6. Queries
 
 Plain functions over a snapshot and the index. Each returns a text form and a JSON form, and the
 text form has an output limit (default 200 lines) with a note when it cuts output short. Each line
@@ -649,16 +755,12 @@ then its text in quotes and its shadow text after `#shadow`. Aura bookkeeping at
 | `lookupPageObject(index, tagOrName)`           | The page objects for a tag, or one page object by name.                                         |
 | `searchPageObjects(index, words)`              | Page objects whose name, import path, tags or description contain every word.                   |
 
-#### `find`
+### `find`
 
-`findNodes` filters by any combination of:
-
-- `text`: a case-insensitive substring of a node's own text, its shadow text, or any attribute value
-  except `class`.
-- `attr`: `name` matches any node with that attribute; `name=value` is a **case-insensitive
-  substring** of the value, so `class=navexWorkspace` also matches `navexWorkspaceManager`.
-- `tag`: the exact tag.
-- `class`: one whole class token, case-sensitive, as `.name` matches it.
+`findNodes` filters by any combination of `text` (a case-insensitive substring of a node's own text,
+its shadow text, or any attribute value except `class`), `attr` (`name`, or `name=value` as a
+case-insensitive substring, so `class=navexWorkspace` also matches `navexWorkspaceManager`), `tag`
+(exact) and `class` (one whole class token, case-sensitive, as `.name` matches it).
 
 Visible matches come first, in document order, because a search by label is usually for the one the
 user sees. Hidden ones are counted, or listed with `all`, each with the top of the hidden subtree
@@ -693,28 +795,24 @@ for combinators inside it. Where the snapshot can't judge a selector, the output
 
 A bare "0 matches" is easy to doubt, especially with synthetic shadow roots, which are boundaries
 too. So when nothing matches in the scope, `find --css` says where the selector does match: each
-match outside the scope, with the scope that would find it (no `--within`, `--within <handle>`, or
-`--within <host> --shadow`), or that it matches nothing anywhere in the snapshot. When it names
-something no node has, it says the match may be on a pruned wrapper instead.
+match outside the scope, with the scope that would find it, or that it matches nothing anywhere in
+the snapshot.
 
-#### `path`
+### `path`
 
-`componentPath` takes a handle; `componentPathByText` takes text and runs `find` first. With exactly one visible
-match it prints the path. With more than one, it lists the candidates with their handles and exits
-with code 1, so the caller picks one. With only hidden matches, it says so and suggests `find --all`.
-It never picks a match silently.
+`componentPath` takes a handle; `componentPathByText` takes text and runs `find` first. With exactly
+one visible match it prints the path. With more than one, it lists the candidates with their handles
+and exits with code 1, so the caller picks one. With only hidden matches, it says so and suggests
+`find --all`. It never picks a match silently.
 
 The path shows one custom element per line, indented, plus the target, and any plain element that
 is the first match of one of the project's own root page objects' selectors: that's how a project
-page object that scopes a shipped one to a container, as the scoping recipe does, appears. `#shadow(<mode>)` before a
-line means that element is in the previous one's shadow root; without it, the element is in the
-light DOM (a child, or slotted content). `(hidden)` marks the top of a hidden subtree. Each custom
-element is annotated with one of:
-
-- **its page object**: import path, plus `root` when it can be loaded directly, `interface` when UTAM
-  picks the implementation, or `project` with its compiled file;
-- **no page object found**: nothing in the index for that tag. This doesn't prove none exists;
-- **unreadable shadow root**: its content can't be reached by UTAM selectors.
+page object that scopes a shipped one to a container, as the scoping recipe does, appears.
+`#shadow(<mode>)` before a line means that element is in the previous one's shadow root; without it,
+the element is in the light DOM (a child, or slotted content). `(hidden)` marks the top of a hidden
+subtree. Each custom element is annotated with its page object (import path, plus `root`,
+`interface`, or `project` with its compiled file), with **no page object found** (which doesn't prove
+none exists), or with **unreadable shadow root**.
 
 Below that, three kinds of note:
 
@@ -724,11 +822,11 @@ Below that, three kinds of note:
   type to load there. It's matched by tag against every page object above, nearest first, and against
   the nearest one also by the element's whole selector, evaluated over the snapshot as
   `querySnapshot` does. That finds routes whose selector names no tag, such as a container selected
-  by `[slot='secondaryFields']`. The target gets one too, when it isn't a custom element. The line
-  says whether the element is declared `light` (`elements`) or `shadow` (`shadow.elements`). A
+  by `[slot='secondaryFields']`. A route found in an implementation names the interface, then the
+  implementation it's in. The line says whether the element is declared `light` or `shadow`. A
   private element counts as used by the public methods that use it and by the getters of public
-  elements nested in it (`getX`, and `waitForX` for `"wait": true`). For shipped page objects the
-  declared scope isn't checked against the page, so this is a likely route, not a proven one.
+  elements nested in it. For shipped page objects the declared scope isn't checked against the page,
+  so this is a likely route, not a proven one.
 - **`⚠ root selector "…" matches N in the document`**: under a root page object, when its root
   selector (or an implementation's) matches more than once or its first match is hidden.
   `utam.load` takes the first, so the line gives the `find --css` to check it with. It isn't shown
@@ -739,10 +837,9 @@ Below that, three kinds of note:
   the page object's root over the snapshot, taking the first match at each level as UTAM does, and
   where an element selects a node on the path in the other scope, it names the element and the list
   to move it to. A missing `"shadow"` is a common mistake in a hand-written page object, and UTAM
-  reports it only as a locator error. A misdeclared element is reported once, where it is, not again
-  for the elements nested in it. A route through it, or through an element nested in it, prints as
-  **`↳ not reachable as declared`** rather than as a clean route. Shipped page objects aren't
-  checked: they aren't the project's to fix.
+  reports it only as a locator error. A misdeclared element is reported once, not again for the
+  elements nested in it, and a route through it prints as **`↳ not reachable as declared`**. Shipped
+  page objects aren't checked: they aren't the project's to fix.
 
 Example, abridged, on a console app with an inactive workspace tab before the active one:
 
@@ -761,80 +858,38 @@ one-record-home-flexipage2               salesforce-pageobjects/global/pageObjec
             lightning-formatted-phone #shadow "•14"  ← target [n1288]
 ```
 
-#### `tree` and `node`
+### `tree` and `node`
 
-`subtree` prints the pruned tree under a node to a depth, one node per line in `find`'s form, with
-`(hidden)` where it applies. Under a node with a shadow root, its `#shadow(<mode>)` children come
-first, then its light children under `light DOM:`, so every child's side is explicit; a node without
-a shadow root lists its light children directly. Where the depth stops it, it says how many children
-are left. A long tree ends by repeating the node it started at, because some agent harnesses keep
-only the tail of long output.
+`subtree` prints the pruned tree under a node to a depth. Under a node with a shadow root, its
+`#shadow(<mode>)` children come first, then its light children under `light DOM:`, so every child's
+side is explicit. Where the depth stops it, it says how many children are left. A long tree ends by
+repeating the node it started at, because some agent harnesses keep only the tail of long output.
 
-`nodeDetails` shows one node in full, so nobody needs to script over the JSON: its handle and
-address, every recorded attribute unclipped, its text and shadow text and shadow mode, its size and
-position or the hidden subtree it's in, its parent and which side of it the node is on, and each of
-its light and shadow children on one line.
+`nodeDetails` shows one node in full (handle, address, every recorded attribute unclipped, text,
+shadow, size or hidden subtree, parent and side, and each child), so nobody needs to script over the
+JSON. `nodeAncestors` (`node --ancestors`) lists the node's ancestors, nearest first, with each
+shadow crossing on its own line, since a selector's reach ends there. It has no page-object
+annotations; it's for finding a container to scope a selector with, which `find --css` then tests.
 
-`nodeAncestors` (`node --ancestors`) lists the node's ancestors, nearest first, one per line: handle,
-the node in `find`'s form, `(hidden)` where it applies. A shadow crossing is its own line
-(`— #shadow(synthetic) root of n894 —`), since a selector's reach ends there. There are no
-page-object annotations; this is for finding a container to scope a selector with, which `find --css`
-then tests.
-
-#### `lookup`
+### `lookup`
 
 `lookupPageObject` takes a tag, or a page object's name, import path or short name
-(`recordHomeFlexipage2`). For each match it shows, in full and without clipping:
+(`recordHomeFlexipage2`), and shows each match in full and without clipping: its names, how it
+matched the tag, its interface or implementations, and each method and element from the entry
+(see What an entry records), with every element marked `[light]` or `[shadow]` so nobody needs the
+raw `.utam.json` to see where UTAM searches for it. `searchPageObjects` (`lookup --search`) is for
+when the name isn't known yet: name matches first, then tag, then description. `lookup` needs no
+snapshot.
 
-- the import path, `root` or not, `interface`, the source, and the compiled file for a project page
-  object;
-- the manifest name where it differs, with a note that a `.utam.json` `type` uses the import path;
-- how it matched the tag (root selector, typed element in which page objects, or naming convention),
-  and for an implementation, the interface test code loads;
-- the description, root selector, interface and implementations;
-- each method with its parameters and return type, and below it the `compose` summary;
-- each public element with its getter, selector and type (a container's getter takes a page object
-  type and returns it, or a list of them, rooted at the element the container selects);
-- each private element with its selector and the public methods that use it;
-- for every element, `[light]` or `[shadow]`: whether it's declared in `elements` or
-  `shadow.elements`, so nobody needs the raw `.utam.json` to see where UTAM searches for it.
+## 7. CLI
 
-`searchPageObjects` (`lookup --search`) is for when the name isn't known yet: page objects whose
-name, import path, tags or description contain every word, name matches first, then tag, then
-description. `lookup` needs no snapshot.
+The commands are `snapshot find` (`--css` for `querySnapshot`), `path`, `tree`, `node`
+(`--ancestors`), `lookup` (`--search`), and `console snippet` and `console import` (see Capture).
+Their options are in the CLI's help and the usage guide. The rules that hold across them:
 
-### 6. CLI
-
-| Command                       | Does                                                                           | Options                                                                                                                                                      |
-| ----------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `simply-utam snapshot find`   | `findNodes`, or `querySnapshot` with `--css`.                                  | `--text`, `--attr`, `--tag`, `--class`, in any combination; or `--css` alone, with `--within <handle>` and `--shadow`. `--all` lists hidden matches in full. |
-| `simply-utam snapshot path`   | `componentPath`.                                                               | Exactly one of `--node <handle>` and `--text <text>`.                                                                                                        |
-| `simply-utam snapshot tree`   | `subtree`.                                                                     | `--node <handle>` (default: the snapshot's root), `--depth <n>` (default 3).                                                                                 |
-| `simply-utam snapshot node`   | `nodeDetails`, or `nodeAncestors` with `--ancestors`.                          | The handle as an argument, or `--node <handle>`; `--ancestors`.                                                                                              |
-| `simply-utam snapshot lookup` | `lookupPageObject`, or `searchPageObjects` with `--search`. Needs no snapshot. | A tag or page object name as an argument, or `--search <words>`.                                                                                             |
-
-```bash
-simply-utam snapshot find --text "Account Name"
-simply-utam snapshot find --tag one-record-home-flexipage2 --all
-simply-utam snapshot find --attr slot=secondaryFields
-simply-utam snapshot find --class navexWorkspace
-simply-utam snapshot find --css ".navexWorkspace.active one-record-home-flexipage2"
-simply-utam snapshot find --css "records-highlights2" --within n894 --shadow
-simply-utam snapshot path --node n1288
-simply-utam snapshot path --text "Account Name"
-simply-utam snapshot tree --node n894 --depth 3
-simply-utam snapshot node n1288
-simply-utam snapshot node n1288 --ancestors
-simply-utam snapshot lookup lightning-input
-simply-utam snapshot lookup recordHomeFlexipage2
-simply-utam snapshot lookup --search "record layout"
-```
-
-- The snapshot commands (all but `lookup`) take `--file` to choose the snapshot. The default is
-  `.utam/snapshots/latest.json`.
-- Every command takes `--json`, `--limit <n>` (the text output limit, default 200) and
-  `--project-dir` (default `.`).
-- `--within` needs `--css`, and `--shadow` needs `--within`.
+- The read commands (all but `lookup`) take `--file`, default `.utam/snapshots/latest.json`.
+- Every command takes `--json`; every one but `console snippet` takes `--project-dir` (default
+  `.`); the five read commands take `--limit` (the text output limit, default 200).
 - Every snapshot command first prints a header naming the file, trigger, label, capture time, URL and
   mask (and `TRUNCATED` with its reasons), then the scenario, the step and the error, keeping a failed
   assertion's `Expected` and `Received` lines. `latest.json` is only the most recent capture, so the
@@ -847,414 +902,74 @@ simply-utam snapshot lookup --search "record layout"
   error names the locator but not the page object, so this is the shortest way from the error to
   the page.
 
-The commands follow one rule as the topic grows: `snapshot <verb>` reads snapshots (and the
-page-object index), and `snapshot <source> <verb>` produces them, one topic per capture source (see
-Hand-driven capture).
+| Exit code | Meaning                                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0         | Success, including a `find` with no matches (an empty result is an answer), and a saved import.                                                                                                   |
+| 1         | `path --text` didn't find exactly one visible match.                                                                                                                                              |
+| 2         | Bad input: the file or JSON isn't a snapshot, its version is newer, an unknown handle, an address in place of a handle, a selector that can't be parsed, an empty clipboard or no clipboard tool. |
 
-| Exit code | Meaning                                                                                                                                                     |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0         | Success, including a `find` with no matches (an empty result is an answer).                                                                                 |
-| 1         | `path --text` didn't find exactly one visible match.                                                                                                        |
-| 2         | Bad input: the file or JSON isn't a snapshot, its version is newer, an unknown handle, an address in place of a handle, or a selector that can't be parsed. |
+## 8. Usage guide
 
-### 7. Usage guide
-
-One document, `test/utam/SNAPSHOTS.md`, scaffolded into the test project. It's written as an agent
-skill, with `name` and `description` frontmatter, so an agent harness can load it when a task
+One document, `SNAPSHOTS.md`, scaffolded into the project's UTAM test folder. It's written as an
+agent skill, with `name` and `description` frontmatter, so an agent harness can load it when a task
 involves a UTAM step, page object or selector. The core README links to it.
 
 It explains the tool, and it also carries the two page-object authoring recipes an agent needs to
-act on what the tool shows. In every authoring session of the agent evaluation, most of the time
-went to learning these two patterns from UTAM's and the shipped page objects' sources, not to
-reading the page, and T3's raw WebdriverIO hop and F2's missing `"wait": true` came from the same gap
-(Appendix C). The tool says where to attach a page object and which copy to scope to; the recipes say
-how. There is no separate cookbook.
-
-As a writing principle, the guide keeps the two kinds of content apart: the sections on the tool
-explain its output, and the recipes, in their own section, are UTAM knowledge that holds with or
-without snapshots. That keeps each part short, and lets the recipes move into a skill of their own if
-the guide outgrows one file.
-
-The recipes:
-
-- **Scope a shipped root page object to the visible copy.** Write a small project root page object
-  whose selector is the outermost container that tells the copies apart, with one public element
-  typed as the shipped page object's interface and `"wait": true`. Don't copy the shipped JSON:
-  wrapping keeps its methods and its upgrades. Prefer `>`, since a class such as `.active` can repeat
-  inside the hidden copy, where a descendant selector still finds it. Use the import path in `type`.
-  Check the selector with `find --css` before a live run, on a snapshot of each kind of page the step
-  runs on, and claim no case you didn't check.
-
-- **Attach a custom page object below the last shipped one.** The last line of `path` that names a
-  page object is the attach point. Add an element there, in a project page object or a wrapper, typed
-  as a new non-root page object, which has no `selector` of its own; the element that holds it does.
-  Use `shadow.elements` for each `#shadow` hop and plain `elements` for light children, and a
-  container getter for slotted content. Keep every hop below the last shipped page object in a page
-  object, not in step code. A root selector is looked up in the document, so a project root page
-  object starts at an ancestor with no `#shadow` line above it.
-
-Beyond the commands, how to read their output, and the recipes, the guide sets out:
-
-- **Where snapshots come from.** A test run writes them, on failure or at a capture step, and a
-  person can capture one from their own browser (see Hand-driven capture), so check the header:
-  `latest.json` may come from another run, scenario or step. Get the snapshot from a run you need
-  anyway: a failing step, a best first attempt, or a capture step after one that waits. For a page
-  no scenario reaches yet, ask the person to capture it from the console.
-- **Writing a step.** `find` the target by its label, `path` to it, load the outermost root page
-  object on the path and follow it down (`lookup`), attach your own below the last one, and test each
-  hop with `find --css --within` (and `--shadow`). With hidden matches, scope to the visible copy
-  (`node --ancestors`, then `find --css`). Confirm with a live run.
-- **Fixing a failing step.** Read the header. For UTAM's not-found error, run the suggested
-  `find --css`: `inside its scope element` means `elements`, `inside its scope shadow root` means
-  `shadow.elements`. Otherwise `find` the label with `--all` and compare the `path` with the page
-  object: the right root, the right shadow crossings, the visible copy.
-- **When something doesn't match**: no match for a label (search by label, not value), a hidden node
-  with nothing under it (never rendered; open it first), several matches with some hidden, an
-  `iframe` marked not captured, and an unreadable shadow root, whose content UTAM can't reach ("its
-  scope does not have shadow root").
-
-### Public API (MVP)
-
-New exports from `src/index.ts`, with matching entries in the README's `## API` section and
-`test/index.test.ts`.
-
-These go on core's root export, not a new `./snapshot` subpath. The scaffolded `wdio.conf.mjs`
-imports them, and a test project depends only on `@simplysf/simply-utam`, which re-exports core's
-root (`export * from '@simplysf/simply-utam-core'`) but not its subpaths. A subpath would make test
-projects depend on core directly as well. The existing subpaths (`./discovery`, `./steps`, …) hold
-build-time tooling the CLI uses, not what a test run imports.
-
-| Export                                                                                                                                             | Description                                                                                                                                         |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `captureDomSnapshot(options?)`                                                                                                                     | Captures a snapshot through a `browser` or `SnapshotPage`; never throws.                                                                            |
-| `writeDomSnapshot(snapshot, options?)`                                                                                                             | Writes a snapshot and `latest.json`, and returns the path.                                                                                          |
-| `pruneDomSnapshots(options?)`                                                                                                                      | Deletes all but the newest run folders.                                                                                                             |
-| `snapshotRunId(date?)`                                                                                                                             | A run id for `UTAM_SNAPSHOT_RUN_ID`, the time as `20261016T120000`; the scaffolded `onPrepare` hook sets it.                                        |
-| `readDomSnapshot(path)`, `parseDomSnapshot(json)`, `serializeDomSnapshot(snapshot)`                                                                | Reads or parses a snapshot, checking `format` and `version` and numbering handles; writes the file form, without handles.                           |
-| `findNodes`, `querySnapshot`, `componentPath`, `componentPathByText`, `subtree`, `nodeDetails`, `nodeAncestors`, `utamErrorHint`, `snapshotHeader` | The snapshot queries.                                                                                                                               |
-| `buildPageObjectIndex(options?)`, `lookupPageObject`, `searchPageObjects`                                                                          | The page-object index and its queries.                                                                                                              |
-| `ensureGitignore`, `mergeGitignore`, `GITIGNORE_FILE`, `SIMPLY_UTAM_GITIGNORE_RULES`                                                               | The `.gitignore` rule, shaped like `ensureForceignore` and `mergeForceignore` and sharing their merge.                                              |
-| `generateSnapshotGuide`, `generateSnapshotSteps`                                                                                                   | The usage guide and the capture step, as `init` scaffolds them.                                                                                     |
-| `DomSnapshotError`                                                                                                                                 | Thrown for input that isn't a readable snapshot, an unknown handle, or a selector that can't be parsed.                                             |
-| `DOM_SNAPSHOT_FORMAT`, `DOM_SNAPSHOT_VERSION`, `LATEST_SNAPSHOT`, `DEFAULT_OUTPUT_LIMIT`, `SNAPSHOT_MASK_ENV`, `SNAPSHOT_RUN_ID_ENV`               | `'simply-utam-dom-snapshot'`, `1`, `'.utam/snapshots/latest.json'`, `200` (lines of text output), `'UTAM_SNAPSHOT_MASK'`, `'UTAM_SNAPSHOT_RUN_ID'`. |
-| `DomSnapshot`, `DomNode`, `SnapshotPage`, `SnapshotBrowser`, `SelectorScope`, `QueryResult`, option and result types                               | Types. `SnapshotBrowser` and `SnapshotPage` are structural.                                                                                         |
-
-Hand-driven capture adds its own exports (see that section).
-
-**Runtime dependency.** This design adds `css-select` as a runtime dependency of core.
-`querySnapshot` runs it through an adapter over the snapshot tree, which gives full CSS selector
-syntax and, with the adapter deciding the scope, the same answer as UTAM's `findElement`: the first
-match in document order within one tree scope. A hand-written matcher would cover only a subset and
-be one more place to disagree with the browser. AGENTS.md asks for discussion before core takes a
-new runtime dependency; this design is where that discussion happens (see Open questions). Tests add
-`jsdom` and `@lwc/synthetic-shadow` as devDependencies (see Testing).
-
-## Hand-driven capture
-
-In the MVP, only a test run writes snapshots. That covers a failing step and any state a scenario
-reaches, and the evaluation sessions needed nothing else. Two cases it doesn't cover well:
-
-- **A page no scenario reaches yet.** Exploring a page before writing its steps means writing steps
-  to get there first, or pausing a test with `browser.debug()`: an edit to a step definition, a test
-  run started with `DEBUG`, and the edit removed afterwards.
-- **An agent taking the capture.** `browser.domSnapshot` runs in the REPL, which needs a person to
-  type into it. A person can get a page into the right state, but the agent can't then capture it
-  itself.
-
-Hand-driven capture lets a person drive a page in a browser and capture it with the same walker,
-without a test run. There are two routes: the **console** (paste a snippet into the browser's
-DevTools console), designed here and built first, and **Chrome** (a CLI capture over the DevTools
-protocol), outlined here and designed when it's built. The console route needs no browser setup,
-works in any browser, and is what an agent's browser tool can run; the Chrome route removes the
-copy and paste.
-
-A page driven by hand isn't necessarily the page the test sees. A different user, profile, window
-size or feature flag can render a different DOM. The test run stays the faithful capture; the guide
-says so, and the header's URL and viewport show where a capture came from.
-
-### Command structure
-
-Commands that read snapshots are `snapshot <verb>`, as in the MVP. Commands that produce them are
-`snapshot <source> <verb>`, one oclif topic per capture source, since each source has its own
-lifecycle:
-
-```text
-simply-utam snapshot
-├─ find · node · path · tree · lookup     read snapshots and the page-object index (MVP)
-├─ console                                capture by pasting into the DevTools console
-│  ├─ snippet    print the capture snippet, or copy it
-│  └─ import     save what the snippet produced
-└─ chrome                                 capture over the DevTools protocol (later)
-   ├─ start      launch a Chrome logged in as the test user
-   ├─ capture    capture one of its tabs
-   └─ stop       close it
-```
-
-- **Test runs** are the third source. They have no commands: the scaffolded hooks and the capture
-  step write their snapshots.
-- **Every source writes through `writeDomSnapshot`**, so the read commands never depend on where a
-  snapshot came from.
-- **Not one `snapshot capture --from console|chrome`.** The sources share no verbs: the console takes
-  two steps with a person in between, and Chrome needs a start and a stop. One command would carry
-  flags that apply to only one source each.
-- **`console import` reads any snapshot file**, such as one downloaded from CI, since checking and
-  saving a file is the same work. If importing from elsewhere becomes common, it can move up to
-  `snapshot import`.
-
-### The console route
-
-**In use.**
-
-1. `simply-utam snapshot console snippet --copy` puts the snippet on the clipboard. Without `--copy`
-   it prints it.
-2. The person opens DevTools, checks the console's context selector says `top`, pastes and presses
-   Enter. Chrome asks them to type `allow pasting` the first time. The snippet copies the snapshot to
-   the clipboard and prints a one-line summary.
-3. `simply-utam snapshot console import --label "account list"` reads the clipboard, checks the
-   snapshot, saves it, and prints the path and the header that every read command prints.
-
-An agent runs steps 1 and 3; only step 2 needs a person. A snippet saved as a DevTools Snippet
-(Sources → Snippets) can be run again without pasting, as long as it's from a compatible version.
-
-**The snippet** is `(walker)(options)`, wrapped:
-
-- **Same walker, same world.** It runs the walker's source text, exactly as `captureDomSnapshot`
-  sends it, in the page's main world, where WebDriver's `execute` runs it too, so it sees the same
-  DOM a test capture does. The walker options are built by the same code `captureDomSnapshot` uses,
-  with `trigger: 'manual'`.
-- **Masked in the page.** The mask mode is fixed when the snippet is generated, because masking runs
-  in the walker. Record data in `labels` and `structure` modes never reaches the clipboard.
-- **The JSON goes to the clipboard**, through the console's `copy()`. Where `copy` isn't defined,
-  as in an agent's browser tool or a bookmarklet, it downloads `dom-snapshot-<time>.json` through a
-  Blob link instead, for `import --file`.
-- **It returns a summary, not the snapshot**: its size, the mask, any truncation, and the import
-  command to run next. An agent's browser tool that runs it gets that line, not the whole snapshot,
-  in its context (Appendix B).
-- **ASCII only.** Non-ASCII characters in the walker's source (such as the mask's `•`) are written as
-  `\u` escapes, so no clipboard or terminal encoding can change the snippet.
-- **No network calls.** The snippet writes only to the clipboard or a download.
-
-**`snippet` flags:** `--mask` (default `UTAM_SNAPSHOT_MASK`, read through an injectable `env`, then
-`labels`), `--focus` (default `auto`, as for the other captures), `--max-nodes`, `--max-hidden-nodes`
-and `--copy`. It warns on `full`, as capture does.
-
-**`import`:**
-
-- **Input** is the clipboard by default, `--file <path>`, or `--file -` for standard input. The clipboard is
-  read with `pbpaste` on macOS, `wl-paste` or `xclip` on Linux, and PowerShell's `Get-Clipboard` on
-  Windows (and written with their counterparts for `snippet --copy`). With none available, it exits
-  with 2 and says to use `--file` or `-`.
-- **Checks** the JSON with `parseDomSnapshot`, so text that isn't a snapshot, or a snippet from a
-  newer version, fails with the reason. It warns when the mask is `full`.
-- **`--label`** sets the label at import time, so one snippet serves every capture. The rest of
-  `meta` is kept as captured, so an imported failure snapshot from CI keeps its scenario, step and
-  error.
-- **Saves** through `writeDomSnapshot` with `runId: MANUAL_RUN_ID`: `.utam/snapshots/manual/`, named
-  `manual--<label or number>`, and copied to `latest.json` (see Files).
-- **Prints** the path and the header; `--json` returns the path and `meta`. `--project-dir` as on the
-  other commands.
-- **Exit codes:** 0 when saved; 2 for bad input (an empty clipboard, text that isn't a snapshot, a
-  newer version, no clipboard tool).
-
-**Where the code goes.** Core builds the snippet and imports the snapshot; the CLI owns the
-clipboard, which nothing but a person's terminal needs:
-
-| Export                                                  | Description                                                                                                              |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `domSnapshotSnippet(options?)`                          | The console snippet: the walker with its options, wrapped to copy or download the JSON and return a summary. ASCII only. |
-| `importDomSnapshot(json, options?)`                     | Parses snapshot JSON with `parseDomSnapshot` and applies `label`, for `writeDomSnapshot`. Throws `DomSnapshotError`.     |
-| `MANUAL_RUN_ID`                                         | `'manual'`: the run id for captures made outside a test run, which pruning keeps.                                        |
-| `DomSnapshotSnippetOptions`, `ImportDomSnapshotOptions` | Option types. `WriteDomSnapshotOptions` gains `runId`.                                                                   |
-
-The clipboard helper in the CLI takes an injectable command runner, so tests don't touch the real
-clipboard. `SNAPSHOTS.md` gains a "Capture by hand" section for the console route, beside the REPL
-route it already has.
-
-**Testing.**
-
-- The generated snippet run in jsdom: with a stubbed `copy`, the copied text passes
-  `parseDomSnapshot` and matches what `captureDomSnapshot` produces for the same page and options, apart from `capturedAt`;
-  without `copy`, the download fires; the return value is the summary, not the JSON; the snippet is
-  ASCII only.
-- `importDomSnapshot`: label applied, the rest of `meta` kept, bad input and newer versions rejected.
-- `writeDomSnapshot` with `runId`, `manual--` names, and `pruneDomSnapshots` keeping `manual/` and
-  not counting it.
-- The commands: `snippet` with and without `--copy` and `--mask`; `import` from a fake clipboard, a
-  file and standard input; exit code 2 for each bad input; `--json`.
-
-### The Chrome route (later)
-
-Designed when it's built; Appendix B has the spike's findings. In outline:
-
-- **`snapshot chrome start`** launches Chrome with a throwaway profile and a debugging port, and logs
-  it in as the test user through `TestEnvironment.buildFrontdoorUrl`, navigated over the DevTools
-  protocol so the session ID never goes on Chrome's command line. It writes the port to a state file
-  for `capture`, and `stop` closes it.
-- **`snapshot chrome capture`** picks the tab (`--tab` for a URL match, required when there's more
-  than one), runs the walker through a `devToolsPage` that implements `SnapshotPage` over Node's
-  built-in `WebSocket`, and saves it the same way `console import` does. It also works with a Chrome
-  the person started with the flag themselves.
-- Its exports would be `devToolsPage` and a launcher, both taking injectable `fetch` and `WebSocket`.
-  It's the route that fills `meta.org`.
-
-## Page-object packages
-
-The MVP's index reads exactly two sources: the project's own page objects and
-`salesforce-pageobjects`, whose name is a constant in the index. That leaves two gaps:
-
-- **Other packages are invisible.** A project that consumes an in-house or shared page-object
-  package (one whose components share the `c` namespace, mapped in `.utam/namespace-map.json`, or
-  one with its own namespace) gets no `lookup`, `path` annotations or tag matches for it, although
-  its build already knows where those page objects come from.
-- **Salesforce is assumed.** A project that doesn't use `salesforce-pageobjects` gets a warning that
-  it isn't installed, about a package it never asked for.
-
-This section generalizes the index so every page-object package, `salesforce-pageobjects` included,
-is found the same way: from the namespace configuration the project already has. It's built
-after the MVP stack, as one change, and adds no option, flag or file.
-
-### Where packages come from
-
-Both namespace files name import prefixes, for different reasons, and the index reads both:
-
-| File                                 | What it maps                                                    | Prefixes that name a package                                  |
-| ------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------- |
-| `generator.config.json` `namespaces` | A component namespace to the import prefix the generator writes | The values, except those under the project's own package name |
-| `.utam/namespace-map.json`           | A project prefix to an external one, rewritten after generation | The values; the keys are the project's own prefixes           |
-
-The generator's `namespaces` cover packages with their own namespace (`lightning` →
-`salesforce-pageobjects/lightning/pageObjects/`). The namespace map covers packages whose components
-share `c` with the project, which the generator can't tell apart, so the build's `rewrite` task
-moves them (`<appName>/pageObjects/shared` → `shared-components-pageobjects/pageObjects/shared`).
-
-From each prefix, the package name is its first path segment, or its first two for a scoped package
-(`@acme/page-objects/…`). The index resolves each name once from the project, with `createRequire`,
-as it resolves `salesforce-pageobjects` today; several prefixes into one package index it once. A
-package that doesn't resolve gets a warning naming it and the file and entry that mapped it.
-
-The namespace map is read through the loader `rewrite` already uses (made internal to core rather
-than private to the rewriter), so the index and the build agree on what the file says and on
-longest-prefix-first order. The index reads the default path, `.utam/namespace-map.json`; `build
---namespace-map` and `rewrite --config` can point elsewhere (see Open questions).
-
-### `salesforce-pageobjects` is one package among others
-
-The index no longer names `salesforce-pageobjects`. It's indexed when a namespace maps to it, like
-any other package:
-
-- **Salesforce projects get it with no extra step.** The scaffolded `generator.config.json` maps
-  `lightning` to it, and one mapping is enough: the manifest covers the whole package, every
-  namespace it ships.
-- **Other projects aren't told about it.** No mapping, no package, no warning.
-- **Salesforce defaults stay in the scaffolder**, which already adds the dependency and the
-  `lightning` mapping. The index stays neutral.
-- **Removing the `lightning` mapping drops it from the index.** That's the intended result: the
-  generator no longer types anything as one of its page objects either.
-
-The Salesforce-specific rules become rules for a layout instead of a name: the manifest import-path
-rule (Names and import paths) and the naming convention's `utam-<namespace>/pageObjects/<name>`
-candidate (Tags) apply to any package that ships `dist/utam.manifest.json`.
-
-### Reading a package
-
-A package is read in one of two layouts:
-
-- **With a manifest** (`dist/utam.manifest.json`): as `salesforce-pageobjects` is read today, by
-  manifest name, with the import path from the source's folder under `dist/`.
-- **Without one**: every `*.utam.json` under the package's folder, skipping `node_modules`. The
-  prefix describes the compiled JavaScript test code imports, not where the sources sit, which may
-  be anywhere in the package (`src/**/__utam__/`), so the search isn't limited to the folder the
-  prefix names. Each entry's `name` is its import path, as for project page objects, or
-  `<package>/<file>` when it has none.
-
-**Import paths are checked, not assumed.** For each file without a manifest, the candidate import
-paths are each prefix that names the package plus the file's name without `.utam.json`, and the
-namespace map applied to the project's import path for that name. A namespace map entry is a string
-prefix, not a folder (`my-app/pageObjects/modal` → `shared-pageobjects/pageObjects/modal` rewrites
-`my-app/pageObjects/modal` itself), so the second form is the one a map-found package usually
-needs. With a manifest, the candidate is the path the manifest rule gives. The index keeps the first
-candidate `require.resolve` finds from the project, which respects the package's `exports` map and
-confirms the compiled file ships. `require` resolves with its own conditions, so a package that
-exports its page objects to `import` only resolves nothing, and its entries get no import paths.
-`salesforce-pageobjects` 12.0.0 exports `./*` to `dist/*.cjs` for `require`, so its import paths
-resolve; checking all 1,640 or so entries this way takes about 60 ms. A file whose candidate doesn't resolve
-is still indexed, without an `importPath` (already optional): its tags and typed elements still help
-`lookup` and `path`, and the output says it has no known import path. A source that only exists for
-the package's own tests then shows up as noise instead of a wrong answer, and a manifest package
-laid out differently from `salesforce-pageobjects` gets entries without import paths instead of
-wrong ones.
-
-- **Two copies of one source** (a package shipping both `src/` and `dist/`): identical files are
-  indexed once, the first in path order.
-- **Two sources with one name** in different folders: the first in path order takes the import
-  path; the other is indexed without one.
-- **Candidates are still names.** A candidate that doesn't resolve is registered as another name for
-  its entry, so a `type` that names it still links, and the entry still shows no import path.
-
-### The namespace map in matching
-
-The rewrite also changes what the project's own page objects say, so the index applies it in two
-places besides discovery:
-
-- **The naming convention.** For `c-modal`, the generator's `c` mapping gives
-  `my-app/pageObjects/modal`, but with the namespace map entry above, the page object is
-  `shared-pageobjects/pageObjects/modal`. The convention's candidates go through the namespace map,
-  longest prefix first, as the rewriter does. Both this and the next point work through the same
-  extra names, registered once the packages and the project are read.
-- **Typed elements before a rewrite.** If `lookup` or `path` runs before the build's `rewrite` task,
-  the project's generated `type` values still use the project prefix. The index registers the
-  pre-rewrite form as another name for the rewritten entry, so the link holds either way.
-
-### What else changes
-
-- **`source`** on an entry is `project` or the package's name.
-- **Ranking**: the project's own page objects first, then packages in the order they're found:
-  the generator's `namespaces` in file order, then the namespace map, longest prefix first.
-- **`meta.pageObjectPackages`** records the version of each package the index would read, not only
-  `salesforce-pageobjects`, from the same discovery.
-- **Public surface**: none. `buildPageObjectIndex` keeps its options, and `source` is already a
-  string. The README's description of `buildPageObjectIndex`, the `lookup` command's description and
-  the usage guide change their wording from `salesforce-pageobjects` to the packages the namespaces
-  map to.
-- **A package with neither a manifest nor a readable `.utam.json`** gets a warning instead of the
-  MVP's "no readable manifest" one.
-
-### Alternatives considered for packages
-
-- **Explicit configuration**: a `pageObjectPackages` option, a `--package` flag, or a file such as
-  `.utam/page-objects.json`, each listing packages with a layout and an import prefix. Predictable,
-  and it handles a package no namespace maps to. Not now: every package seen so far is mapped, since
-  the generator and `rewrite` need the mapping anyway. A package only hand-written step code uses can
-  get a placeholder entry in the generator's `namespaces` whose key matches no component, which the
-  generator ignores, at the cost of a mapping a reader can't tell from a real one. If that becomes
-  common, explicit configuration is the next step, as a second source over the same package reader.
-- **Scanning `package.json` dependencies** for packages that ship a manifest or `*.utam.json`:
-  finds the most, but is slower, picks up packages by mistake, and still can't tell what to import
-  without a manifest or a mapping. At most a hint ("found X; no namespace maps to it").
-- **Keeping `salesforce-pageobjects` as an implicit default**: saves a project that removes the
-  `lightning` mapping from losing it, but brings back the Salesforce assumption and the warning for
-  projects that don't use it.
-- **Limiting the search to the folder the prefix names**: simpler, but finds nothing when a package
-  keeps its sources away from its compiled output, which UTAM's own layout (`__utam__` beside the
-  component, compiled to `pageObjects/`) makes likely.
-
-## Later phases
-
-Listed so the MVP doesn't box them out. Each one needs its own design before it's built.
-
-| Enhancement                   | What it adds, and why it's later                                                                                                                                                                                                                                            |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Profiles                      | Record the profile that selects each implementation, and read the project's configured profiles. Later because the scaffold configures none and no session needed one.                                                                                                      |
-| Checks across snapshots       | Run one `find --css` over several snapshots (each kind of page a step runs on), so a scope checked on one page is checked on the others. See Open questions.                                                                                                                |
-| `find --compare <handle>`     | Compares a visible copy's ancestors with a hidden copy's below the point where they join, and tests each differing ancestor as a scope with `querySnapshot`. Held in reserve: built only if agents still struggle to pick a scope with `node --ancestors` and `find --css`. |
-| Live page object check        | In a paused test or a `snapshot chrome` Chrome, loads a candidate page object with UTAM itself and reports which of its elements resolve, element by element. Would turn "reachable through" annotations into proven routes.                                                |
-| Live failure replay           | When a step fails, pauses the session and walks the failing page object's chain with UTAM to show how far it got. Builds on the live check.                                                                                                                                 |
-| Comparison with a passing run | Diffs a failing snapshot against the last passing one for the same step, to show what changed after a release or layout change.                                                                                                                                             |
-| More triggers                 | `UTAM_SNAPSHOT_AFTER="<step text>"` and `UTAM_SNAPSHOT=all`, through an `afterStep` hook, without editing feature files.                                                                                                                                                    |
-| iframes and windows           | Capture each frame (switching into it) and each window, and link them to the `iframe` node. Needed for Setup pages.                                                                                                                                                         |
-| MCP server                    | The same queries and capture as tools, so agents don't need to know the CLI.                                                                                                                                                                                                |
-| WebdriverIO service           | The hooks and custom command as a service package, instead of scaffolded config.                                                                                                                                                                                            |
-| Page object drafts            | Proposes a `.utam.json` for the part of a path with no page object.                                                                                                                                                                                                         |
+act on what the tool shows: **attach your own page object below the last shipped one**, and **scope a
+shipped root page object to the visible copy**. In every authoring session of the agent evaluation,
+most of the time went to learning these two patterns from UTAM's and the shipped page objects'
+sources, not to reading the page (Appendix C). The tool says where to attach a page object and which
+copy to scope to; the recipes say how. There is no separate cookbook (see Alternatives).
+
+The guide keeps the two kinds of content apart: the sections on the tool explain its output, and the
+recipes, in their own section, are UTAM knowledge that holds with or without snapshots. That keeps
+each part short, and lets the recipes move into a skill of their own if the guide outgrows one file.
+Besides the commands, it covers where snapshots come from (and checking the header), capturing by
+hand, the workflows for writing a step and fixing a failing one, and what to do when something
+doesn't match.
+
+## Public surface
+
+The exports are listed in the [core README](../../packages/simply-utam-core/README.md#dom-snapshots)
+and `test/index.test.ts`. Two decisions shape them:
+
+- **They go on core's root export, not a new `./snapshot` subpath.** The scaffolded `wdio.conf.mjs`
+  imports them, and a test project depends only on `@simplysf/simply-utam`, which re-exports core's
+  root but not its subpaths. A subpath would make test projects depend on core directly as well. The
+  existing subpaths hold build-time tooling the CLI uses, not what a test run imports.
+- **Core takes `css-select` as a runtime dependency**, with a caret range like its other
+  dependencies. `querySnapshot` runs it through an adapter over the snapshot tree, which gives full
+  CSS selector syntax and, with the adapter deciding the scope, the same answer as UTAM's
+  `findElement`: the first match in document order within one tree scope. A hand-written matcher for
+  the subset page objects use would be one more place to disagree with the browser. The lockfile pins
+  it for this repository, and the `querySnapshot`/`querySelectorAll` parity tests catch a release
+  that changes matching. AGENTS.md asks for discussion before core takes a new runtime dependency;
+  this design is that discussion.
+
+Tests add `jsdom` and `@lwc/synthetic-shadow` as devDependencies.
+
+## Testing
+
+The test files hold the cases; this is the approach:
+
+- **The walker runs as shipped.** Tests load it from the same text core sends (`walker.js`, read as
+  text) and run it in a separate jsdom global, where nothing from core exists, which proves it has no
+  closures. A build check confirms `lib/` holds an identical copy. jsdom doesn't implement
+  `checkVisibility` and returns zero for every `getBoundingClientRect`, so the walker takes both as
+  optional parameters that tests replace; in the browser they default to the real ones. Each masking
+  rule has a fixture, so a leak that's fixed gets a test.
+- **Synthetic shadow** is tested with `@lwc/synthetic-shadow` loaded into jsdom, each rendered
+  element marked with its owner by hand as the LWC engine does, so traversal is checked against the
+  emulation Lightning uses and not only native shadow roots. It doesn't reproduce a host's slotted
+  light children; that part is checked against captured pages (see Risks).
+- **Selector parity.** The same selectors run through `querySnapshot` and through
+  `querySelectorAll` on the jsdom fixture the snapshot came from must give the same matches, except
+  where the output says it can't judge.
+- **No org, browser or disk.** Capture runs against a fake `browser` and `SnapshotPage`, files
+  against an injected file system, the console commands against a fake clipboard runner, and the
+  index against fixture projects and packages.
+- **The console snippet** runs in jsdom: with a stubbed `copy`, the copied text matches what
+  `captureDomSnapshot` produces for the same page and options, apart from `capturedAt`.
 
 ## Alternatives considered
 
@@ -1268,12 +983,11 @@ Listed so the MVP doesn't box them out. Each one needs its own design before it'
   give an agent a live page, mostly through the accessibility tree. That tree flattens shadow DOM,
   so it loses shadow boundaries and component tags, which are exactly what a UTAM selector needs. They
   know nothing about page objects, aren't tied to test runs or failures, and log in separately from
-  the test user. The console snippet (Hand-driven capture) lets one of them run the walker.
+  the test user. The console snippet lets one of them run the walker.
 - **No selector evaluation at all, leaving every check to a live run**: each live run is slow, and a
   root scoped to the wrong copy fails with a wrong value, not an error, so the agent learns little
   from it. Evaluating CSS over the snapshot answers "which element does this selector find first?"
-  before the run. What it doesn't do is resolve a page object: it doesn't follow `type`s, run
-  methods, or wait, so the live run stays the check that a page object works.
+  before the run.
 - **A full offline page object checker**: would walk a page object's elements over the snapshot,
   re-implementing how UTAM resolves a chain. Each part it re-implements is another place to disagree
   with UTAM, and a confident wrong answer costs more than no answer. `path`'s scope check is the one
@@ -1282,30 +996,68 @@ Listed so the MVP doesn't box them out. Each one needs its own design before it'
   itself instead.
 - **A separate cookbook for the authoring recipes**: keeps the guide about the tool, but an agent
   that loads the guide doesn't load the cookbook, and the recipes are what it was missing.
+- **One `snapshot capture --from console|chrome` command**: see Command structure.
 - **Reading LWC source only**: misses everything that isn't our own component, and everything decided
   at runtime.
 - **The UTAM browser extension**: right answers, but only interactive and only for a person.
 
+### For finding page-object packages
+
+- **Explicit configuration**: a `pageObjectPackages` option, a `--package` flag, or a file listing
+  packages with a layout and an import prefix. Predictable, and it handles a package no namespace
+  maps to. Not now: every package seen so far is mapped, since the generator and `rewrite` need the
+  mapping anyway. A package only hand-written step code uses can get a placeholder entry in the
+  generator's `namespaces` whose key matches no component. If that becomes common, explicit
+  configuration is the next step, as a second source over the same package reader.
+- **Scanning `package.json` dependencies** for packages that ship a manifest or `*.utam.json`:
+  finds the most, but is slower, picks up packages by mistake, and still can't tell what to import
+  without a manifest or a mapping.
+- **Keeping `salesforce-pageobjects` as an implicit default**: saves a project that removes the
+  `lightning` mapping from losing it, but brings back the Salesforce assumption and a warning for
+  projects that don't use it.
+- **Limiting the search to the folder the prefix names**: simpler, but finds nothing when a package
+  keeps its sources away from its compiled output, which UTAM's own layout (`__utam__` beside the
+  component, compiled to `pageObjects/`) makes likely.
+
 ## Risks
 
-- **Synthetic shadow light trees.** UTAM's shadow lookups are `shadowRoot.querySelector*` run in the
-  page, and the spike confirmed that walking `shadowRoot.children` gives the same scoped view on real
-  Lightning pages. Light trees are the gap: on flexipage hosts (`flexipage-tab2`,
-  `flexipage-component2`, `record_flexipage-desktop-record-page-decorator`), a host's `children` and
-  `host.querySelectorAll` differ by a few elements under synthetic shadow, apparently filtered by
-  owner. If UTAM searches a host's light DOM there, a path or a `find --css --within` through those
-  elements could be wrong. A live run that disagrees with `find --css` is treated as a bug, with its
-  snapshot as the fixture.
+- **Synthetic shadow light trees.** The spike confirmed that walking `shadowRoot.children` gives the
+  same scoped view as `shadowRoot.querySelector*` on real Lightning pages. Light trees are the gap:
+  on flexipage hosts (`flexipage-tab2`, `flexipage-component2`,
+  `record_flexipage-desktop-record-page-decorator`), a host's `children` and `host.querySelectorAll`
+  differ by a few elements under synthetic shadow, apparently filtered by owner. If UTAM searches a
+  host's light DOM there, a path or a `find --css --within` through those elements could be wrong. A
+  live run that disagrees with `find --css` is treated as a bug, with its snapshot as the fixture.
 - **`labels` masking is a heuristic.** It will sometimes keep a record value or mask a label the
   agent needs. The rules are data, so they're cheap to adjust, and `structure` is the safe mode.
 - **Navigation doesn't wait for Lightning.** `goToApplication` returns once the frontdoor redirect
   page has loaded, so anything that checks the page straight afterwards, such as a capture step, sees
   `/secur/contentDoor` or a half-built page. `LightningNavigator` could wait for the target URL and
   for rendering to settle before returning. That changes navigation for every test, so it's a
-  separate change, not part of this MVP; the guide says to capture after a step that waits.
+  separate change; the guide says to capture after a step that waits.
 - **Closed shadow roots.** Neither the walker nor UTAM can see into one, so the risk is diagnosis,
   not coverage: without the `unreadable` flag it would look like an empty element. The flag is a
   heuristic; if a managed package with closed roots comes up, check it on one of its pages.
+- **A hand capture isn't the test's page** (see From the browser console).
+
+## Later phases
+
+Listed so the current design doesn't box them out. Each one needs its own design before it's built.
+
+| Enhancement                   | What it adds, and why it's later                                                                                                                                                                                                                                                                                            |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome capture route          | `snapshot chrome start`, `capture` and `stop`: launch Chrome logged in as the test user and capture a tab over the DevTools protocol, through a `SnapshotPage` over Node's `WebSocket`, removing the console's copy and paste. It would fill `meta.org` (`apiVersion`, `instanceUrl`). Appendix B has the spike's findings. |
+| Profiles                      | Record the profile that selects each implementation, and read the project's configured profiles. Later because the scaffold configures none and no session needed one.                                                                                                                                                      |
+| Checks across snapshots       | Run one `find --css` over several snapshots (each kind of page a step runs on), so a scope checked on one page is checked on the others. Until then, the scoping recipe says to check each kind of page and claim no case not checked.                                                                                      |
+| `find --compare <handle>`     | Compares a visible copy's ancestors with a hidden copy's below the point where they join, and tests each differing ancestor as a scope. Built only if agents still struggle to pick a scope with `node --ancestors` and `find --css`.                                                                                       |
+| Live page object check        | In a paused test or a Chrome-route browser, loads a candidate page object with UTAM itself and reports which of its elements resolve, element by element. Would turn "reachable through" annotations into proven routes.                                                                                                    |
+| Live failure replay           | When a step fails, pauses the session and walks the failing page object's chain with UTAM to show how far it got. Builds on the live check.                                                                                                                                                                                 |
+| Comparison with a passing run | Diffs a failing snapshot against the last passing one for the same step, to show what changed after a release or layout change.                                                                                                                                                                                             |
+| More triggers                 | `UTAM_SNAPSHOT_AFTER="<step text>"` and `UTAM_SNAPSHOT=all`, through an `afterStep` hook, without editing feature files.                                                                                                                                                                                                    |
+| iframes and windows           | Capture each frame (switching into it) and each window, and link them to the `iframe` node. Needed for Setup pages and some managed packages; no evaluation session met one.                                                                                                                                                |
+| MCP server                    | The same queries and capture as tools, so agents don't need to know the CLI.                                                                                                                                                                                                                                                |
+| WebdriverIO service           | The hooks and custom command as a service package, instead of scaffolded config.                                                                                                                                                                                                                                            |
+| Page object drafts            | Proposes a `.utam.json` for the part of a path with no page object.                                                                                                                                                                                                                                                         |
 
 ## Open questions
 
@@ -1314,114 +1066,71 @@ defensible.
 
 ### Masking and logs
 
-1. **Should `meta.url` and `meta.org.instanceUrl` mask the org's host name?** Both keep the My
-   Domain host (`<my-domain>.lightning.force.com`), which names the customer for a production or
-   sandbox org, though it isn't record data. Options: keep both; mask the My Domain part in `labels`
-   and `structure`; mask it in `structure` only. Recommendation: mask it in `labels` and
-   `structure`, keeping the domain suffix; no session needed the host.
+1. **Should `meta.url` mask the org's host name?** It keeps the My Domain host
+   (`<my-domain>.lightning.force.com`), which names the customer for a production or sandbox org,
+   though it isn't record data. The Chrome route's `meta.org.instanceUrl` would too. Options: keep
+   it; mask the My Domain part in `labels` and `structure`; mask it in `structure` only.
+   Recommendation: mask it in `labels` and `structure`, keeping the domain suffix; no session needed
+   the host.
 2. **Which of the unchecked masking candidates leak record data?** Not yet checked on a real page:
    modal `h2` titles ("Edit <record>"), lookup pills' `aria-label` ("Remove <record>"), button menus
    ("Show more actions for <record>"), the activity timeline, toasts, global search, and the Home
-   page's recent records. Options: check all before release; check them as they come up, each fix
-   with a fixture test. Recommendation: check the modal, pill and button-menu cases before release,
-   since they're on common record pages, and the rest as they come up.
+   page's recent records. Recommendation: check the modal, pill and button-menu cases before release,
+   since they're on common record pages, and the rest as they come up, each fix with a fixture test.
 3. **Should `structure` mode mask `meta.error`?** The error is copied as-is because the same text is
    in the test report, but an assertion's message can hold record values, and `structure` is the
-   mode for when nothing may leave. Options: keep it in every mode; mask quoted values in
-   `structure`. Recommendation: mask quoted values in `structure`, so UTAM's locator errors, which
-   name selectors rather than records, survive.
-4. **Should the scaffold's `logLevel` drop from `debug` to `info`?** At `debug`, the scaffold's
-   default, WebdriverIO logs the frontdoor URL with its one-time token (a problem today), the
-   walker's source on every `execute`, and every result, so each capture also lands in the log
-   (about 550 KB for two captures; unmasked in `full` mode). Options: `info`, with a comment on
-   raising it; keep `debug` and say so in the guide. Recommendation: `info`, in PR 5.
+   mode for when nothing may leave. Recommendation: mask quoted values in `structure`, so UTAM's
+   locator errors, which name selectors rather than records, survive.
+4. **Should the scaffold's `logLevel` drop from `debug` to `info`?** At `debug`, WebdriverIO logs the
+   frontdoor URL with its one-time token (a problem today), the walker's source on every `execute`,
+   and every result, so each capture also lands in the log (about 550 KB for two captures; unmasked
+   in `full` mode). The earlier recommendation was `info`, in the scaffold PR; the scaffolded
+   `wdio.conf.mjs` still sets `logLevel: 'debug'`. Options: `info`, with a comment on raising it;
+   keep `debug` and say so in the guide.
 
 ### Capture
 
 5. **What should a failure capture show when the step timeout fires during UTAM's wait?** With the
-   step timeout above `waitforTimeout`, UTAM gives up first and its error names the locator, as the
-   evaluation confirmed. A project can lower it, or a step can wait longer on its own; then the step
-   fails with only `function timed out` and the capture runs while UTAM still polls, which is
-   untested. Options: a guide line; a header note for that error, saying UTAM may still have been
-   waiting; delaying the capture. Recommendation: the guide line and the header note, and a testbed
-   run at a 30 s step timeout to see what the capture shows.
-6. **Should the MVP do more for iframes than mark them `notCaptured`?** Most Setup pages and some
-   managed packages render in one. No session met one, and the Setup scenario wasn't run. Options:
-   leave it to the iframes phase; run that scenario before release. Recommendation: leave it to the
-   later phase; the guide says what an `iframe` node means.
+   scaffold's timeouts, UTAM gives up first and its error names the locator, as the evaluation
+   confirmed. A project can lower the step timeout, or a step can wait longer on its own; then the
+   step fails with only `function timed out` and the capture runs while UTAM still polls, which is
+   untested. The earlier recommendation was a guide line, a header note for that error saying UTAM
+   may still have been waiting, and a testbed run at a 30 s step timeout; the header has no such note
+   yet. Options: those; delaying the capture; nothing until a project hits it.
 
-### Queries
+### Page objects and queries
 
-7. **Do agents start from UTAM's locator error, and from the header's suggestion?** F1's agent
-   started from the label and never used the error; the header's suggested `find --css`, built from
-   it, hasn't met an agent. Options: keep it; move it to the top of the header; drop it.
-   Recommendation: keep it. It stays silent for other errors, as F2 showed, and a rerun of F1 would
-   show whether agents read it.
-8. **How should `path` and `lookup` steer agents to the interface, and to a profile?** The index
-   reports the interface for an implementation, which assumes test code loads the interface; how the
-   scaffolded `injectionConfigs` choose an implementation is unconfirmed. A "reachable through" line
-   found in an implementation names it, and one agent typed the implementation. Implementations are
-   listed without the profile that selects them, and the scaffold configures none. Options: word the
-   line so the interface comes first; warn in `path` when the matching implementation needs a
-   profile the config doesn't set; record profiles (Later phases). Recommendation: confirm
-   `injectionConfigs` and change the wording in PR 4; profiles later.
-9. **Does a scope checked against one snapshot hold on other pages?** `find --css` answers for one
-   snapshot. F2's agent added a console alternative to its selector that it never checked and that
-   wouldn't have worked; T2's console scope holds only while each workspace shows one record page.
-   Options: a guide rule to check each kind of page the step runs on; a check over several snapshots
-   (Later phases). Recommendation: the guide rule now (it's in the scoping recipe), the check later.
-10. **How should the selector check catch disagreements with UTAM over pruned wrappers?** A plain
-    wrapper with only a class is pruned, so a selector that names one, or uses `>`, `+`, `~` or
-    `:nth-child` across one, can match differently from the live page. Options: jsdom fixture tests
-    comparing `querySnapshot` with `querySelectorAll`; a live comparison for every root selector in
-    `salesforce-pageobjects`; a `find --css` warning when a compound names a tag and class that
-    appear nowhere in the snapshot. Recommendation: the tests and the warning in PR 4, the live
-    comparison with the release check (question 13).
-11. **Should a snapshot warn when `salesforce-pageobjects` doesn't match the org's release?** Both
-    versions are recorded, so the check is cheap. Options: a header line now; later.
-    Recommendation: later; no session hit a mismatch.
+6. **How should `path` and `lookup` steer agents to the interface, and to a profile?** The index
+   reports the interface for an implementation, which assumes test code loads the interface. The
+   scaffold sets `injectionConfigs: ['salesforce-pageobjects/ui-global-components.config.json']`;
+   whether that config, with no profiles set, always picks the default implementation is
+   unconfirmed. A "reachable through" route found in an implementation now names the interface first
+   (`<interface> (in its implementation <name>)`); in the evaluation, one agent typed the
+   implementation. Implementations are listed without the profile that selects them. Options: confirm
+   `injectionConfigs` and leave the wording; warn in `path` when the matching implementation needs a
+   profile the config doesn't set; record profiles (Later phases).
+7. **Should a snapshot warn when `salesforce-pageobjects` doesn't match the org's release?** Both
+   versions could be recorded, so the check is cheap. Recommendation: later; no session hit a
+   mismatch.
+8. **Where do packages other than `salesforce-pageobjects` keep their sources?** The layout without
+   a manifest assumes a package ships its `.utam.json` files, and that a candidate import path for
+   each one resolves to its compiled page object. No such package has been checked: none is
+   installed in this repository or the testbed. A wrong assumption costs only import paths, not
+   entries. Recommendation: check one real package (such as the one the scaffolded namespace map
+   names) before the next release, and adjust the layout to it.
+9. **Should the index follow a namespace map at another path?** `build --namespace-map` and
+   `rewrite --config` take any path, but the index reads `.utam/namespace-map.json`.
+   Recommendation: the default only, until a project moves the file; a `namespaceMapPath` option is a
+   small addition when one does.
 
-### Format and implementation
+### Release checks
 
-12. **Is `css-select` acceptable as core's new runtime dependency?** It's accepted here (see Public
-    API) and open for review comment, since AGENTS.md asks for discussion first. The alternative is a
-    hand-written matcher for the subset page objects use (tags, classes, ids, attribute tests,
-    descendant and child combinators, `:not`), with a clear error for anything else.
-    Recommendation: keep `css-select`, with a caret range like core's other dependencies. The
-    lockfile pins it for this repository, and the `querySnapshot`/`querySelectorAll` parity tests
-    catch a release that changes matching; an exact pin would only stop consumers deduplicating it
-    and taking its patch releases.
-13. **Should the spike's probe become a release check?** It compares the walker's view with
+10. **Should the spike's probe become a release check?** It compares the walker's view with
     `querySelectorAll` on a live page and lists the shadow-mode signals, so on each Salesforce
-    release it would catch drift to native shadow or in the light-tree differences (Risks). Options:
-    a maintainer script run against a scratch org; drop it. Recommendation: add it after this stack,
-    with question 10's live comparison; both need an org, and neither blocks the MVP.
-
-### Evaluation
-
-14. **Is a baseline comparison against today's tools wanted before release?** The evaluation asked
-    whether the tool works, not whether it beats source, the failure screenshot, `logUtamHtml` and
-    the WebdriverIO error, so it can't say whether the snapshot, rather than the agent's skill, was
-    why sessions succeeded. Options: none; a small comparison on T3 and F2, where most of the time
-    went outside the tool. Recommendation: none before release. The verdict was "It works", the
-    shortfalls were page-object authoring, which the recipes now cover, and the acceptance check
-    reruns T3 and F2.
-
-### Page-object packages
-
-15. **Where do packages other than `salesforce-pageobjects` keep their sources?** The layout without
-    a manifest assumes a package ships its `.utam.json` files, and that a candidate import path for
-    each one resolves to its compiled page object. No such package has been checked: none is
-    installed in this repository or the testbed. If UTAM-compiled packages usually ship a manifest,
-    the manifest layout covers more than assumed. Both layouts are built, and a wrong assumption
-    costs only import paths, not entries. Options: check one real package (such as the one the
-    scaffolded namespace map names) and adjust the layout to it; wait for a project to report one.
-    Recommendation: check one real package before the next release.
-16. **Should the index follow a namespace map at another path?** `build --namespace-map` and
-    `rewrite --config` take any path, but the index reads `.utam/namespace-map.json`. Options: read
-    only the default; add a `namespaceMapPath` option and flag to the index and the commands that
-    build it. Recommendation: the default only, until a project moves the file; the option is a
-    small addition when one does.
+    release it would catch drift to native shadow or in the light-tree differences (Risks). A
+    companion would compare `querySnapshot` with the live page for every root selector in
+    `salesforce-pageobjects`, catching disagreements over pruned wrappers. Recommendation: a
+    maintainer script run against a scratch org; both need an org, and neither blocks this release.
 
 ## Evidence
 
@@ -1438,112 +1147,10 @@ each given only a task and the usage guide, on a build of this design's interfac
 between sessions. Agents used the commands without help in every session, every session ended with a
 scenario that passes and checks the value, and in each one the step that found the answer came from
 the tool's output. The verdict was "It works". Appendix C has the method, the sessions and the
-verdict in full.
+verdict.
 
 The spike code, the evaluation plan, observation sheets, transcripts and reference solutions are kept
 outside the repository.
-
-## Implementation order
-
-The evaluation build is promoted to production rather than rewritten. It lands as a stack of five
-pull requests, pushed together. Each one gets the same hardening:
-
-- **A code review against AGENTS.md**: `process.env` read only through an injectable `env`, an
-  injectable sink for anything that writes output, WebdriverIO and UTAM types written structurally,
-  and `src/index.ts`, the README's `## API` section and `test/index.test.ts` in step. Helpers the
-  evaluation build exported only for the CLI's convenience are made internal or listed in the API.
-- **Tests** filled out to the Testing section for what the PR adds.
-- **No evaluation-build leftovers**: no prerelease version suffixes, no `spikes/` folder, no demo data.
-
-| PR  | Contains                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | This design, and its row in the design index.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 2   | The page-object index (`buildPageObjectIndex`, both name forms, interfaces, private elements and method summaries), `lookupPageObject`, `searchPageObjects`, and `simply-utam snapshot lookup` with `--search`. Needs no browser, org or snapshot.                                                                                                                                                                                                                             |
-| 3   | The walker (`walker.js` and the build step that copies it to `lib/`), with its limits, visible-first order, `focus`, masking and the `unreadable` flag; the format (`parseDomSnapshot`, `readDomSnapshot`, handles, the stored `address`); `captureDomSnapshot`; and the files (`writeDomSnapshot`, `latest.json`, `pruneDomSnapshots`).                                                                                                                                       |
-| 4   | The queries (`findNodes`, `querySnapshot`, `componentPath`, `componentPathByText`, `subtree`, `nodeDetails`, `nodeAncestors`, `utamErrorHint`, `snapshotHeader`) and the commands `find` (including `--css`), `path`, `tree` and `node`, with the header, text and `--json` output, output limits and exit codes. Adds `css-select`, and the header from core (`snapshotHeader`).                                                                                              |
-| 5   | The scaffold: the `onPrepare`, `before` and `afterStep` hooks, the `browser.domSnapshot` custom command, the snapshot step, the step timeout above `waitforTimeout`, the `.gitignore` rule on 0002's merge, the `init` note for existing projects, and the fix for the misspelled Allure option `disableWebdriverScreenshotesReporting` (to `disableWebdriverScreenshotsReporting`), which today has no effect. The usage guide with its recipes, linked from the core README. |
-
-**Acceptance check.** Before the stack is pushed, rerun T3 and F2 in the testbed against the stack's
-build, as in Appendix C: a fresh session on the same model and effort, with only the task and the
-guide. Both should be correct by the evaluation's checks. They also show whether the recipes close
-the gap the sessions found: T3 should write a page object for the last hop rather than step code,
-and F2 should wrap the shipped root with its interface type and `"wait": true`.
-
-**After the stack.** The console route (Hand-driven capture) lands as its own pull request, with the
-same hardening: `domSnapshotSnippet`, `importDomSnapshot`, `MANUAL_RUN_ID` and `writeDomSnapshot`'s
-`runId`, the `manual--` names and pruning's exception for `manual/`, the `snapshot console` topic
-with `snippet` and `import`, and the guide's "Capture by hand" section. The Chrome route follows,
-after its own design pass.
-
-## Testing
-
-The evaluation build's tests are the starting point; each PR fills them out to this list.
-
-- **Walker** with `jsdom` fixtures: nested shadow roots, slotted content, hidden subtrees and the
-  hidden-node limit, hidden plain wrappers kept by pruning, the visible-first order (a hidden subtree
-  before the visible page in document order, with the time budget and node limit reached in the
-  hidden part), several truncation reasons at once, `display: contents` hosts and `slot` elements,
-  `option` in a closed `select`, generated ids, addresses starting at `0`, the root and `body` kept,
-  pruning, every limit, `focus` (`none`, `auto`, a selector, no match, a focus inside a shadow root,
-  ancestors kept past `maxNodes`, and `meta.focus`), shadow text and its masking, the `unreadable`
-  flag (and not on an undefined element, one with light children, or one with no size), each masking
-  rule (including lookup results in `[role="option"]`, related-list titles, `a[role="tab"]` and
-  `a[role="button"]` as labels, and control `aria-label`s inside `.tabBarItems`, `tbody` and data
-  rows), and the metadata masking. jsdom doesn't implement `checkVisibility` and returns zero for
-  every `getBoundingClientRect`, so the walker takes both as optional parameters that tests replace;
-  in the browser they default to the real ones. Tests load the walker from the same text core sends
-  (`walker.js`, read as text) and run it in a separate jsdom global, where nothing from core exists,
-  which proves it has no closures and that what's tested is what ships. A build check confirms
-  `lib/` holds an identical copy.
-- **Synthetic shadow** with `@lwc/synthetic-shadow` loaded into jsdom, with each rendered element
-  marked with its owner by hand, as the LWC engine does. It scopes synthetic shadow roots as in the
-  browser and gives the `synthetic` mode signal, so traversal is tested against the emulation
-  Lightning uses and not only native shadow roots. It doesn't reproduce a host's slotted light
-  children, which the walker sees on real pages; that part of the light tree is checked against
-  captured pages (see Risks, synthetic shadow light trees).
-- **Capture** with a fake `browser` and a fake `SnapshotPage`: `evaluate` throwing, the backstop
-  timeout, and the `undefined` result.
-- **Format**: `format` and `version` checks, `address` read from the file, handle numbering (shadow
-  children before light, stable across reads), and an address refused with its handle.
-- **Files**: names for each trigger, cleaning and capping, name collisions (including two writers
-  racing for one name), `runId`, `latest.json`, `pageObjectPackages`, pruning runs, and an injected
-  file system.
-- **Index** with fixture packages and projects: root selectors, typed elements, comma lists and
-  compound selectors, `%s` placeholders, `elements` and `shadow.elements` recorded, mobile selectors
-  and non-page-object types ignored, private elements and the methods that use them (including
-  getters of public elements nested in them), method parameters, return types and `compose`
-  summaries, container getters, the naming convention, both name forms, import paths from
-  `utam.config.json` and `namespaces`, interfaces and implementations, project page objects named by
-  import path with their compiled file, lookup by name and short name, and `--search` ranking.
-- **Page-object packages** with fixture projects and packages: packages found from the generator's
-  `namespaces` and from the namespace map's values, the project's own prefixes skipped, scoped
-  package names, several prefixes into one package, a mapped package that isn't installed, no
-  `salesforce-pageobjects` and no warning when nothing maps to it, both layouts, import paths kept
-  only when they resolve (including through an `exports` map), duplicate and same-named sources, the
-  convention and pre-rewrite `type` values going through the namespace map, a manifest package
-  whose compiled files are missing, ranking by configuration order, and `pageObjectPackages`
-  listing each package.
-- **Selector matching**: each scope (document, light, shadow), combinators not crossing a shadow
-  root, ancestors above the scope counting, document order with hidden matches, placeholders,
-  live-state pseudo-classes, masked attribute values, and an unparseable selector. The same selectors
-  run through `querySelectorAll` on the jsdom fixture the snapshot came from must give the same
-  matches, except where the output says it can't judge.
-- **Queries** with fixture snapshots: `find`'s filters (`--attr` substring, `--class` token), visible
-  and hidden ordering and the first-in-document-order line; `find --css` marking, the hidden-first
-  warning, and the empty-result explanation (outside the scope in the same tree, behind a shadow
-  root, nowhere); "reachable through" by tag and by whole selector (a container with no tag), public,
-  private and container routes, with their `light` or `shadow` scope; the root selector warning, and
-  no warning when a project root page object scopes it; the scope check (a misdeclared element
-  reported once, elements nested in it not reported again, only project page objects checked) and
-  routes marked not reachable as declared; a project root page object on a plain element;
-  `path --text` with zero, one, several and only hidden matches; `tree`'s shadow and light sides and
-  depth; `node` and `node --ancestors` with shadow crossings; `lookup` output unclipped, with
-  `[light]` and `[shadow]` marks; an unreadable root in each; and the output limit.
-- **Header**: UTAM's two not-found errors with the element identified and not identified, another
-  error with no suggestion, an assertion's `Expected` and `Received` lines kept, and ANSI escapes
-  removed.
-- **CLI**: each command over fixtures, the header, text and `--json` output, and every exit code.
-- **`.gitignore`**: the same cases as 0002's `.forceignore` tests that apply.
 
 ## Appendix A: spike measurements
 
@@ -1571,16 +1178,17 @@ Measured on a scratch org; kept here because the limits and transfer choices res
   (and the `data-label` on each cell). No other record values leaked on the record page, the Contacts
   related list or the console app.
 
-## Appendix B: notes for the hand-driven routes
+## Appendix B: notes for the Chrome route
 
-What the spike found for hand-driven capture. The console route (Hand-driven capture) is designed
-from these; the Chrome route will be:
+What the spike found for capture from a browser a person drives. The console route was designed from
+the last two points; the Chrome route (Later phases) will be designed from the rest:
 
 - **Launching Chrome.** Chrome 136 and later ignore `--remote-debugging-port` on the default
-  profile, so `snapshot chrome start` needs a throwaway `--user-data-dir`, which also keeps the user's own sessions
-  away from the debugging port. Port `0` lets Chrome pick a free port and write it to
-  `DevToolsActivePort` in the profile folder; a fixed port could already be held by another Chrome.
-  The port listens on `127.0.0.1`, but any local process can control that Chrome while it runs.
+  profile, so `snapshot chrome start` needs a throwaway `--user-data-dir`, which also keeps the
+  user's own sessions away from the debugging port. Port `0` lets Chrome pick a free port and write
+  it to `DevToolsActivePort` in the profile folder; a fixed port could already be held by another
+  Chrome. The port listens on `127.0.0.1`, but any local process can control that Chrome while it
+  runs.
 - **Logging in.** Navigate to `TestEnvironment.buildFrontdoorUrl(path)` with `Page.navigate`, so the
   session ID never goes on Chrome's command line, and the browser is logged in as the test user, whose
   permissions and layouts are what the tests see.
@@ -1588,15 +1196,15 @@ from these; the Chrome route will be:
   window and a blank new tab are `page` targets too, and the spike once snapshotted DevTools itself.
   `/json/list` lists the most recently activated tab first across all windows, and
   `document.visibilityState` is `visible` for each window's front tab, so with two windows only a
-  `--target` match is reliable.
-- **Pasted script.** Chrome asks you to type `allow pasting` the first time. An agent's browser tool
-  that runs the script would get the whole snapshot back into its context, so the script needs a mode
-  that saves a file and returns a summary. The console snippet returns a summary and copies or
-  downloads the JSON.
+  `--tab` URL match is reliable.
 - **Attaching chromedriver** to that Chrome with `debuggerAddress` works, and `execute` works, but
   each attach opens a blank tab and starts the session there: the live page object check would have
   to find the user's page among the window handles by URL, switch to it, and close the blank tab. The
   Chrome window survives both a plain exit and `deleteSession`.
+- **Pasted script.** Chrome asks you to type `allow pasting` the first time.
+- **An agent's browser tool** that runs a capture script gets its return value back into its
+  context, so the script must save the snapshot elsewhere and return a summary, as the console
+  snippet does.
 
 ## Appendix C: agent evaluation
 
@@ -1607,7 +1215,7 @@ output lead it to a correct solution, ideally on the first live run, and where d
 wasn't a comparison with today's tools.
 
 - **The tool**: a thin build of this design's interface (walker, capture, failure hook and capture
-  step, files, page-object index, query commands and guide), leaving out what no agent touches.
+  step, files, page-object index, query commands and guide).
 - **The agents**: one fresh Gemini 3.8 Flash session at medium effort per scenario, a demanding test
   of the docs and output, given only the task and the guide: "Make this scenario pass" (or "This
   scenario fails. Fix it."), the run command, a limit of 5 run invocations, and where the guide is.
@@ -1619,12 +1227,8 @@ wasn't a comparison with today's tools.
   hidden-copy scenarios, it fails when the expected value is the hidden record's; and it changed no
   feature file, shared step, test data or `wdio.conf.mjs`. Each scenario had a reference solution,
   checked beforehand, which no agent saw.
-- **The tool was improved between sessions**, so later sessions ran on a better tool. With one
-  session per scenario, the result is judgment, not a score.
-
-A dry run confirmed on a live page that `utam.load` takes the first match in document order, not the
-first visible one. A first T1 session read leftover run output, including the reference solution's
-selectors, and was discarded; T1 was rerun from a cleaned base.
+- **The tool was improved between sessions**, from what each one showed, so later sessions ran on a
+  better tool. With one session per scenario, the result is judgment, not a score.
 
 ### Scenarios
 
@@ -1633,10 +1237,11 @@ selectors, and was discarded; T1 was rerun from a cleaned base.
 | T1: a field on a record page   | `Then the "Phone" field shows "(555) 010-0001"` on an Account record page.                                                                                                                | Whether `path` and `lookup` find an interface and a deep chain.                        |
 | T2: the active console tab     | `Then the record header shows "Test Biz 2"` after opening Test Biz 1 and Test Biz 2 in the console app; the inactive tab keeps a hidden copy first.                                       | Whether `find`'s hidden matches lead the agent to scope the root.                      |
 | T3: below the last page object | `Then the record header's object label is "Account"`: `records-entity-label`, which no page object covers, with its text in its shadow root.                                              | Whether `path` makes clear where page objects stop and where `"shadow"` is needed.     |
-| T4 (optional): a Setup page    | A column in Setup's Users list, inside a Visualforce iframe.                                                                                                                              | What an agent does with an `iframe` node. Not run.                                     |
 | F1: a missing `"shadow"`       | T3's reference page object with one element moved from `shadow.elements` to `elements`; UTAM fails with its locator error.                                                                | Whether the agent finds a scope mistake, and whether a scope check in `path` names it. |
 | F2: a hidden copy              | A step that loads `recordHomeFlexipage2` directly after an in-app link from one Account to another; the minimized previous page comes first, so it reads the wrong record, with no error. | Whether the agent finds a wrong value's cause with no locator error to start from.     |
-| F3 (reserve): the wrong root   | The standard app's navigation step run in the console app.                                                                                                                                | Held in case F1 or F2 didn't reproduce. Not needed.                                    |
+
+A Setup-page scenario (T4, inside a Visualforce iframe) and a reserve failure scenario (F3) weren't
+run.
 
 ### Sessions
 
@@ -1644,81 +1249,61 @@ Live runs count scenario runs, with all run invocations in brackets. T1, T2, the
 each began with a deliberate probe, a throwing stub to get a failure snapshot, as the guide suggests.
 Every session lost one invocation to its sandbox blocking the browser connection.
 
-| Session  | Outcome                                                                                                                                                       | Live runs | Time                      | Peak context | What it established                                                                                                                                                                                                                | What changed after it                                                                                                                                                                                                                                                     |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T1       | Correct, by a simpler route than the reference (the highlights panel).                                                                                        | 2 (3)     | 11.5 min                  | 107k         | Agents find the commands from the guide alone, and `find`, `path`, `tree` and `lookup` lead to a correct route. It scripted over the JSON to see one node, and missed a container route whose selector names no tag.               | `node`; routes matched by an element's whole selector; `tree` marking each child's side; method summaries in `lookup`.                                                                                                                                                    |
-| T2       | Correct, with a caveat (the step went into a shared file). Its first scope, with `.active`, also matched the hidden workspace's nested subtab and cost a run. | 3 (4)     | 11 min                    | 128k         | The guide's document-order rule was understood, but nothing showed which match UTAM takes or tested a selector. It copied the shipped JSON for lack of a pattern.                                                                  | `find --css`; the first-in-document-order line; `path`'s root-selector warning; handles; `--class` as a whole token and `--attr` documented as a substring; `lookup` unclipped and saying which name goes in `type`.                                                      |
-| T2 rerun | Correct, same caveat; the right scope before any live run.                                                                                                    | 3 (5)     | 9 min                     | 119k         | `find --css` showed the hidden copy first, with the warning, and the agent dropped that candidate. It climbed to the container with 13 `node` calls, and read UTAM's sources to learn how to wrap a shipped root.                  | `node --ancestors`; `lookup` no longer clipping element selectors or descriptions.                                                                                                                                                                                        |
-| T3       | The checks pass, but the intent was missed: no page object for the last hop, which it read in raw WebdriverIO through UTAM's internal element handle.         | 3 (4)     | 13.5 min                  | 149k         | `path` showed the attach point and the four shadow hops in one call, read correctly. A bare `0 matches` from `find --css` made it doubt the tool, and it spent 6 minutes in sources working out how to attach below a page object. | `path`'s scope check for project page objects; `light`/`shadow` on routes; `lookup`'s `[light]`/`[shadow]` marks; `find --css`'s empty-result explanation; guide lines on root selectors and UTAM's two not-found messages.                                               |
-| F1       | Correct: the reference's fix, restoring the `"shadow"`.                                                                                                       | 1 (2)     | 2.5 min                   | 49k          | `path`'s scope check named the bug on the agent's second query. It ignored UTAM's locator error. One route through the misdeclared element still printed as reachable, though the warning above kept it from misleading.           | Routes through a misdeclared element marked as not reachable; private elements counted as used by nested public getters; the header's `find --css` suggestion from UTAM's error; no handles or selectors from session snapshots in the guide or help examples.            |
-| F2       | Correct in standard navigation, with an unchecked console alternative in its selector list that wouldn't work.                                                | 1 (2)     | 15 min active (26 in all) | 132k         | `find --css`'s warning was the whole diagnosis, and two `node --ancestors` calls gave the reference's scope. It spent 8.6 minutes in UTAM's sources learning to wrap a shipped root, and left out `"wait": true`.                  | `path` confirming a fix (a project root page object on a plain container, and no root selector warning under it), the error's expected and received values in the header, the empty-result explanation for a match outside `--within`; both recipes moved into the guide. |
+| Session  | Outcome                                                                                                                                                       | Live runs | Time                      | What it established                                                                                                                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1       | Correct, by a simpler route than the reference (the highlights panel).                                                                                        | 2 (3)     | 11.5 min                  | Agents find the commands from the guide alone, and `find`, `path`, `tree` and `lookup` lead to a correct route. It scripted over the JSON to see one node, and missed a container route whose selector names no tag.               |
+| T2       | Correct, with a caveat (the step went into a shared file). Its first scope, with `.active`, also matched the hidden workspace's nested subtab and cost a run. | 3 (4)     | 11 min                    | The guide's document-order rule was understood, but nothing showed which match UTAM takes or tested a selector. It copied the shipped JSON for lack of a pattern.                                                                  |
+| T2 rerun | Correct, same caveat; the right scope before any live run.                                                                                                    | 3 (5)     | 9 min                     | `find --css` showed the hidden copy first, with the warning, and the agent dropped that candidate. It climbed to the container with 13 `node` calls, and read UTAM's sources to learn how to wrap a shipped root.                  |
+| T3       | The checks pass, but the intent was missed: no page object for the last hop, which it read in raw WebdriverIO through UTAM's internal element handle.         | 3 (4)     | 13.5 min                  | `path` showed the attach point and the four shadow hops in one call, read correctly. A bare `0 matches` from `find --css` made it doubt the tool, and it spent 6 minutes in sources working out how to attach below a page object. |
+| F1       | Correct: the reference's fix, restoring the `"shadow"`.                                                                                                       | 1 (2)     | 2.5 min                   | `path`'s scope check named the bug on the agent's second query. It ignored UTAM's locator error.                                                                                                                                   |
+| F2       | Correct in standard navigation, with an unchecked console alternative in its selector list that wouldn't work.                                                | 1 (2)     | 15 min active (26 in all) | `find --css`'s warning was the whole diagnosis, and two `node --ancestors` calls gave the reference's scope. It spent 8.6 minutes in UTAM's sources learning to wrap a shipped root, and left out `"wait": true`.                  |
 
 After the probe, the first live run was correct in five of six sessions. No session asked a
 question, needed to drive a page by hand, hit an `iframe`, was hindered by masking, or had a snapshot
 truncated.
 
-### Decisive features
+### What decided, and what didn't
 
-- **`path`**: T1's route, including the container route through `[slot='secondaryFields']`; T3's
-  attach point and shadow hops, read correctly in one call; F1's scope check, which named the
-  missing `"shadow"`.
-- **`find`'s hidden matches and `find --css`**: T2 found the hidden copy; in the T2 rerun,
-  `find --css` exposed the nested-`.active` trap before any run; in F2, its warning was the whole
-  diagnosis.
-- **`node`, then `node --ancestors`**: T2 and the rerun compared containers (13 single calls in the
-  rerun); F2 picked its container with two `--ancestors` calls.
-- **`path`'s root-selector warning**: sent the T2 rerun straight to `find --css`, and confirmed F2's
-  finding.
-- **`lookup`**: every session used it to orient and to read methods.
-
-"Reachable through" never misled an agent. Every route it printed was real, except one in F1's
-broken page object, through the misdeclared element, which the scope warning above it kept from
-misleading; such a route is now marked not reachable as declared.
-
-### Unused, or never triggered
-
-- `tree` was used to confirm, never as the deciding step.
-- `focus` was never needed: no output was large enough, and nothing was truncated.
-- Masking never hid anything an agent needed; `find` by label and shadow text lengths (`•10`) were
-  enough.
-- No `iframe` node was met.
-- Four features were built after the session that showed the need and haven't met an agent since:
+- **`path`** decided T1 (including the container route through `[slot='secondaryFields']`), T3 (the
+  attach point and shadow hops in one call) and F1 (the scope check).
+- **`find`'s hidden matches and `find --css`** decided T2, the rerun (exposing the nested-`.active`
+  trap before any run) and F2 (its warning was the whole diagnosis), with `path`'s root-selector
+  warning pointing the rerun straight to it.
+- **`node`, then `node --ancestors`**, picked the containers to scope to; **`lookup`** was used in
+  every session to orient and read methods.
+- "Reachable through" never misled an agent. The one route it printed through F1's misdeclared
+  element is now marked not reachable as declared.
+- `tree` only confirmed; `focus` was never needed; masking never hid anything an agent needed.
+- Four features were added after the session that showed the need and haven't met an agent since:
   `find --css`'s empty-result explanation, `lookup`'s `[light]`/`[shadow]` marks, the header's
-  suggestion from UTAM's error, and the not-reachable-as-declared marking.
+  suggestion from UTAM's error (F1's agent started from the label, not the error), and the
+  not-reachable-as-declared marking.
 
 ### Where the time went
 
-Diagnosis was fast whenever the tool had the answer: 1.2 minutes in both F1 and F2.
-Every authoring session spent its longest stretch in UTAM's and the shipped page objects' sources,
-learning page-object authoring rather than reading the page:
-
-- T2 and its rerun: how to scope a shipped root (1.4 minutes in the rerun, after the tool had given
-  the scope);
-- T3: how to attach below the last page object (6.1 minutes);
-- F2: scoping again (8.6 minutes).
-
-T3's raw WebdriverIO hop and F2's missing `"wait": true` and unchecked selector list came from the
-same gap. Those are the two recipes now in the guide.
+Diagnosis was fast whenever the tool had the answer: 1.2 minutes in both F1 and F2. Every authoring
+session spent its longest stretch in UTAM's and the shipped page objects' sources, learning
+page-object authoring rather than reading the page: how to scope a shipped root (T2 and its rerun;
+8.6 minutes in F2) and how to attach below the last page object (6.1 minutes in T3). T3's raw
+WebdriverIO hop and F2's missing `"wait": true` and unchecked selector list came from the same gap.
+Those are the two recipes now in the guide.
 
 ### Verdict
 
-The plan set out three outcomes before the sessions ran:
+The plan set three outcomes before the sessions ran: **It fails outright** (rethink the interface),
+**It works** (agents use the commands without help, and the output leads to a correct solution in
+most scenarios, most on the first live run: proceed), or **Mixed** (consider a baseline comparison
+on the unclear scenarios).
 
-| If the sessions show…                                                                                                                         | Then…                                                                                     |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **It fails outright**: agents can't find or use the commands from the docs, or the output steers them wrong in most scenarios.                | Fix or rethink the interface before building it in core, and rerun the failing scenarios. |
-| **It works**: agents use the commands without help, and the output leads to a correct solution in most scenarios, most on the first live run. | Proceed with the MVP, shaped by what the sessions showed.                                 |
-| **Mixed**: it works in some scenarios and not others, or agents got there but it's unclear the snapshot was why.                              | Consider a small comparison against a baseline, on the scenarios that were unclear.       |
+The read is **It works**: agents used the commands from the guide without help in all six sessions;
+every session ended with a scenario that passes and checks the value, and in each one the step that
+found the answer came from the tool's output; and after the probe, five of six were correct on the
+first live run. It isn't Mixed: where a session fell short (T2's first scope, T3's missing page
+object, F2's selector list), the cause was page-object authoring, not the snapshot. The output was
+right and was read right. That called for the recipes, not a baseline comparison.
 
-The read is **It works**:
-
-- Agents used the commands from the guide without help in all six sessions, and asked no questions.
-- Every session ended with a scenario that passes and checks the value, and in each one the step
-  that found the answer came from the tool's output: `path` in T1, T3 and F1, `find`'s hidden
-  matches and `find --css` in T2, the rerun and F2.
-- After the probe, five of six sessions were correct on the first live run.
-
-It isn't **Mixed**. Where a session fell short (T2's first scope, T3's missing page object, F2's
-selector list), the cause was page-object authoring, not the snapshot: the output was right and was
-read right. That called for the recipes, not a baseline comparison. Whether reviewers want a
-baseline anyway is open question 14.
+**Acceptance check.** Before the stack is pushed, T3 and F2 are rerun in the testbed against its
+build, as above: a fresh session on the same model and effort, with only the task and the guide.
+Both should be correct by the evaluation's checks, and they show whether the recipes close the gap:
+T3 should write a page object for the last hop rather than step code, and F2 should wrap the shipped
+root with its interface type and `"wait": true`.
