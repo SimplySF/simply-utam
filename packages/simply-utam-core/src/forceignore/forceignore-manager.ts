@@ -16,7 +16,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { isAbsoluteOnAnyPlatform, toPosixRelative } from '../path-utils.js';
+import { isOutsideProject, toPosixRelative } from '../path-utils.js';
 
 /**
  * File name of the Salesforce ignore file, relative to the project root.
@@ -336,8 +336,7 @@ export function resolveUtamTestIgnoreRules(testDirs: string[], packageDirectorie
 
   for (const testDir of testDirs.map(toPosixRelative)) {
     const insidePackage = packages.some((pkg) => pkg === '' || testDir === pkg || testDir.startsWith(`${pkg}/`));
-    const outsideProject = isAbsoluteOnAnyPlatform(testDir) || testDir === '..' || testDir.startsWith('../');
-    if (!testDir || outsideProject || !insidePackage || seen.has(testDir)) {
+    if (!testDir || isOutsideProject(testDir) || !insidePackage || seen.has(testDir)) {
       continue;
     }
     seen.add(testDir);

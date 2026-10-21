@@ -27,6 +27,7 @@ import {
   generateHelloSteps,
   injectWireitConfiguration,
   checkMissingDependencies,
+  ensurePageObjectExports,
   scaffoldProject,
   loadTemplate,
   DEFAULT_TEMPLATES_DIR,
@@ -285,6 +286,264 @@ describe('scaffold service', () => {
       expect(fs.readFileSync(genPath, 'utf-8')).not.toBe('{"custom": true}');
     });
 
+    describe('namespace', () => {
+      const readNamespace = (): unknown =>
+        (
+          JSON.parse(fs.readFileSync(path.join(tempDir, 'generator.config.json'), 'utf-8')) as {
+            namespaces: Record<string, unknown>;
+          }
+        ).namespaces['c'];
+      const readNamespaceMapKeys = (): string[] =>
+        Object.keys(JSON.parse(fs.readFileSync(path.join(tempDir, '.utam', 'namespace-map.json'), 'utf-8')) as object);
+
+      it('uses an unscoped package name as is', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: 'my-app' }), 'utf-8');
+
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readNamespace()).toBe('my-app/pageObjects/');
+        expect(readNamespaceMapKeys()).toStrictEqual(['my-app/pageObjects/shared']);
+      });
+
+      it('keeps the scope of a scoped package name in the generator config and namespace map', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readNamespace()).toBe('@acme/my-app/pageObjects/');
+        expect(readNamespaceMapKeys()).toStrictEqual(['@acme/my-app/pageObjects/shared']);
+        expect(result.warnings).toStrictEqual([]);
+      });
+
+      it('uses appName over the package name', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', appName: 'custom' });
+
+        expect(readNamespace()).toBe('custom/pageObjects/');
+      });
+
+      it('falls back to salesforce-app without a package name', async () => {
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readNamespace()).toBe('salesforce-app/pageObjects/');
+      });
+
+      describe('an existing generator.config.json with the scope dropped', () => {
+        beforeEach(() => {
+          fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+          fs.writeFileSync(
+            path.join(tempDir, 'generator.config.json'),
+            JSON.stringify({ namespaces: { c: 'my-app/pageObjects/' } }),
+            'utf-8',
+          );
+        });
+
+        it('is kept, with a warning naming the new namespace and the --app-name that keeps it', async () => {
+          const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+          expect(result.skippedFiles).toContain('generator.config.json');
+          expect(readNamespace()).toBe('my-app/pageObjects/');
+          expect(result.warnings).toHaveLength(1);
+          expect(result.warnings[0]).toContain('"@acme/my-app"');
+          expect(result.warnings[0]).toContain('--app-name my-app');
+          expect(result.pageObjectExports?.action).toBe('skipped');
+        });
+
+        it('writes a new namespace map under the kept namespace', async () => {
+          await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+          expect(readNamespaceMapKeys()).toStrictEqual(['my-app/pageObjects/shared']);
+        });
+
+        it('does not warn about the kept config when --app-name asks for the old namespace', async () => {
+          const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', appName: 'my-app' });
+
+          // Only the warning that the old namespace can't resolve through "exports".
+          expect(result.warnings).toHaveLength(1);
+          expect(result.warnings[0]).toContain('differs from the package name');
+        });
+
+        it('is replaced, with no warning, under force', async () => {
+          const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', force: true });
+
+          expect(readNamespace()).toBe('@acme/my-app/pageObjects/');
+          expect(result.warnings).toStrictEqual([]);
+        });
+      });
+
+      it('warns, and adds no exports entry, for an existing generator.config.json with another namespace', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+        fs.writeFileSync(
+          path.join(tempDir, 'generator.config.json'),
+          JSON.stringify({ namespaces: { c: 'something-else/pageObjects/' } }),
+          'utf-8',
+        );
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(result.pageObjectExports?.action).toBe('skipped');
+        expect(result.warnings).toHaveLength(1);
+        expect(result.warnings[0]).toContain(
+          'The namespace "something-else" in generator.config.json differs from the package name "@acme/my-app"',
+        );
+      });
+
+      it('warns, without contradicting itself, for a kept namespace with no path after the package name', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+        fs.writeFileSync(
+          path.join(tempDir, 'generator.config.json'),
+          JSON.stringify({ namespaces: { c: '@acme/my-app' } }),
+          'utf-8',
+        );
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(result.pageObjectExports?.action).toBe('skipped');
+        expect(result.warnings).toHaveLength(1);
+        expect(result.warnings[0]).toContain('has no path after the package name');
+        expect(result.warnings[0]).toContain('Use "@acme/my-app/pageObjects/"');
+      });
+
+      it('gives no warning for an existing generator.config.json that is not valid JSON', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: '@acme/my-app' }), 'utf-8');
+        fs.writeFileSync(path.join(tempDir, 'generator.config.json'), '{ not json', 'utf-8');
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(result.warnings).toStrictEqual([]);
+      });
+    });
+
+    describe('page object exports', () => {
+      const writePackageJson = (pkg: Record<string, unknown>): void =>
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify(pkg), 'utf-8');
+      const readExports = (): unknown =>
+        (JSON.parse(fs.readFileSync(path.join(tempDir, 'package.json'), 'utf-8')) as Record<string, unknown>)[
+          'exports'
+        ];
+
+      it('adds the entry to package.json and lists it as modified', async () => {
+        writePackageJson({ name: '@acme/my-app' });
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readExports()).toStrictEqual({ './pageObjects/*': './pageObjects/*.js' });
+        expect(result.pageObjectExports).toStrictEqual({
+          action: 'added',
+          subpath: './pageObjects/*',
+          createdExports: true,
+        });
+        expect(result.modifiedFiles).toContain('package.json');
+        expect(result.warnings).toStrictEqual([]);
+      });
+
+      it('lists package.json as modified for the entry alone', async () => {
+        writePackageJson({ name: 'my-app' });
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+        const pkg = JSON.parse(fs.readFileSync(path.join(tempDir, 'package.json'), 'utf-8')) as Record<string, unknown>;
+        delete pkg['exports'];
+        writePackageJson(pkg);
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(result.pageObjectExports?.action).toBe('added');
+        expect(result.modifiedFiles).toStrictEqual(['package.json']);
+      });
+
+      it('leaves package.json alone on a second run', async () => {
+        writePackageJson({ name: 'my-app' });
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(result.pageObjectExports?.action).toBe('unchanged');
+        expect(result.modifiedFiles).not.toContain('package.json');
+      });
+
+      it('reports but does not write the entry during dryRun', async () => {
+        writePackageJson({ name: 'my-app' });
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', dryRun: true });
+
+        expect(result.pageObjectExports?.action).toBe('added');
+        expect(result.updatedPackageJson?.['exports']).toStrictEqual({ './pageObjects/*': './pageObjects/*.js' });
+        expect(readExports()).toBeUndefined();
+      });
+
+      it('maps the namespace path to pageObjectsOutputDir from a kept utam.config.json', async () => {
+        writePackageJson({ name: 'my-app' });
+        fs.writeFileSync(
+          path.join(tempDir, 'utam.config.json'),
+          JSON.stringify({ pageObjectsOutputDir: 'dist/po' }),
+          'utf-8',
+        );
+
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readExports()).toStrictEqual({ './pageObjects/*': './dist/po/*.js' });
+      });
+
+      it('takes the key from the namespace in a kept generator.config.json', async () => {
+        writePackageJson({ name: '@acme/my-app' });
+        fs.writeFileSync(
+          path.join(tempDir, 'generator.config.json'),
+          JSON.stringify({ namespaces: { c: '@acme/my-app/po/' } }),
+          'utf-8',
+        );
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readExports()).toStrictEqual({ './po/*': './pageObjects/*.js' });
+        expect(result.warnings).toStrictEqual([]);
+      });
+
+      it('falls back to pageObjects when a kept utam.config.json is not valid JSON', async () => {
+        writePackageJson({ name: 'my-app' });
+        fs.writeFileSync(path.join(tempDir, 'utam.config.json'), '{ not json', 'utf-8');
+
+        await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readExports()).toStrictEqual({ './pageObjects/*': './pageObjects/*.js' });
+      });
+
+      it('skips the entry, with a warning, when appName is not the package name', async () => {
+        writePackageJson({ name: '@acme/my-app' });
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', appName: 'my-app' });
+
+        expect(readExports()).toBeUndefined();
+        expect(result.pageObjectExports?.action).toBe('skipped');
+        expect(result.warnings).toHaveLength(1);
+        expect(result.warnings[0]).toContain('"my-app" differs from the package name "@acme/my-app"');
+      });
+
+      it('skips the entry, with a warning, when package.json has no name', async () => {
+        writePackageJson({});
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(result.pageObjectExports?.action).toBe('skipped');
+        expect(result.warnings[0]).toContain('"salesforce-app" differs from no package name');
+      });
+
+      it('warns, naming the entry to add, when "exports" cannot be extended', async () => {
+        writePackageJson({ name: 'my-app', exports: './index.js' });
+
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(readExports()).toBe('./index.js');
+        expect(result.warnings).toHaveLength(1);
+        expect(result.warnings[0]).toContain('Add "./pageObjects/*"');
+      });
+
+      it('is absent without a package.json', async () => {
+        const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+        expect(result.pageObjectExports).toBeUndefined();
+      });
+    });
+
     it('should not modify files on disk during dryRun', async () => {
       const result = await scaffoldProject({
         projectDir: tempDir,
@@ -297,6 +556,114 @@ describe('scaffold service', () => {
       expect(fs.existsSync(path.join(tempDir, 'utam.config.json'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(false);
     });
+  });
+
+  describe('ensurePageObjectExports', () => {
+    it('creates "exports" when package.json has none, and says so', () => {
+      const pkg = { name: 'my-app' };
+      const { packageJson, result } = ensurePageObjectExports(pkg);
+
+      expect(packageJson['exports']).toStrictEqual({ './pageObjects/*': './pageObjects/*.js' });
+      expect(result).toStrictEqual({ action: 'added', subpath: './pageObjects/*', createdExports: true });
+      expect(pkg).toStrictEqual({ name: 'my-app' });
+    });
+
+    it('adds the one key to an object of subpaths and leaves the others alone', () => {
+      const { packageJson, result } = ensurePageObjectExports({
+        name: 'my-app',
+        exports: { '.': './index.js', './package.json': './package.json' },
+      });
+
+      expect(packageJson['exports']).toStrictEqual({
+        '.': './index.js',
+        './package.json': './package.json',
+        './pageObjects/*': './pageObjects/*.js',
+      });
+      expect(result.action).toBe('added');
+      expect(result.createdExports).toBe(false);
+    });
+
+    it('adds the key to an empty object', () => {
+      const { packageJson } = ensurePageObjectExports({ exports: {} });
+
+      expect(packageJson['exports']).toStrictEqual({ './pageObjects/*': './pageObjects/*.js' });
+    });
+
+    it('leaves "exports" that already has the key unchanged, whatever it maps to', () => {
+      const pkg = { exports: { './pageObjects/*': './custom/*.js' } };
+      const { packageJson, result } = ensurePageObjectExports(pkg);
+
+      expect(packageJson).toBe(pkg);
+      expect(result).toStrictEqual({ action: 'unchanged', subpath: './pageObjects/*', createdExports: false });
+    });
+
+    it('adds the key beside a broader "./*" pattern, which may map to extensionless paths', () => {
+      const { packageJson, result } = ensurePageObjectExports({ exports: { './*': './*' } });
+
+      expect(packageJson['exports']).toStrictEqual({ './*': './*', './pageObjects/*': './pageObjects/*.js' });
+      expect(result.action).toBe('added');
+    });
+
+    it.each([
+      ['a string', './index.js', 'not an object of subpaths'],
+      ['an array', ['./index.js'], 'not an object of subpaths'],
+      ['null', null, 'not an object of subpaths'],
+      ['an object of conditions', { import: './index.js', require: './index.cjs' }, 'object of conditions'],
+    ])('skips "exports" that is %s without changing it', (_label, exportsField, reason) => {
+      const pkg = { exports: exportsField };
+      const { packageJson, result } = ensurePageObjectExports(pkg);
+
+      expect(packageJson).toBe(pkg);
+      expect(result).toMatchObject({
+        action: 'skipped',
+        subpath: './pageObjects/*',
+        reason: expect.stringContaining(reason),
+      });
+    });
+
+    it('is idempotent', () => {
+      const once = ensurePageObjectExports({ name: 'my-app' }).packageJson;
+      const twice = ensurePageObjectExports(once);
+
+      expect(twice.packageJson).toBe(once);
+      expect(twice.result.action).toBe('unchanged');
+    });
+
+    it.each(['dist/po', './dist/po/', String.raw`dist\po`])('maps the key to the output folder %s', (outputDir) => {
+      const { packageJson } = ensurePageObjectExports({}, outputDir);
+
+      expect(packageJson['exports']).toStrictEqual({ './pageObjects/*': './dist/po/*.js' });
+    });
+
+    it.each([
+      ['po', './po/*'],
+      ['./po/', './po/*'],
+      ['', './*'],
+    ])('takes the key from the namespace path %s', (importDir, subpath) => {
+      const { packageJson } = ensurePageObjectExports({}, 'pageObjects', importDir);
+
+      expect(packageJson['exports']).toStrictEqual({ [subpath]: './pageObjects/*.js' });
+    });
+
+    it.each(['..', '../other/pageObjects', '/abs'])('skips a namespace path outside the package: %s', (importDir) => {
+      const pkg = {};
+      const { packageJson, result } = ensurePageObjectExports(pkg, 'pageObjects', importDir);
+
+      expect(packageJson).toBe(pkg);
+      expect(result.action).toBe('skipped');
+    });
+
+    it.each(['', '.', './', '..', '../shared/pageObjects', '/abs/pageObjects', String.raw`C:\pageObjects`])(
+      'skips an output folder outside the project: %s',
+      (outputDir) => {
+        const pkg = {};
+        const { packageJson, result } = ensurePageObjectExports(pkg, outputDir);
+
+        expect(packageJson).toBe(pkg);
+        expect(result.action).toBe('skipped');
+        expect(result.subpath).toBeUndefined();
+      },
+    );
   });
 
   describe('scaffoldProject .forceignore', () => {

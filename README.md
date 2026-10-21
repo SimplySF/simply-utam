@@ -57,12 +57,13 @@ npx simply-utam init
 ```
 
 This command inspects your Salesforce project and non-destructively scaffolds:
+
 - `generator.config.json` — Maps LWC root rules and namespace paths for `utam-generate`.
 - `utam.config.json` — Configures the UTAM compiler page object output directory.
 - `wdio.conf.mjs` — Starter WebdriverIO runner configuration wired with `wdio-utam-service`.
 - `.utam/namespace-map.json` — Cross-package namespace rewriting rules.
 - `<sourceDir>/test/utam/` — Starter "Hello World" Cucumber smoke test (`features/hello.feature` and `step_definitions/hello.steps.mjs`), scaffolded automatically unless an existing `test/utam` directory is found.
-- `package.json` — Injects standard Wireit tasks (`build:utam-rules`, `build:utam-generate`, `build:utam-overrides`, `build:utam-rewrite-namespaces`, `build:utam`, and `test:ui`).
+- `package.json` — Injects standard Wireit tasks (`build:utam-rules`, `build:utam-generate`, `build:utam-overrides`, `build:utam-rewrite-namespaces`, `build:utam`, and `test:ui`), and adds a `"./pageObjects/*"` entry to `exports` so compiled page objects can import each other.
 
 > **Tip:** You can preview planned file modifications beforehand with `npx simply-utam init --dry-run`.
 
@@ -80,15 +81,20 @@ Review the generated files and adjust them to your project's structure:
 
 1. **`.utam/namespace-map.json`:**
    If your project uses packaging namespaces or consumes shared component libraries, define prefix replacements here:
+
    ```json
    {
      "my-app/pageObjects/shared": "shared-components-pageobjects/pageObjects/shared"
    }
    ```
-   *(If you are not rewriting namespaces across packages, an empty object `{}` is fine; `simply-utam rewrite` will gracefully skip without error).*
+
+   _(If you are not rewriting namespaces across packages, an empty object `{}` is fine; `simply-utam rewrite` will gracefully skip without error)._
 
 2. **`wdio.conf.mjs`:**
    Verify `specs` and `cucumberOpts.require` match where you store your Cucumber features and steps (defaults to `{{sourceDir}}/**/test/*.feature` and `{{sourceDir}}/**/test/*.steps.mjs`). Note that `'wdio:enforceWebDriverClassic': true` is pre-configured to guarantee reliable Shadow DOM element querying across Salesforce Lightning components.
+
+3. **`package.json` `exports`:**
+   Compiled page objects import each other by your package name, scope included (`@acme/my-app/pageObjects/bar`), and Node resolves that only through the `"./pageObjects/*": "./pageObjects/*.js"` entry `init` adds. If `init` warns that it could not add the entry, add it yourself. If you can't change `exports` yet, a stopgap is a self-dependency (`"@acme/my-app": "file:."` with npm, `"link:."` with pnpm) plus `execArgv: ['--import', 'tsx']` in `wdio.conf.mjs`; under pnpm, also add `tsx` as a devDependency.
 
 ### 4. Authorize Your Target Org
 
@@ -127,6 +133,7 @@ The `init` command scaffolds a ready-to-run smoke test in `<sourceDir>/test/utam
 ```
 
 1. **Feature definition** (`<sourceDir>/test/utam/features/hello.feature`):
+
    ```gherkin
    Feature: Salesforce UI Smoke Test
 

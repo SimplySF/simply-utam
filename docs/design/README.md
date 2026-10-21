@@ -9,7 +9,7 @@ This directory contains the architecture documents and topic design records for 
 | 0001 | [solution-design.md](solution-design.md)                         | Solution Design & Architecture      | Accepted            | Core system architecture, monorepo boundaries, transformation pipeline, offline step scaffolding engine, runtime test environment, and oclif CLI suite. |
 | 0002 | [0002-forceignore-management.md](0002-forceignore-management.md) | `.forceignore` management in `init` | Implemented (PR #7) | Non-destructive, add-only `.forceignore` rules for UTAM artifacts in LWC bundles and scaffolded test folders, respecting customization regions.         |
 
-| 0004 | [0004-self-referencing-page-objects.md](0004-self-referencing-page-objects.md) | Self-referencing page object imports | Draft | Make the compiler's bare `<app>/pageObjects/…` imports resolve: keep the npm scope in the namespace and add a merge-only `exports` entry in `init`. |
+| 0004 | [0004-self-referencing-page-objects.md](0004-self-referencing-page-objects.md) | Self-referencing page object imports | Implemented (PR #19) | Make the compiler's bare `<app>/pageObjects/…` imports resolve: keep the npm scope in the namespace and add a merge-only `exports` entry in `init`. |
 
 ## When a Design Document is Required
 
