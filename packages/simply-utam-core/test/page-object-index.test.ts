@@ -727,6 +727,30 @@ describe('lookupPageObject', () => {
     expect(lines).toContain('    highlights: "div > records-highlights2" [shadow]  (used by getObjectLabel())');
   });
 
+  it('names the package import when package.json "exports" maps it to the compiled file', () => {
+    const exported = (exports: unknown): string | undefined =>
+      lookupPageObject(
+        buildPageObjectIndex({
+          projectDir: project({
+            ...projectFiles,
+            'package.json': { name: 'my-app', exports },
+          }),
+        }),
+        'recordPage',
+      ).lines.find((line) => line.startsWith('  compiled to:'));
+    const viaExports =
+      '  compiled to: pageObjects/recordPage.js (import it as my-app/pageObjects/recordPage, which package.json "exports" maps to it, or by relative path)';
+    const relative = '  compiled to: pageObjects/recordPage.js (import it by relative path from test code)';
+
+    expect(exported({ './pageObjects/*': './pageObjects/*.js' })).toBe(viaExports);
+    expect(exported({ './pageObjects/recordPage': './pageObjects/recordPage.js' })).toBe(viaExports);
+    expect(exported({ './*': './*', './pageObjects/*': './pageObjects/*.js' })).toBe(viaExports);
+    expect(exported({ './pageObjects/*': './build/*.js' })).toBe(relative);
+    expect(exported({ './pageObjects/*': './pageObjects/*' })).toBe(relative);
+    expect(exported('./index.js')).toBe(relative);
+    expect(exported({ import: './index.js' })).toBe(relative);
+  });
+
   it('says a missing tag proves nothing, and how to search', () => {
     expect(lookupPageObject(index, 'records-entity-label').lines).toEqual([
       'No page object found for "records-entity-label". This doesn\'t prove none exists, only that the index found no match by tag or name. Try lookup --search <words>.',

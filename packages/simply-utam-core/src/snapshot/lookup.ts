@@ -101,7 +101,12 @@ function describeHeader(index: PageObjectIndex, match: PageObjectMatch): string[
     lines.push(`  name: ${entry.name} (manifest name; a .utam.json "type" uses ${entry.importPath})`);
   if (!entry.importPath)
     lines.push("  import path: none found; no compiled page object for it resolves from the project's node_modules");
-  if (entry.outputFile) lines.push(`  compiled to: ${entry.outputFile} (import it by relative path from test code)`);
+  if (entry.outputFile) {
+    const how = entry.exported
+      ? `import it as ${entry.importPath ?? entry.name}, which package.json "exports" maps to it, or by relative path`
+      : 'import it by relative path from test code';
+    lines.push(`  compiled to: ${entry.outputFile} (${how})`);
+  }
   const via = matchedBy(match);
   if (via) lines.push(via);
   if (match.matchedImplementation)

@@ -667,8 +667,10 @@ then `pageObjects/`, then its name without `.utam.json`:
 | `utam-access-summaries/pageObjects/accessFromTabSet` | `dist/access/summaries/accessFromTabSet.utam.json` | `salesforce-pageobjects/access/summaries/pageObjects/accessFromTabSet` |
 
 For project page objects, the import path follows `pageObjectsOutputDir` in `utam.config.json` and
-the generator's `namespaces`, and the entry records the compiled file that test code imports by
-relative path. Project page objects aren't in any manifest, so their `name` is their import path.
+the generator's `namespaces`, and the entry records the compiled file. Test code imports it by
+relative path, or by its import path when `package.json` `exports` maps that path to the compiled
+file ([design 0004](0004-self-referencing-page-objects.md)); the entry's `exported` flag says so.
+Project page objects aren't in any manifest, so their `name` is their import path.
 
 **The namespace map in matching.** The rewrite also changes what the project's own page objects
 say, so the index applies it in two more places, through extra names registered once the packages

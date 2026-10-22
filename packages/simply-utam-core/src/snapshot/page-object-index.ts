@@ -67,6 +67,11 @@ export type PageObjectEntry = {
   importPath?: string;
   /** For the project's own page objects: the compiled file, relative to the project. */
   outputFile?: string;
+  /**
+   * For the project's own page objects: package.json `exports` maps the import path to the compiled
+   * file, so test code can import it by that path instead of a relative one.
+   */
+  exported?: true;
   /** Whether `utam.load` can load it directly. */
   root: boolean;
   interface: boolean;
@@ -539,6 +544,44 @@ function importable(projectDir: string): (specifier: string) => boolean {
   };
 }
 
+/**
+ * The file a subpath maps to through `exports`, matched as Node matches it: the exact key, else the
+ * `*` pattern with the longest prefix. Only string targets count; conditions aren't followed.
+ */
+function exportsTarget(exportsField: unknown, subpath: string): string | undefined {
+  if (!exportsField || typeof exportsField !== 'object' || Array.isArray(exportsField)) return undefined;
+  const map = exportsField as Record<string, unknown>;
+  if (subpath in map) return typeof map[subpath] === 'string' ? map[subpath] : undefined;
+  const pattern = Object.keys(map)
+    .filter((key) => {
+      const [before, after, extra] = key.split('*');
+      return (
+        after !== undefined &&
+        extra === undefined &&
+        subpath.length > before.length + after.length &&
+        subpath.startsWith(before) &&
+        subpath.endsWith(after)
+      );
+    })
+    .sort((a, b) => b.indexOf('*') - a.indexOf('*'))[0];
+  const target = pattern === undefined ? undefined : map[pattern];
+  if (typeof target !== 'string') return undefined;
+  const [before, after] = pattern.split('*');
+  return target.replaceAll('*', subpath.slice(before.length, subpath.length - after.length));
+}
+
+/** Whether the project's package.json `exports` maps `importPath` to the compiled `outputFile`. */
+function exportedAs(
+  packageJson: { name?: string; exports?: unknown } | undefined,
+  importPath: string,
+  outputFile: string,
+): boolean {
+  const name = packageJson?.name;
+  if (!name || !importPath.startsWith(`${name}/`)) return false;
+  const target = exportsTarget(packageJson.exports, `./${importPath.slice(name.length + 1)}`);
+  return target !== undefined && path.posix.normalize(target) === path.posix.normalize(outputFile);
+}
+
 /** An import prefix and a page object's name, joined the way `rewrite` and the generator write them. */
 function joinPrefix(prefix: string, name: string): string {
   return prefix.endsWith('/') ? `${prefix}${name}` : `${prefix}/${name}`;
@@ -644,6 +687,7 @@ function indexProjectPageObjects(index: PageObjectIndex, projectDir: string, con
   if (!utamConfig) return;
   const rootDir = path.resolve(projectDir, utamConfig.pageObjectsRootDir ?? '.');
   const outputDir = utamConfig.pageObjectsOutputDir ?? 'pageObjects';
+  const packageJson = readJson<{ name?: string; exports?: unknown }>(path.join(projectDir, 'package.json'));
   for (const file of globFiles(rootDir, utamConfig.pageObjectsFileMask ?? ['**/__utam__/**/*.utam.json'])) {
     const json = readJson<UtamJson>(file);
     if (!json) {
@@ -652,12 +696,14 @@ function indexProjectPageObjects(index: PageObjectIndex, projectDir: string, con
     }
     const base = path.basename(file, '.utam.json');
     const importPath = `${config.projectPrefix}${base}`;
+    const outputFile = path.posix.join(outputDir, `${base}.js`);
     addEntry(
       index,
       readEntry(json, {
         name: importPath,
         importPath,
-        outputFile: path.posix.join(outputDir, `${base}.js`),
+        outputFile,
+        ...(exportedAs(packageJson, importPath, outputFile) ? { exported: true as const } : {}),
         source: 'project',
         file,
       }),

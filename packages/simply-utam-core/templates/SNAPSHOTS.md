@@ -378,4 +378,5 @@ methods and its upgrades.
 
 - **Your own page objects** go in a `__utam__` folder as `<name>.utam.json`.
   `npx utam -c utam.config.json` compiles them to `pageObjects/<name>.js`, which step definitions
-  import by relative path.
+  import by relative path, or by `<package name>/pageObjects/<name>` once `package.json` `exports`
+  maps it (`init` adds that entry). `lookup` says which one works.
