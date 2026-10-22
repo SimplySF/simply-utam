@@ -43,3 +43,14 @@ export function toPosixRelative(dir: string): string {
 export function isAbsoluteOnAnyPlatform(dir: string): boolean {
   return path.posix.isAbsolute(dir) || path.win32.isAbsolute(dir);
 }
+
+/**
+ * Whether a path normalized by toPosixRelative points outside the project root: absolute, or starting
+ * with '..'.
+ *
+ * @param dir - A path normalized by toPosixRelative.
+ * @returns True if the path is outside the project root.
+ */
+export function isOutsideProject(dir: string): boolean {
+  return isAbsoluteOnAnyPlatform(dir) || dir === '..' || dir.startsWith('../');
+}

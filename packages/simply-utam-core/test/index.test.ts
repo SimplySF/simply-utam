@@ -118,6 +118,7 @@ describe('@simplysf/simply-utam-core', () => {
         'DEFAULT_REQUIRED_DEV_DEPENDENCIES',
         'DEFAULT_TEMPLATES_DIR',
         'checkMissingDependencies',
+        'ensurePageObjectExports',
         'generateGeneratorConfig',
         'generateHelloFeature',
         'generateHelloSteps',

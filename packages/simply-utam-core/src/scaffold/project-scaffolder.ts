@@ -18,7 +18,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseSfdxProject, type SfdxProjectDetails } from '../discovery/sfdx-project.js';
-import { isAbsoluteOnAnyPlatform, toPosixRelative } from '../path-utils.js';
+import { isAbsoluteOnAnyPlatform, isOutsideProject, toPosixRelative } from '../path-utils.js';
 import {
   SIMPLY_UTAM_FORCEIGNORE_RULES,
   ensureForceignore,
@@ -154,7 +154,32 @@ export interface ScaffoldResult {
    * be added by hand.
    */
   snapshotHooksMissing: boolean;
+
+  /**
+   * What happened to the package.json "exports" entry for page objects. Absent without a package.json.
+   */
+  pageObjectExports?: PageObjectExportsResult;
+
+  /**
+   * Problems scaffolding found but could not fix, such as an existing config that uses a different
+   * namespace than the one scaffolding would write.
+   */
+  warnings: string[];
 }
+
+/**
+ * What ensurePageObjectExports did to package.json "exports": 'added' when the entry was written,
+ * 'unchanged' when "exports" already has it, 'skipped' when it could not be added safely.
+ *
+ * subpath is the "exports" key for page objects, such as './pageObjects/*'; a skipped result has none
+ * when the page object folder can't be exported. createdExports is true when package.json had no
+ * "exports" and now has one, which closes the package to imports of its root and of any subpath it
+ * does not list. reason says why the entry was skipped.
+ */
+export type PageObjectExportsResult =
+  | { action: 'added'; subpath: string; createdExports: boolean }
+  | { action: 'unchanged'; subpath: string; createdExports: false }
+  | { action: 'skipped'; subpath?: string; createdExports: false; reason: string };
 
 /**
  * Loads an external template file from disk, performing token replacements.
@@ -350,6 +375,64 @@ export function injectWireitConfiguration(
 }
 
 /**
+ * Adds the package.json "exports" entry that lets compiled page objects import each other. The UTAM
+ * compiler writes those imports as extensionless subpaths of the project's own package name
+ * ('my-app/pageObjects/bar'), taken from the generator namespace, which Node resolves only through
+ * "exports", so the entry maps them to the .js files in the output folder. Only ever adds the one key:
+ * an existing entry is never changed, and an "exports" that can't be extended without restructuring it
+ * is left alone.
+ *
+ * @param packageJson - The existing package.json object.
+ * @param outputDir - The page object output folder, pageObjectsOutputDir in utam.config.json.
+ * @param importDir - The part of the namespace after the package name, 'pageObjects' for 'my-app/pageObjects/'.
+ * @returns The package.json object, updated or as given, and what was done.
+ */
+export function ensurePageObjectExports(
+  packageJson: Record<string, unknown>,
+  outputDir = 'pageObjects',
+  importDir = 'pageObjects',
+): { packageJson: Record<string, unknown>; result: PageObjectExportsResult } {
+  const skip = (reason: string, subpath?: string): ReturnType<typeof ensurePageObjectExports> => ({
+    packageJson,
+    result: { action: 'skipped', subpath, createdExports: false, reason },
+  });
+  const dir = toPosixRelative(outputDir);
+  if (!dir || isOutsideProject(dir)) {
+    return skip(`the page object folder "${outputDir}" is not inside the project, so it can't be exported`);
+  }
+  const imports = toPosixRelative(importDir);
+  if (isOutsideProject(imports)) {
+    return skip(`the namespace path "${importDir}" is not a subpath of the package, so it can't be exported`);
+  }
+  const subpath = imports ? `./${imports}/*` : './*';
+  const target = `./${dir}/*.js`;
+
+  const exportsField = packageJson['exports'];
+  if (exportsField === undefined) {
+    return {
+      packageJson: { ...packageJson, exports: { [subpath]: target } },
+      result: { action: 'added', subpath, createdExports: true },
+    };
+  }
+  if (exportsField === null || typeof exportsField !== 'object' || Array.isArray(exportsField)) {
+    return skip(`"exports" is not an object of subpaths`, subpath);
+  }
+  const keys = Object.keys(exportsField);
+  if (keys.some((key) => !key.startsWith('.'))) {
+    return skip(`"exports" is an object of conditions, not subpaths`, subpath);
+  }
+  // Only the exact key counts: a broader pattern such as "./*": "./*" may map to the extensionless path,
+  // and the more specific key added here takes precedence over it.
+  if (keys.includes(subpath)) {
+    return { packageJson, result: { action: 'unchanged', subpath, createdExports: false } };
+  }
+  return {
+    packageJson: { ...packageJson, exports: { ...exportsField, [subpath]: target } },
+    result: { action: 'added', subpath, createdExports: false },
+  };
+}
+
+/**
  * Checks a package.json object for missing recommended devDependencies.
  *
  * @param packageJson - The target package.json object.
@@ -379,14 +462,154 @@ function resolveSourceDir(sfdxProject: SfdxProjectDetails, explicitSourceDir?: s
   return 'force-app';
 }
 
+// The full package name, scope included: page objects import each other by this name, and Node only
+// resolves a package's own name when it matches package.json "name" exactly.
 function resolveAppName(packageJsonData: Record<string, unknown> | null, explicitAppName?: string): string {
   if (explicitAppName) {
     return explicitAppName;
   }
   if (typeof packageJsonData?.['name'] === 'string') {
-    return packageJsonData['name'].replace(/^@[^/]+\//, '');
+    return packageJsonData['name'];
   }
   return 'salesforce-app';
+}
+
+/**
+ * Reads a config file that scaffolding keeps, which is any that exists unless force is set. Undefined
+ * when the file is written fresh or can't be parsed as a JSON object.
+ */
+function readKeptConfig(projectDir: string, relativePath: string, force: boolean): Record<string, unknown> | undefined {
+  const filePath = path.join(projectDir, relativePath);
+  if (force || !fs.existsSync(filePath)) {
+    return undefined;
+  }
+  try {
+    const config: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    return config !== null && typeof config === 'object' ? (config as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The namespace page objects are generated under: the one in a generator.config.json that scaffolding
+ * keeps, or the one it writes from appName.
+ */
+function resolveNamespace(projectDir: string, force: boolean, appName: string): { namespace: string; kept: boolean } {
+  const namespaces = readKeptConfig(projectDir, 'generator.config.json', force)?.['namespaces'];
+  const namespace = (namespaces as Record<string, unknown> | undefined)?.['c'];
+  return typeof namespace === 'string'
+    ? { namespace, kept: true }
+    : { namespace: `${appName}/pageObjects/`, kept: false };
+}
+
+/**
+ * The page object output folder: pageObjectsOutputDir from the kept utam.config.json, or from the one
+ * init writes when there is none or it can't be read.
+ */
+function resolvePageObjectsOutputDir(projectDir: string, force: boolean, utamConfig: Record<string, unknown>): string {
+  const outputDir = (readKeptConfig(projectDir, 'utam.config.json', force) ?? utamConfig)['pageObjectsOutputDir'];
+  return typeof outputDir === 'string' ? outputDir : 'pageObjects';
+}
+
+/**
+ * Moves namespace map keys from the namespace scaffolding derives from appName to the one page objects
+ * are actually generated under, so a kept generator.config.json and a new map agree.
+ */
+function rebaseNamespaceMap(map: Record<string, unknown>, from: string, to: string): Record<string, unknown> {
+  if (from === to) {
+    return map;
+  }
+  return Object.fromEntries(
+    Object.entries(map).map(([key, value]) => [key.startsWith(from) ? to + key.slice(from.length) : key, value]),
+  );
+}
+
+/**
+ * Explains why imports under a namespace outside the package name can't resolve. A kept
+ * generator.config.json with the namespace older versions derived from a scoped package name, which
+ * dropped the scope ("my-app" for "@acme/my-app"), gets the commands that fix or keep it.
+ */
+function namespaceMismatchWarning(namespace: string, kept: boolean, packageName: unknown, appName: string): string {
+  if (typeof packageName === 'string') {
+    const stripped = packageName.replace(/^@[^/]+\//, '');
+    if (kept && stripped !== packageName && stripped !== appName && namespace === `${stripped}/pageObjects/`) {
+      return (
+        `generator.config.json uses the namespace "${stripped}", which drops the scope from "${packageName}", ` +
+        `so page object imports cannot resolve by the package's own name. Re-run with --force to use ` +
+        `"${appName}", or keep the old namespace with --app-name ${stripped}.`
+      );
+    }
+  }
+  // The package part of the namespace: two segments when scoped, one otherwise.
+  const alias = namespace
+    .split('/')
+    .slice(0, namespace.startsWith('@') ? 2 : 1)
+    .join('/');
+  const where = kept ? ' in generator.config.json' : '';
+  if (alias === packageName) {
+    return (
+      `The namespace "${namespace}"${where} has no path after the package name, so page object imports ` +
+      `cannot map to files through "exports". Use "${alias}/pageObjects/".`
+    );
+  }
+  const named = typeof packageName === 'string' ? `the package name "${packageName}"` : 'no package name';
+  return (
+    `The namespace "${alias}"${where} differs from ${named}, so page object imports cannot resolve through ` +
+    `"exports". Use the package name, or alias the namespace with a dependency ("${alias}": "file:." ` +
+    `with npm, "link:." with pnpm) and a loader that resolves extensionless paths.`
+  );
+}
+
+/**
+ * Plans the page object "exports" entry. Skipped when the namespace is not under the package name,
+ * because a package resolves only its own name through "exports".
+ */
+function planPageObjectExports(
+  packageJson: Record<string, unknown>,
+  generated: { namespace: string; kept: boolean },
+  appName: string,
+  outputDir: string,
+): { packageJson: Record<string, unknown>; result: PageObjectExportsResult; warning?: string } {
+  const { namespace, kept } = generated;
+  const packageName = packageJson['name'];
+  if (typeof packageName !== 'string' || !namespace.startsWith(`${packageName}/`)) {
+    return {
+      packageJson,
+      result: { action: 'skipped', createdExports: false, reason: 'the namespace is not under the package name' },
+      warning: namespaceMismatchWarning(namespace, kept, packageName, appName),
+    };
+  }
+  const planned = ensurePageObjectExports(packageJson, outputDir, namespace.slice(packageName.length + 1));
+  if (planned.result.action !== 'skipped') {
+    return planned;
+  }
+  const { subpath, reason } = planned.result;
+  const advice = subpath
+    ? ` Add "${subpath}" to it yourself, mapped to the .js files, so page objects can import each other.`
+    : '';
+  return { ...planned, warning: `Did not change package.json "exports": ${reason}.${advice}` };
+}
+
+/**
+ * Plans the package.json changes: the Wireit tasks and the page object "exports" entry. packageJson is
+ * absent when neither changes anything.
+ */
+function updatePackageJson(
+  packageJsonData: Record<string, unknown>,
+  templatesDir: string,
+  generated: { namespace: string; kept: boolean },
+  appName: string,
+  outputDir: string,
+): { packageJson?: Record<string, unknown>; pageObjectExports: PageObjectExportsResult; warning?: string } {
+  const injection = injectWireitConfiguration(packageJsonData, templatesDir);
+  const planned = planPageObjectExports(injection.packageJson, generated, appName, outputDir);
+  const changed = injection.updated || planned.result.action === 'added';
+  return {
+    packageJson: changed ? planned.packageJson : undefined,
+    pageObjectExports: planned.result,
+    warning: planned.warning,
+  };
 }
 
 function writeScaffoldFiles(
@@ -511,6 +734,13 @@ function updateForceignore(
   });
 }
 
+function updateGitignore(projectDir: string, options?: ScaffoldOptions): GitignoreResult | undefined {
+  if (options?.gitignore === false) {
+    return undefined;
+  }
+  return ensureGitignore({ projectDir, dryRun: options?.dryRun });
+}
+
 /**
  * Scaffolds standard UTAM configurations, Wireit tasks, and namespace maps in a project directory, and adds
  * the .forceignore rules that keep UTAM artifacts out of Salesforce deploys.
@@ -543,6 +773,13 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
   }
 
   const appName = resolveAppName(packageJsonData, options?.appName);
+  const utamConfig = generateUtamConfig(templatesDir);
+  const generated = resolveNamespace(projectDir, force, appName);
+  const namespaceMap = rebaseNamespaceMap(
+    generateNamespaceMap(appName, templatesDir),
+    `${appName}/pageObjects/`,
+    generated.namespace,
+  );
 
   const filesToCreate = [
     {
@@ -551,7 +788,7 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     },
     {
       relativePath: 'utam.config.json',
-      content: JSON.stringify(generateUtamConfig(templatesDir), null, 2) + '\n',
+      content: JSON.stringify(utamConfig, null, 2) + '\n',
     },
     {
       relativePath: 'wdio.conf.mjs',
@@ -559,7 +796,7 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     },
     {
       relativePath: path.join('.utam', 'namespace-map.json'),
-      content: JSON.stringify(generateNamespaceMap(appName, templatesDir), null, 2) + '\n',
+      content: JSON.stringify(namespaceMap, null, 2) + '\n',
     },
   ];
 
@@ -568,20 +805,32 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
 
   const { createdFiles, skippedFiles } = writeScaffoldFiles(projectDir, filesToCreate, force, dryRun);
   const modifiedFiles: string[] = [];
+  const warnings: string[] = [];
   let updatedPackageJson: Record<string, unknown> | undefined;
 
   const forceignore = updateForceignore(projectDir, sourceDir, utamTests.testDirs, sfdxProject, options);
   recordIgnoreFile(forceignore, createdFiles, modifiedFiles);
-  const gitignore = options?.gitignore === false ? undefined : ensureGitignore({ projectDir, dryRun });
+  const gitignore = updateGitignore(projectDir, options);
   recordIgnoreFile(gitignore, createdFiles, modifiedFiles);
 
+  let pageObjectExports: PageObjectExportsResult | undefined;
   if (packageJsonData) {
-    const injection = injectWireitConfiguration(packageJsonData, templatesDir);
-    if (injection.updated) {
+    const update = updatePackageJson(
+      packageJsonData,
+      templatesDir,
+      generated,
+      appName,
+      resolvePageObjectsOutputDir(projectDir, force, utamConfig),
+    );
+    pageObjectExports = update.pageObjectExports;
+    if (update.warning) {
+      warnings.push(update.warning);
+    }
+    if (update.packageJson) {
       modifiedFiles.push('package.json');
-      updatedPackageJson = injection.packageJson;
+      updatedPackageJson = update.packageJson;
       if (!dryRun) {
-        fs.writeFileSync(packageJsonPath, JSON.stringify(injection.packageJson, null, 2) + '\n', 'utf-8');
+        fs.writeFileSync(packageJsonPath, JSON.stringify(updatedPackageJson, null, 2) + '\n', 'utf-8');
       }
     }
   }
@@ -599,5 +848,7 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     forceignore,
     gitignore,
     snapshotHooksMissing: lacksSnapshotHooks(projectDir, skippedFiles),
+    pageObjectExports,
+    warnings,
   });
 }

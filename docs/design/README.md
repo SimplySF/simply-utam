@@ -10,6 +10,8 @@ This directory contains the architecture documents and topic design records for 
 | 0002 | [0002-forceignore-management.md](0002-forceignore-management.md) | `.forceignore` management in `init` | Implemented (PR #7)        | Non-destructive, add-only `.forceignore` rules for UTAM artifacts in LWC bundles and scaffolded test folders, respecting customization regions.                                                                                                                          |
 | 0003 | [0003-dom-snapshots.md](0003-dom-snapshots.md)                   | DOM snapshots                       | Implemented (experimental) | Masked DOM snapshots of Lightning pages, captured in WebdriverIO tests or by hand from the browser console, with `simply-utam snapshot` queries and an index of the page-object packages the project's namespaces map to, for UTAM test authoring and failure diagnosis. |
 
+| 0004 | [0004-self-referencing-page-objects.md](0004-self-referencing-page-objects.md) | Self-referencing page object imports | Implemented (PR #19) | Make the compiler's bare `<app>/pageObjects/…` imports resolve: keep the npm scope in the namespace and add a merge-only `exports` entry in `init`. |
+
 ## When a Design Document is Required
 
 A design document is required **before** implementation when:

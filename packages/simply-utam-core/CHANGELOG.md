@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [0.2.0](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam-core%400.1.3...%40simplysf%2Fsimply-utam-core%400.2.0) (2026-10-21)
+
+### Bug Fixes
+
+- let compiled page objects import each other ([#19](https://github.com/SimplySF/simply-utam/issues/19)) ([8e38a3c](https://github.com/SimplySF/simply-utam/commit/8e38a3ce0559296b90a1b55698ee7c8b686682e1))
+
+### BREAKING CHANGES
+
+- for a scoped package, init now writes the namespace with the scope
+  ("@acme/my-app" instead of "my-app"). Existing projects keep their config until they re-run
+  init --force. Pass --app-name my-app to keep the old namespace.
+
+## [0.1.3](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam-core%400.1.2...%40simplysf%2Fsimply-utam-core%400.1.3) (2026-10-19)
+
+### Bug Fixes
+
+- **deps:** bump prettier from 3.9.9 to 3.9.10 ([#14](https://github.com/SimplySF/simply-utam/issues/14)) ([ca2cbaf](https://github.com/SimplySF/simply-utam/commit/ca2cbaf3d1438d5dd44dfa1ae4da9eb0a9b96ee3))
+
 ## [0.1.2](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam-core%400.1.1...%40simplysf%2Fsimply-utam-core%400.1.2) (2026-10-14)
 
 ### Bug Fixes

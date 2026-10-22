@@ -68,6 +68,58 @@ describe('CLI command execution', () => {
       ).toBe(true);
     });
 
+    it('should add the page object exports entry for a scoped package', async () => {
+      const pkgPath = path.join(tempDir, 'package.json');
+      fs.writeFileSync(pkgPath, JSON.stringify({ name: '@acme/cli-test-project' }), 'utf-8');
+
+      const result = await Init.run(['--project-dir', tempDir, '--source-dir', 'force-app'], config);
+
+      expect(result.pageObjectExports?.action).toBe('added');
+      expect(result.warnings).toStrictEqual([]);
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as Record<string, unknown>;
+      expect(pkg['exports']).toStrictEqual({ './pageObjects/*': './pageObjects/*.js' });
+      const generatorConfig = JSON.parse(fs.readFileSync(path.join(tempDir, 'generator.config.json'), 'utf-8')) as {
+        namespaces: Record<string, string>;
+      };
+      expect(generatorConfig.namespaces['c']).toBe('@acme/cli-test-project/pageObjects/');
+    });
+
+    it('should report the exports entry, and that creating "exports" closes the package root', async () => {
+      fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ name: 'cli-test-project' }), 'utf-8');
+      const output: string[] = [];
+      const command = new Init(['--project-dir', tempDir, '--source-dir', 'force-app'], config);
+      command.log = (message?: string): void => {
+        output.push(message ?? '');
+      };
+
+      await command.run();
+
+      expect(output).toContain(
+        'Added "./pageObjects/*" to package.json "exports" so page objects can import each other.',
+      );
+      expect(output.some((message) => message.includes('imports of the package root'))).toBe(true);
+    });
+
+    it('should not report closing the package root when "exports" already existed', async () => {
+      fs.writeFileSync(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify({ name: 'cli-test-project', exports: { '.': './index.js' } }),
+        'utf-8',
+      );
+      const output: string[] = [];
+      const command = new Init(['--project-dir', tempDir, '--source-dir', 'force-app', '--dry-run'], config);
+      command.log = (message?: string): void => {
+        output.push(message ?? '');
+      };
+
+      await command.run();
+
+      expect(output).toContain(
+        'Would add "./pageObjects/*" to package.json "exports" so page objects can import each other.',
+      );
+      expect(output.some((message) => message.includes('imports of the package root'))).toBe(false);
+    });
+
     it('should respect --dry-run without creating files on disk', async () => {
       const result = await Init.run(['--project-dir', tempDir, '--dry-run'], config);
 

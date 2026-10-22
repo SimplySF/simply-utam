@@ -57,7 +57,7 @@ export default class Init extends Command {
     }),
     'app-name': Flags.string({
       char: 'a',
-      summary: 'Application name for UTAM namespaces (defaults to package.json name).',
+      summary: 'Application name for UTAM namespaces (defaults to package.json name, scope included).',
     }),
     force: Flags.boolean({
       char: 'f',
@@ -147,6 +147,24 @@ export default class Init extends Command {
         '\nwdio.conf.mjs already exists, so it was kept, and it does not capture DOM snapshots on failure. ' +
           `To add that, copy the onPrepare, before and afterStep hooks from ${SNAPSHOT_HOOKS_DOCS}`,
       );
+    }
+
+    const pageObjectExports = result.pageObjectExports;
+    if (pageObjectExports?.action === 'added') {
+      const verb = flags['dry-run'] ? 'Would add' : 'Added';
+      this.log(
+        `${verb} "${pageObjectExports.subpath}" to package.json "exports" so page objects can import each other.`,
+      );
+      if (pageObjectExports.createdExports) {
+        this.log(
+          'package.json had no "exports", so imports of the package root and of other subpaths no longer resolve. ' +
+            'Add them to "exports" if anything imports them.',
+        );
+      }
+    }
+
+    for (const warning of result.warnings) {
+      this.warn(warning);
     }
 
     if (result.missingDependencies.length > 0) {

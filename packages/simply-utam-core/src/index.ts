@@ -160,7 +160,9 @@ export {
   generateSnapshotSteps,
   injectWireitConfiguration,
   checkMissingDependencies,
+  ensurePageObjectExports,
   scaffoldProject,
+  type PageObjectExportsResult,
   type ScaffoldOptions,
   type ScaffoldResult,
 } from './scaffold/index.js';

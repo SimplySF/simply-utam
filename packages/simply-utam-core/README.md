@@ -191,21 +191,23 @@ internal.
 
 ### Project Scaffolding
 
-| Export                                                       | Description                                                                                          |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `scaffoldProject(options?)`                                  | Scaffolds configuration files, template files, Wireit tasks, and `.forceignore` rules.               |
-| `injectWireitConfiguration(packageJson, dir)`                | Injects standard UTAM Wireit scripts and tasks non-destructively into package.json.                  |
-| `checkMissingDependencies(pkg, required?)`                   | Detects missing recommended devDependencies.                                                         |
-| `loadTemplate(name, dir?, tokens?)`                          | Loads an external scaffold template, performing `{{token}}` replacements.                            |
-| `generateGeneratorConfig(sourceDir, appName)`                | Generates parsed `generator.config.json` content.                                                    |
-| `generateUtamConfig(templatesDir?)`                          | Generates parsed `utam.config.json` content.                                                         |
-| `generateWdioConfig(sourceDir, dir?)`                        | Generates formatted `wdio.conf.mjs` content.                                                         |
-| `generateNamespaceMap(appName, dir?)`                        | Generates parsed `namespace-map.json` content.                                                       |
-| `generateHelloFeature(dir?)`                                 | Generates formatted `hello.feature` starter smoke test content.                                      |
-| `generateHelloSteps(dir?)`                                   | Generates formatted `hello.steps.mjs` starter step definition content.                               |
-| `generateSnapshotGuide(dir?)`, `generateSnapshotSteps(dir?)` | Generates the DOM snapshot usage guide (`SNAPSHOTS.md`) and capture step (`dom-snapshot.steps.mjs`). |
-| `DEFAULT_TEMPLATES_DIR`                                      | Path to starter config templates directory.                                                          |
-| `DEFAULT_REQUIRED_DEV_DEPENDENCIES`                          | List of standard recommended UTAM devDependencies.                                                   |
+| Export                                                       | Description                                                                                                                         |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `scaffoldProject(options?)`                                  | Scaffolds configuration files, template files, Wireit tasks, the page object `exports` entry, and `.forceignore` rules.             |
+| `injectWireitConfiguration(packageJson, dir)`                | Injects standard UTAM Wireit scripts and tasks non-destructively into package.json.                                                 |
+| `checkMissingDependencies(pkg, required?)`                   | Detects missing recommended devDependencies.                                                                                        |
+| `ensurePageObjectExports(pkg, outputDir?, importDir?)`       | Adds the package.json `exports` entry that maps page object imports (`./<importDir>/*`) to the compiled `.js` files in `outputDir`. |
+| `PageObjectExportsResult`                                    | Type: what `ensurePageObjectExports` did to `exports`, and why it skipped.                                                          |
+| `loadTemplate(name, dir?, tokens?)`                          | Loads an external scaffold template, performing `{{token}}` replacements.                                                           |
+| `generateGeneratorConfig(sourceDir, appName)`                | Generates parsed `generator.config.json` content.                                                                                   |
+| `generateUtamConfig(templatesDir?)`                          | Generates parsed `utam.config.json` content.                                                                                        |
+| `generateWdioConfig(sourceDir, dir?)`                        | Generates formatted `wdio.conf.mjs` content.                                                                                        |
+| `generateNamespaceMap(appName, dir?)`                        | Generates parsed `namespace-map.json` content.                                                                                      |
+| `generateHelloFeature(dir?)`                                 | Generates formatted `hello.feature` starter smoke test content.                                                                     |
+| `generateHelloSteps(dir?)`                                   | Generates formatted `hello.steps.mjs` starter step definition content.                                                              |
+| `generateSnapshotGuide(dir?)`, `generateSnapshotSteps(dir?)` | Generates the DOM snapshot usage guide (`SNAPSHOTS.md`) and capture step (`dom-snapshot.steps.mjs`).                                |
+| `DEFAULT_TEMPLATES_DIR`                                      | Path to starter config templates directory.                                                                                         |
+| `DEFAULT_REQUIRED_DEV_DEPENDENCIES`                          | List of standard recommended UTAM devDependencies.                                                                                  |
 
 ### DOM Snapshots
 
