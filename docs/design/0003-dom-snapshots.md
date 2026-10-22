@@ -582,10 +582,10 @@ Parsing all of them takes well under a second, so the index is built each time a
 
 Both namespace files name import prefixes, for different reasons, and the index reads both:
 
-| File                                 | What it maps                                                    | Prefixes that name a package                                  |
-| ------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------- |
-| `generator.config.json` `namespaces` | A component namespace to the import prefix the generator writes | The values, except those under the project's own package name |
-| `.utam/namespace-map.json`           | A project prefix to an external one, rewritten after generation | The values; the keys are the project's own prefixes           |
+| File                                 | What it maps                                                    | Prefixes that name a package                                                        |
+| ------------------------------------ | --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `generator.config.json` `namespaces` | A component namespace to the import prefix the generator writes | The values, except `c`, the project's own namespace, and any under its package name |
+| `.utam/namespace-map.json`           | A project prefix to an external one, rewritten after generation | The values; the keys are the project's own prefixes                                 |
 
 The generator's `namespaces` cover packages with their own namespace (`lightning` →
 `salesforce-pageobjects/lightning/pageObjects/`). The namespace map covers packages whose components
@@ -598,6 +598,12 @@ several prefixes into one package index it once. A package that doesn't resolve 
 naming it and the file and entry that mapped it. The namespace map is read through the loader
 `rewrite` uses, so the index and the build agree on what the file says and on longest-prefix-first
 order. The index reads the default path only (see Open questions).
+
+The project's own prefix is the generator's `c` namespace, which `init` writes and the generator
+compiles the project's components under. It's usually the package name, scope included
+([design 0004](0004-self-referencing-page-objects.md)), but a project may keep the scope-free name
+older versions wrote, or set another with `--app-name`. Only without a `c` does the index fall back
+to the namespace under the package name, then to `<package name>/pageObjects/`.
 
 The index doesn't name `salesforce-pageobjects`. It's indexed when a namespace maps to it, like any
 other package:

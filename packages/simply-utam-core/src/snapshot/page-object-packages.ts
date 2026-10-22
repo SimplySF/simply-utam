@@ -57,7 +57,10 @@ export function readNamespaceConfig(projectDir: string): NamespaceConfig {
   const packageName = readJson<{ name?: string }>(path.join(projectDir, 'package.json'))?.name;
   const namespaces =
     readJson<{ namespaces?: Record<string, string> }>(path.join(projectDir, 'generator.config.json'))?.namespaces ?? {};
+  // `c` is the namespace init writes and the generator compiles the project's own components under,
+  // whatever it's named: a scope-free name kept from older versions, or --app-name.
   const projectPrefix =
+    (typeof namespaces['c'] === 'string' ? namespaces['c'] : undefined) ??
     Object.values(namespaces).find((prefix) => packageName && prefix.startsWith(`${packageName}/`)) ??
     (packageName ? `${packageName}/pageObjects/` : 'pageObjects/');
   return {

@@ -223,6 +223,28 @@ describe('buildPageObjectIndex', () => {
     expect(index.namespaces.lightning).toBe('salesforce-pageobjects/lightning/pageObjects/');
   });
 
+  it("takes the project's namespace from the generator's c, when it isn't the package name", () => {
+    // A scoped package with the scope-free namespace older versions wrote, and one set with --app-name.
+    for (const [packageName, namespace] of [
+      ['@acme/my-app', 'my-app/pageObjects/'],
+      ['my-app', 'acme-tests/pageObjects/'],
+    ]) {
+      const result = buildPageObjectIndex({
+        projectDir: project({
+          ...shippedPageObjects,
+          ...projectFiles,
+          'package.json': { name: packageName },
+          'generator.config.json': {
+            namespaces: { c: namespace, lightning: 'salesforce-pageobjects/lightning/pageObjects/' },
+          },
+        }),
+      });
+      expect(result.entries.get(`${namespace}recordPage`)).toMatchObject({ source: 'project' });
+      expect(result.entries.has(`${packageName}/pageObjects/recordPage`)).toBe(false);
+      expect(result.warnings.filter((warning) => warning.includes('is not installed'))).toEqual([]);
+    }
+  });
+
   it('skips page objects under node_modules and warns about invalid JSON', () => {
     expect([...index.entries.keys()].some((name) => name.endsWith('/ignored'))).toBe(false);
     expect(index.warnings).toEqual([`Skipped ${path.join('test', '__utam__', 'broken.utam.json')}: not valid JSON.`]);
