@@ -68,8 +68,8 @@ shows it.
   project's namespace configuration maps to, `salesforce-pageobjects` included.
 - **Queries** over a snapshot and the index: `find` (including a CSS selector check with UTAM's
   `findElement` semantics), `path`, `tree`, `node` and `lookup`.
-- A **usage guide** for the commands, the workflow, and the two page-object authoring recipes agents
-  need to act on what the commands show.
+- A **usage guide**, shipped as an agent skill, for the commands, the workflow, and the two
+  page-object authoring recipes agents need to act on what the commands show.
 
 The `simply-utam` CLI exposes the queries and the console capture as `simply-utam snapshot …`
 commands. Core takes one new runtime dependency, `css-select`, for the selector check (see Public
@@ -82,8 +82,8 @@ This document records what the feature is and why. It doesn't repeat what other 
 exports are listed in the [core README's DOM Snapshots
 section](../../packages/simply-utam-core/README.md#dom-snapshots), the hooks to copy into an existing
 project in the [CLI README](../../packages/simply-utam/README.md#dom-snapshots-in-an-existing-project),
-and the commands, their output and the recipes in the scaffolded usage guide
-([`templates/SNAPSHOTS.md`](../../packages/simply-utam-core/templates/SNAPSHOTS.md)). Exact output
+and the commands, their output and the recipes in the usage guide
+([`skills/utam-dom-snapshots/SKILL.md`](../../packages/simply-utam/skills/utam-dom-snapshots/SKILL.md)). Exact output
 wording lives in the code and its tests; examples here show the shape of the output, not its text.
 
 ## 1. The walker
@@ -449,8 +449,8 @@ command (trigger `manual`), so it can be called from the REPL during `browser.de
 **Existing projects.** `init` only writes templates that are missing, so a project that already has
 `wdio.conf.mjs` doesn't get the new hooks. When `init` keeps an existing `wdio.conf.mjs` that doesn't
 capture snapshots, it prints a note pointing to the CLI README section with the `onPrepare`, `before`
-and `afterStep` snippets to copy. The snapshot step and the usage guide are new files, so `init` adds
-them to existing projects too.
+and `afterStep` snippets to copy. The snapshot step is a new file, so `init` adds it to existing
+projects too.
 
 ### From the browser console
 
@@ -918,9 +918,22 @@ Their options are in the CLI's help and the usage guide. The rules that hold acr
 
 ## 8. Usage guide
 
-One document, `SNAPSHOTS.md`, scaffolded into the project's UTAM test folder. It's written as an
-agent skill, with `name` and `description` frontmatter, so an agent harness can load it when a task
-involves a UTAM step, page object or selector. The core README links to it.
+One document, the `utam-dom-snapshots` agent skill, at `skills/utam-dom-snapshots/SKILL.md` in the
+`@simplysf/simply-utam` package. Its `name` and `description` frontmatter let an agent harness load it
+when a task involves a UTAM step, page object or selector. `init` doesn't install it: the user links
+or copies the skill into their agent's skills folder, as the
+[CLI README](../../packages/simply-utam/README.md#agent-skills) shows.
+
+- **A skill, not a scaffolded file.** Agents discover skills only in their own skills folders, so a
+  guide in the UTAM test folder is read only when someone points an agent at it.
+- **In the CLI package.** The skill documents the CLI, and the CLI is the package a test project
+  installs, so `node_modules/@simplysf/simply-utam/skills/` is a stable path to link to. Core, a
+  dependency of the CLI, isn't always at the top of `node_modules`.
+- **Linked, so it matches the installed version.** A symlink follows each upgrade, where a scaffolded
+  copy kept the version `init` wrote, since `init` doesn't overwrite existing files. A copy remains an
+  option for a user who wants to edit it.
+- **Room for more.** Each skill is one folder under `skills/`, so a later skill for another part of
+  simply-utam needs no scaffolding change.
 
 It explains the tool, and it also carries the two page-object authoring recipes an agent needs to
 act on what the tool shows: **attach your own page object below the last shipped one**, and **scope a
@@ -1002,6 +1015,14 @@ The test files hold the cases; this is the approach:
   narrow exception: it replays only the project's own declarations, one scope at a time, and names a
   mismatch rather than claiming a route works. The live page object check (Later phases) uses UTAM
   itself instead.
+- **Scaffolding the guide into the project's UTAM test folder** (the first version): agents don't
+  discover it there, and `init` never updates it after an upgrade. See Usage guide.
+- **A `skills sync` command that installs and updates the skills**: keeps copies current, but each
+  project commits generated copies that still drift until someone runs it. A symlink needs no command.
+- **Skills at the repository root**: the first place to look on GitHub, but the root isn't published,
+  so a skill there can't be linked from `node_modules` and follows `main`, not the installed version.
+- **A Claude Code plugin**: updates through the plugin system, but only for one agent, and versioned
+  apart from the CLI it documents.
 - **A separate cookbook for the authoring recipes**: keeps the guide about the tool, but an agent
   that loads the guide doesn't load the cookbook, and the recipes are what it was missing.
 - **One `snapshot capture --from console|chrome` command**: see Command structure.

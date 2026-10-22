@@ -302,16 +302,6 @@ export function generateHelloSteps(templatesDir = DEFAULT_TEMPLATES_DIR): string
 }
 
 /**
- * Generates the SNAPSHOTS.md usage guide for DOM snapshots by loading its external template.
- *
- * @param templatesDir - Optional custom directory containing the template file.
- * @returns The guide's Markdown text.
- */
-export function generateSnapshotGuide(templatesDir = DEFAULT_TEMPLATES_DIR): string {
-  return loadTemplate('SNAPSHOTS.md', templatesDir);
-}
-
-/**
  * Generates the dom-snapshot.steps.mjs step definitions (`I capture the DOM snapshot`) by loading
  * their external template.
  *
@@ -677,12 +667,11 @@ function planUtamTests(
 }
 
 /**
- * The DOM snapshot guide and capture step, in the UTAM test folder. They're new files, so an existing
- * project gets them too.
+ * The DOM snapshot capture step, in the UTAM test folder. It's a new file, so an existing project
+ * gets it too.
  */
 function planSnapshotFiles(testDir: string, templatesDir: string): Array<{ relativePath: string; content: string }> {
   return [
-    { relativePath: path.join(testDir, 'SNAPSHOTS.md'), content: generateSnapshotGuide(templatesDir) },
     {
       relativePath: path.join(testDir, 'step_definitions', 'dom-snapshot.steps.mjs'),
       content: generateSnapshotSteps(templatesDir),

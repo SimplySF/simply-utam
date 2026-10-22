@@ -35,7 +35,7 @@ export default class Init extends Command {
     'Scaffold UTAM configurations, Wireit tasks, and namespace maps in a Salesforce project.';
 
   public static override description =
-    'Inspects the target project, generates generator.config.json, utam.config.json, wdio.conf.mjs, and .utam/namespace-map.json, adds the DOM snapshot guide (SNAPSHOTS.md) and capture step to the UTAM test folder, non-destructively injects standard Wireit tasks into package.json, and adds any missing UTAM rules to .forceignore and .gitignore under a "# Ignore UTAM" comment without changing existing lines.';
+    'Inspects the target project, generates generator.config.json, utam.config.json, wdio.conf.mjs, and .utam/namespace-map.json, adds the DOM snapshot capture step to the UTAM test folder, non-destructively injects standard Wireit tasks into package.json, and adds any missing UTAM rules to .forceignore and .gitignore under a "# Ignore UTAM" comment without changing existing lines.';
 
   public static override examples = [
     '<%= config.bin %> <%= command.id %>',

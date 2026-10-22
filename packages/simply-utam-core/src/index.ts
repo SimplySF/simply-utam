@@ -156,7 +156,6 @@ export {
   generateNamespaceMap,
   generateHelloFeature,
   generateHelloSteps,
-  generateSnapshotGuide,
   generateSnapshotSteps,
   injectWireitConfiguration,
   checkMissingDependencies,

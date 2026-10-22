@@ -122,7 +122,6 @@ describe('@simplysf/simply-utam-core', () => {
         'generateGeneratorConfig',
         'generateHelloFeature',
         'generateHelloSteps',
-        'generateSnapshotGuide',
         'generateSnapshotSteps',
         'generateNamespaceMap',
         'generateUtamConfig',

@@ -19,6 +19,7 @@
   "files": [
     "/bin",
     "/lib",
+    "/skills",
     "README.md",
     "oclif.manifest.json"
   ],
@@ -148,6 +149,7 @@
       },
       "files": [
         "test/**/*.ts",
+        "skills/**",
         "src/**/*.ts",
         "**/tsconfig.json",
         "../../tsconfig.json",

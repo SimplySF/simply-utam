@@ -19,8 +19,8 @@ page objects likely reach an element. It also searches the page objects availabl
   element, and `find --css` tests each selector before the first run.
 - **Diagnose without reproducing.** A failing step leaves a snapshot behind. You find the cause in
   it and check your fix against it, then confirm with one live run.
-- **Agent-ready.** `init` installs a guide (`SNAPSHOTS.md`) that coding agents follow. The commands
-  give them answers from the snapshot, so they need no browser.
+- **Agent-ready.** simply-utam ships an agent skill, `utam-dom-snapshots`, that you install for your
+  coding agent. The commands give it answers from the snapshot, so it needs no browser.
 - **Masked by default.** Record values are replaced with their length (`•14`), ids with `•id` and
   emails with `•email`, while field labels are kept for searching. A stricter mode masks labels too.
   A failure's error message is kept as the test printed it.
@@ -58,9 +58,10 @@ and, for a failure, its scenario, step and error. Every query command, `lookup` 
 
 ## Further reading
 
-- [SNAPSHOTS.md](../packages/simply-utam-core/templates/SNAPSHOTS.md): the full how-to, with every
-  command's options and output explained, workflows step by step, and page-object recipes. `init`
-  installs it in a project's UTAM test folder, where coding agents use it as their guide.
+- [The `utam-dom-snapshots` skill](../packages/simply-utam/skills/utam-dom-snapshots/SKILL.md): the
+  full how-to, with every command's options and output explained, workflows step by step, and
+  page-object recipes. Install it for your coding agent as the
+  [CLI README](../packages/simply-utam/README.md#agent-skills) shows.
 - [simply-utam README](../packages/simply-utam/README.md#dom-snapshots-in-an-existing-project): the
   command reference, and the hooks to merge into an existing project's `wdio.conf.mjs`.
 - [Design 0003: DOM snapshots](design/0003-dom-snapshots.md): what is recorded and why, the

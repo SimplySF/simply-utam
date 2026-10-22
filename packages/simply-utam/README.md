@@ -16,7 +16,7 @@ Requires Node.js 22 or later.
 
 ## Commands
 
-- `simply-utam init`: Scaffolds starter UTAM configs (`generator.config.json`, `utam.config.json`, `wdio.conf.mjs`, `.utam/namespace-map.json`) and the DOM snapshot guide and capture step (`SNAPSHOTS.md`, `step_definitions/dom-snapshot.steps.mjs`) in the UTAM test folder, adds `.utam/snapshots/` to `.gitignore` (`--no-gitignore` to skip), non-destructively injects standard Wireit tasks into `package.json`, and adds any missing UTAM rules to `.forceignore` under a `# Ignore UTAM` comment so LWC bundles that contain UTAM files deploy successfully. Existing lines are never changed; new rules go inside the `# -- START CUSTOMIZATION` / `# -- END CUSTOMIZATION` region when one exists (`--forceignore-region-start` / `--forceignore-region-end` to change the markers, `--no-forceignore` to skip). The UTAM namespace is the `package.json` name, scope included, so page objects can import each other by the package's own name (`--app-name` to override). It also adds `"./pageObjects/*": "./pageObjects/*.js"` to `package.json` `exports`, which those imports resolve through; an existing entry is never changed.
+- `simply-utam init`: Scaffolds starter UTAM configs (`generator.config.json`, `utam.config.json`, `wdio.conf.mjs`, `.utam/namespace-map.json`) and the DOM snapshot capture step (`step_definitions/dom-snapshot.steps.mjs`) in the UTAM test folder, adds `.utam/snapshots/` to `.gitignore` (`--no-gitignore` to skip), non-destructively injects standard Wireit tasks into `package.json`, and adds any missing UTAM rules to `.forceignore` under a `# Ignore UTAM` comment so LWC bundles that contain UTAM files deploy successfully. Existing lines are never changed; new rules go inside the `# -- START CUSTOMIZATION` / `# -- END CUSTOMIZATION` region when one exists (`--forceignore-region-start` / `--forceignore-region-end` to change the markers, `--no-forceignore` to skip). The UTAM namespace is the `package.json` name, scope included, so page objects can import each other by the package's own name (`--app-name` to override). It also adds `"./pageObjects/*": "./pageObjects/*.js"` to `package.json` `exports`, which those imports resolve through; an existing entry is never changed.
 - `simply-utam rules`: Scans LWC component definitions and generates or updates UTAM `.rules.json` files for root components.
 - `simply-utam overrides`: Deeply merges custom element assertions, wait conditions, and visibility rules from `*.utam-overrides.json` into generated `*.utam.json` files while preserving file indentation.
 - `simply-utam rewrite`: Rewrites namespace prefixes across compiled `*.utam.json` files according to `.utam/namespace-map.json`.
@@ -92,8 +92,30 @@ export const config = {
 
 Also set `cucumberOpts.timeout` above `waitforTimeout` (the scaffold adds 30 seconds), so a step that
 waits for a missing element fails with UTAM's error, which names the locator, rather than only
-Cucumber's timeout. `init` adds the guide and the capture step to an existing project's UTAM test
-folder, since they're new files.
+Cucumber's timeout. `init` adds the capture step to an existing project's UTAM test folder, since
+it's a new file. For the guide, install the [`utam-dom-snapshots` skill](#agent-skills).
+
+## Agent skills
+
+The package ships agent skills for working with simply-utam in your project: guides that a coding
+agent (or a person) follows to use its commands. Each is a folder under `skills/`, with a `SKILL.md`
+whose frontmatter tells an agent when to load it. None is installed for you; add the ones you want.
+
+| Skill                                                      | Use it when                                                                                                                             |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| [`utam-dom-snapshots`](skills/utam-dom-snapshots/SKILL.md) | Writing or fixing a UTAM step definition, page object or selector: capturing DOM snapshots, querying them, and looking up page objects. |
+
+Link a skill into your agent's skills folder, so it stays in step with the installed version of
+simply-utam. For Claude Code, from the project folder:
+
+```bash
+mkdir -p .claude/skills
+ln -s ../../node_modules/@simplysf/simply-utam/skills/utam-dom-snapshots .claude/skills/utam-dom-snapshots
+```
+
+Or copy the folder instead, to edit it; a copy doesn't change when you upgrade simply-utam, so
+copy it again after an upgrade. Other agents read skills from their own folders; link or copy the
+skill there the same way.
 
 ## Usage & Wireit Integration
 

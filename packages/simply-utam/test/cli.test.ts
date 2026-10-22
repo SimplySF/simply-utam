@@ -56,7 +56,7 @@ describe('CLI command execution', () => {
 
       const result = await Init.run(['--project-dir', tempDir, '--source-dir', 'force-app'], config);
 
-      expect(result.createdFiles).toHaveLength(9);
+      expect(result.createdFiles).toHaveLength(8);
       expect(result.modifiedFiles).toContain('package.json');
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'utam.config.json'))).toBe(true);
@@ -123,7 +123,7 @@ describe('CLI command execution', () => {
     it('should respect --dry-run without creating files on disk', async () => {
       const result = await Init.run(['--project-dir', tempDir, '--dry-run'], config);
 
-      expect(result.createdFiles).toHaveLength(9);
+      expect(result.createdFiles).toHaveLength(8);
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(false);
     });

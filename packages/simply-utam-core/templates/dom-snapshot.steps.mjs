@@ -1,7 +1,8 @@
 import { Before, When } from '@wdio/cucumber-framework';
 
 // Captures the page as it is, without waiting: put it after a step that waits for something on the
-// page. The snapshot is written under .utam/snapshots/ and copied to latest.json. See SNAPSHOTS.md.
+// page. The snapshot is written under .utam/snapshots/ and copied to latest.json. See the
+// utam-dom-snapshots skill in @simplysf/simply-utam.
 Before(function (scenario) {
   this.domSnapshotScenario = scenario.pickle.name;
 });
