@@ -19,6 +19,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildPageObjectIndex, lookupPageObject, searchPageObjects, type PageObjectIndex } from '../src/index.js';
+import { DEFAULT_NAMESPACE_MAP } from '../src/namespaces/namespace-map.js';
 import { selectorLastParts, selectorTags } from '../src/snapshot/page-object-index.js';
 import { SPO_EXPORTS, withCompiledPageObjects } from './snapshot-fixtures.js';
 
@@ -662,7 +663,8 @@ describe('buildPageObjectIndex: page-object packages', () => {
   it('warns once for a missing package, naming each place that maps it', () => {
     const missing = project({ ...projectFiles, ...configs, ...acmePackage });
     expect(buildPageObjectIndex({ projectDir: missing }).warnings).toContain(
-      `shared-pageobjects is not installed in ${missing}, but .utam/namespace-map.json maps "my-app/pageObjects/modal" to it and .utam/namespace-map.json maps "my-app/pageObjects/card" to it; it isn't indexed.`,
+      // The map's path uses the OS's separator, as the project folder does.
+      `shared-pageobjects is not installed in ${missing}, but ${DEFAULT_NAMESPACE_MAP} maps "my-app/pageObjects/modal" to it and ${DEFAULT_NAMESPACE_MAP} maps "my-app/pageObjects/card" to it; it isn't indexed.`,
     );
   });
 });

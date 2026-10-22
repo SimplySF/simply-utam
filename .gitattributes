@@ -1,0 +1,2 @@
+# Check out text files with LF on every OS, so templates and tests see the same line endings.
+* text=auto eol=lf
