@@ -20,8 +20,12 @@ import {
   DEFAULT_FORCEIGNORE_REGION,
   scaffoldProject,
   type ForceignoreResult,
+  type GitignoreResult,
   type ScaffoldResult,
 } from '@simplysf/simply-utam-core';
+
+const SNAPSHOT_HOOKS_DOCS =
+  'https://github.com/SimplySF/simply-utam/tree/main/packages/simply-utam#dom-snapshots-in-an-existing-project';
 
 /**
  * CLI command to scaffold SimplyUTAM configurations, Wireit tasks, and namespace maps.
@@ -31,7 +35,7 @@ export default class Init extends Command {
     'Scaffold UTAM configurations, Wireit tasks, and namespace maps in a Salesforce project.';
 
   public static override description =
-    'Inspects the target project, generates generator.config.json, utam.config.json, wdio.conf.mjs, and .utam/namespace-map.json, non-destructively injects standard Wireit tasks into package.json, and adds any missing UTAM rules to .forceignore under a "# Ignore UTAM" comment without changing existing lines.';
+    'Inspects the target project, generates generator.config.json, utam.config.json, wdio.conf.mjs, and .utam/namespace-map.json, adds the DOM snapshot capture step to the UTAM test folder, non-destructively injects standard Wireit tasks into package.json, and adds any missing UTAM rules to .forceignore and .gitignore under a "# Ignore UTAM" comment without changing existing lines.';
 
   public static override examples = [
     '<%= config.bin %> <%= command.id %>',
@@ -78,6 +82,11 @@ export default class Init extends Command {
       summary: 'Exact line that ends the .forceignore customization region.',
       default: DEFAULT_FORCEIGNORE_REGION.end,
     }),
+    gitignore: Flags.boolean({
+      summary: 'Add .utam/snapshots/ to .gitignore, so DOM snapshots stay out of git.',
+      default: true,
+      allowNo: true,
+    }),
     verbose: Flags.boolean({
       char: 'v',
       summary: 'Enable detailed output.',
@@ -98,6 +107,7 @@ export default class Init extends Command {
       forceignore: flags.forceignore,
       forceignoreRegionStart: flags['forceignore-region-start'],
       forceignoreRegionEnd: flags['forceignore-region-end'],
+      gitignore: flags.gitignore,
     });
 
     if (flags['dry-run']) {
@@ -127,7 +137,16 @@ export default class Init extends Command {
     }
 
     if (result.forceignore) {
-      this.logForceignore(result.forceignore, flags['dry-run']);
+      this.logIgnoreFile(result.forceignore, flags['dry-run'], 'UTAM artifacts');
+    }
+    if (result.gitignore) {
+      this.logIgnoreFile(result.gitignore, flags['dry-run'], 'DOM snapshots');
+    }
+    if (result.snapshotHooksMissing) {
+      this.log(
+        '\nwdio.conf.mjs already exists, so it was kept, and it does not capture DOM snapshots on failure. ' +
+          `To add that, copy the snapshot API loader and the onPrepare, before, afterStep and onComplete hooks from ${SNAPSHOT_HOOKS_DOCS}`,
+      );
     }
 
     const pageObjectExports = result.pageObjectExports;
@@ -156,26 +175,26 @@ export default class Init extends Command {
     return result;
   }
 
-  private logForceignore(forceignore: ForceignoreResult, dryRun: boolean): void {
+  private logIgnoreFile(file: ForceignoreResult | GitignoreResult, dryRun: boolean, covers: string): void {
     const where = {
       block: 'under the existing "# Ignore UTAM" comment',
       region: 'inside the customization region',
       end: 'at the end of the file',
     };
-    const created = forceignore.action === 'created';
-    if (forceignore.addedPatterns.length > 0) {
+    const created = file.action === 'created';
+    if (file.addedPatterns.length > 0) {
       const verb = dryRun ? (created ? 'Would create' : 'Would update') : created ? 'Created' : 'Updated';
-      const placement = forceignore.placement && !created ? ` (${where[forceignore.placement]})` : '';
-      this.log(`${verb} ${forceignore.path}: added ${forceignore.addedPatterns.join(', ')}${placement}`);
-    } else if (forceignore.action === 'unchanged') {
-      this.log(`${forceignore.path} already covers UTAM artifacts.`);
-    } else if (forceignore.action === 'skipped') {
+      const placement = file.placement && !created ? ` (${where[file.placement]})` : '';
+      this.log(`${verb} ${file.path}: added ${file.addedPatterns.join(', ')}${placement}`);
+    } else if (file.action === 'unchanged') {
+      this.log(`${file.path} already covers ${covers}.`);
+    } else if (file.action === 'skipped') {
       this.log(
-        `Skipped ${forceignore.path}: no ${forceignore.path} or sfdx-project.json found. ` +
+        `Skipped ${file.path}: no ${file.path} or sfdx-project.json found. ` +
           'Point --project-dir at the folder that contains sfdx-project.json, or add the UTAM rules yourself.',
       );
     }
-    for (const warning of forceignore.warnings) {
+    for (const warning of file.warnings) {
       this.warn(warning);
     }
   }

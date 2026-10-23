@@ -19,6 +19,7 @@
   "files": [
     "/bin",
     "/lib",
+    "/skills",
     "README.md",
     "oclif.manifest.json"
   ],
@@ -72,7 +73,17 @@
     "commands": "./lib/commands",
     "topicSeparator": " ",
     "plugins": [],
-    "devPlugins": []
+    "devPlugins": [],
+    "topics": {
+      "snapshot": {
+        "description": "Capture and query DOM snapshots, and look up page objects.",
+        "subtopics": {
+          "console": {
+            "description": "Capture DOM snapshots by pasting a snippet into a browser's DevTools console."
+          }
+        }
+      }
+    }
   },
   "wireit": {
     "build": {
@@ -138,6 +149,7 @@
       },
       "files": [
         "test/**/*.ts",
+        "skills/**",
         "src/**/*.ts",
         "**/tsconfig.json",
         "../../tsconfig.json",

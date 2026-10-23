@@ -56,7 +56,7 @@ describe('CLI command execution', () => {
 
       const result = await Init.run(['--project-dir', tempDir, '--source-dir', 'force-app'], config);
 
-      expect(result.createdFiles).toHaveLength(6);
+      expect(result.createdFiles).toHaveLength(8);
       expect(result.modifiedFiles).toContain('package.json');
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(true);
       expect(fs.existsSync(path.join(tempDir, 'utam.config.json'))).toBe(true);
@@ -123,7 +123,7 @@ describe('CLI command execution', () => {
     it('should respect --dry-run without creating files on disk', async () => {
       const result = await Init.run(['--project-dir', tempDir, '--dry-run'], config);
 
-      expect(result.createdFiles).toHaveLength(6);
+      expect(result.createdFiles).toHaveLength(8);
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(false);
     });
@@ -201,6 +201,42 @@ describe('CLI command execution', () => {
 
       expect(result.forceignore).toBeUndefined();
       expect(fs.existsSync(path.join(tempDir, '.forceignore'))).toBe(false);
+    });
+
+    it('should add .utam/snapshots/ to .gitignore, and leave it alone with --no-gitignore', async () => {
+      const output: string[] = [];
+      const command = new Init(['--project-dir', tempDir], config);
+      command.log = (message?: string): void => {
+        output.push(message ?? '');
+      };
+      const result = await command.run();
+      expect(result.gitignore?.action).toBe('created');
+      expect(output).toContain('Created .gitignore: added .utam/snapshots/');
+
+      const other = fs.mkdtempSync(path.join(os.tmpdir(), 'simply-utam-cli-test-'));
+      try {
+        const skipped = await Init.run(['--project-dir', other, '--no-gitignore'], config);
+        expect(skipped.gitignore).toBeUndefined();
+        expect(fs.existsSync(path.join(other, '.gitignore'))).toBe(false);
+      } finally {
+        fs.rmSync(other, { recursive: true, force: true });
+      }
+    });
+
+    it('should explain how to add the DOM snapshot hooks to a wdio.conf.mjs it kept', async () => {
+      fs.writeFileSync(path.join(tempDir, 'wdio.conf.mjs'), 'export const config = {};\n', 'utf-8');
+      const output: string[] = [];
+      const command = new Init(['--project-dir', tempDir], config);
+      command.log = (message?: string): void => {
+        output.push(message ?? '');
+      };
+
+      const result = await command.run();
+
+      expect(result.snapshotHooksMissing).toBe(true);
+      expect(output.find((message) => message.includes('does not capture DOM snapshots'))).toMatch(
+        /copy the snapshot API loader and the onPrepare, before, afterStep and onComplete hooks from https:\/\/github\.com\/SimplySF\/simply-utam\/tree\/main\/packages\/simply-utam#dom-snapshots-in-an-existing-project$/,
+      );
     });
   });
 

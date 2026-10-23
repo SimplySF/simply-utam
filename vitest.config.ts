@@ -55,7 +55,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['lcov', 'text'],
-      include: ['src/**/*.ts'],
+      // The DOM snapshot walker stays plain JavaScript, sent to the page as text, so it's scanned as `.js`.
+      include: ['src/**/*.ts', 'src/**/*.js'],
       exclude: ['src/**/*.d.ts'],
     },
   },

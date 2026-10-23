@@ -14,4 +14,18 @@
  * limitations under the License.
  */
 
-export * from './forceignore-manager.js';
+export {
+  DEFAULT_FORCEIGNORE_REGION,
+  FORCEIGNORE_FILE,
+  FORCEIGNORE_HEADER,
+  SIMPLY_UTAM_FORCEIGNORE_RULES,
+  ensureForceignore,
+  mergeForceignore,
+  resolveUtamTestIgnoreRules,
+  type EnsureForceignoreOptions,
+  type ForceignorePlacement,
+  type ForceignoreResult,
+  type ForceignoreRule,
+  type MergeForceignoreOptions,
+  type MergeForceignoreResult,
+} from './forceignore-manager.js';

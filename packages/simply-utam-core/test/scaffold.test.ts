@@ -25,6 +25,7 @@ import {
   generateNamespaceMap,
   generateHelloFeature,
   generateHelloSteps,
+  generateSnapshotSteps,
   injectWireitConfiguration,
   checkMissingDependencies,
   ensurePageObjectExports,
@@ -110,6 +111,28 @@ describe('scaffold service', () => {
       expect(config).toContain("specs: ['sfdx-source/**/test/*.feature'");
       expect(config).toContain("require: ['sfdx-source/**/test/*.steps.mjs'");
       expect(config).toContain("runner: 'local'");
+    });
+
+    it('generateWdioConfig adds the test folders its globs miss to specs and require', () => {
+      const config = generateWdioConfig('force-app', DEFAULT_TEMPLATES_DIR, [
+        path.join('force-app', 'test', 'utam'),
+        path.join('force-app', 'tests', 'utam'),
+        path.join('test', 'utam'),
+      ]);
+      expect(config).toContain(
+        "  specs: [\n    'force-app/**/test/*.feature',\n    'force-app/**/test/**/*.feature',\n" +
+          "    'force-app/tests/utam/**/*.feature',\n    'test/utam/**/*.feature',\n  ],\n",
+      );
+      expect(config).toContain(
+        "    require: [\n      'force-app/**/test/*.steps.mjs',\n      'force-app/**/test/**/*.steps.mjs',\n" +
+          "      'force-app/tests/utam/**/*.steps.mjs',\n      'test/utam/**/*.steps.mjs',\n    ],\n",
+      );
+    });
+
+    it('generateWdioConfig leaves the globs alone when they reach every test folder', () => {
+      const config = generateWdioConfig('force-app', DEFAULT_TEMPLATES_DIR, [path.join('force-app', 'test', 'utam')]);
+      expect(config).toBe(generateWdioConfig('force-app'));
+      expect(generateWdioConfig('.', DEFAULT_TEMPLATES_DIR, [path.join('test', 'utam')])).toBe(generateWdioConfig('.'));
     });
 
     it('generateNamespaceMap should map application pageObjects to shared library', () => {
@@ -225,7 +248,13 @@ describe('scaffold service', () => {
         sourceDir: 'force-app',
       });
 
-      expect(result.createdFiles).toHaveLength(6);
+      // Six scaffold files, the DOM snapshot capture step, and .gitignore.
+      expect(result.createdFiles).toHaveLength(8);
+      expect(result.createdFiles).toContain(
+        path.join('force-app', 'test', 'utam', 'step_definitions', 'dom-snapshot.steps.mjs'),
+      );
+      expect(result.createdFiles).toContain('.gitignore');
+      expect(result.snapshotHooksMissing).toBe(false);
       expect(result.createdFiles).toContain('generator.config.json');
       expect(result.createdFiles).toContain('utam.config.json');
       expect(result.createdFiles).toContain('wdio.conf.mjs');
@@ -260,8 +289,36 @@ describe('scaffold service', () => {
         sourceDir: 'force-app',
       });
 
-      expect(result.createdFiles).toHaveLength(4);
+      // The snapshot capture step is a new file, so it goes into the existing folder.
+      expect(result.createdFiles).toHaveLength(6);
       expect(fs.existsSync(path.join(existingUtamDir, 'features', 'hello.feature'))).toBe(false);
+      // The usage guide ships as an agent skill in @simplysf/simply-utam, not a scaffolded file.
+      expect(fs.existsSync(path.join(existingUtamDir, 'SNAPSHOTS.md'))).toBe(false);
+      expect(fs.existsSync(path.join(existingUtamDir, 'step_definitions', 'dom-snapshot.steps.mjs'))).toBe(true);
+    });
+
+    it('requires the snapshot step from an existing test/utam at the project root', async () => {
+      fs.mkdirSync(path.join(tempDir, 'test', 'utam'), { recursive: true });
+
+      const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+      expect(result.createdFiles).toContain(path.join('test', 'utam', 'step_definitions', 'dom-snapshot.steps.mjs'));
+      const config = fs.readFileSync(path.join(tempDir, 'wdio.conf.mjs'), 'utf-8');
+      expect(config).toContain("'test/utam/**/*.steps.mjs',");
+      expect(config).toContain("'test/utam/**/*.feature',");
+    });
+
+    it('requires the snapshot step from an existing <sourceDir>/tests/utam', async () => {
+      fs.mkdirSync(path.join(tempDir, 'force-app', 'tests', 'utam'), { recursive: true });
+
+      const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+      expect(result.createdFiles).toContain(
+        path.join('force-app', 'tests', 'utam', 'step_definitions', 'dom-snapshot.steps.mjs'),
+      );
+      const config = fs.readFileSync(path.join(tempDir, 'wdio.conf.mjs'), 'utf-8');
+      expect(config).toContain("'force-app/tests/utam/**/*.steps.mjs',");
+      expect(config).toContain("'force-app/tests/utam/**/*.feature',");
     });
 
     it('should skip existing files unless force is true', async () => {
@@ -551,8 +608,9 @@ describe('scaffold service', () => {
         dryRun: true,
       });
 
-      expect(result.createdFiles).toHaveLength(6);
+      expect(result.createdFiles).toHaveLength(8);
       expect(fs.existsSync(path.join(tempDir, 'generator.config.json'))).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'utam.config.json'))).toBe(false);
       expect(fs.existsSync(path.join(tempDir, 'force-app', 'test', 'utam', 'features', 'hello.feature'))).toBe(false);
     });
@@ -833,6 +891,52 @@ describe('scaffold service', () => {
 
       expect(result.forceignore?.action).toBe('skipped');
       expect(result.createdFiles).not.toContain('.forceignore');
+    });
+  });
+
+  describe('DOM snapshots', () => {
+    it('adds capture on failure, pruning, the custom command and a step timeout above UTAM waits to wdio.conf.mjs', () => {
+      const config = generateWdioConfig('force-app');
+      // Loaded with import(), so a @simplysf/simply-utam that predates DOM snapshots still loads the config.
+      expect(config).toContain("const api = await import('@simplysf/simply-utam');");
+      expect(config).not.toContain("from '@simplysf/simply-utam'");
+      // The run id comes from core, so the template and writeDomSnapshot name run folders alike.
+      expect(config).toContain('process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshots.snapshotRunId();');
+      expect(config).toContain('await snapshots.pruneDomSnapshots({ keepRuns: 10 });');
+      expect(config).toContain("browser.addCommand('domSnapshot'");
+      expect(config).toContain("trigger: 'failure'");
+      expect(config).toContain('timeout: (DEBUG ? DEBUG_TIMEOUT : EXPLICIT_TIMEOUT) + STEP_TIMEOUT_MARGIN,');
+      // DEBUG lengthens steps only, so a missing element still fails at the usual wait.
+      expect(config).toContain('waitforTimeout: EXPLICIT_TIMEOUT,');
+      expect(config).toContain('disableWebdriverScreenshotsReporting: false');
+      expect(config).not.toContain('Screenshotes');
+      // The failure capture runs before the screenshot, so it sees the page as the step left it.
+      expect(config.indexOf("trigger: 'failure'")).toBeLessThan(
+        config.indexOf('await browser.takeScreenshot();\n    }\n  },\n  afterScenario'),
+      );
+    });
+
+    it('scaffolds the capture step', () => {
+      const steps = generateSnapshotSteps();
+      expect(steps).toContain("When('I capture the DOM snapshot', async function ()");
+      expect(steps).toContain("When('I capture the DOM snapshot {string}', async function (label)");
+    });
+
+    it('notes when a kept wdio.conf.mjs does not capture DOM snapshots', async () => {
+      fs.writeFileSync(path.join(tempDir, 'wdio.conf.mjs'), 'export const config = {};\n');
+      const missing = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+      expect(missing.skippedFiles).toContain('wdio.conf.mjs');
+      expect(missing.snapshotHooksMissing).toBe(true);
+
+      fs.writeFileSync(path.join(tempDir, 'wdio.conf.mjs'), 'import { captureDomSnapshot } from "x";\n');
+      const present = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+      expect(present.snapshotHooksMissing).toBe(false);
+    });
+
+    it('leaves .gitignore alone with gitignore: false', async () => {
+      const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app', gitignore: false });
+      expect(result.gitignore).toBeUndefined();
+      expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(false);
     });
   });
 });
