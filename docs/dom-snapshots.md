@@ -22,7 +22,9 @@ page objects likely reach an element. It also searches the page objects availabl
 - **Agent-ready.** simply-utam ships an agent skill, `utam-dom-snapshots`, that you install for your
   coding agent. The commands give it answers from the snapshot, so it needs no browser.
 - **Masked by default.** Record values are replaced with their length (`•14`), ids with `•id` and
-  emails with `•email`, while field labels are kept for searching. A stricter mode masks labels too.
+  emails with `•email`, while field labels and button text are kept for searching. Controls'
+  accessible names, which Lightning often builds from the record, are masked unless you opt in with
+  `aria`. A stricter mode masks labels too.
   A failure's error message is kept as the test printed it.
 - **Low footprint.** It ships in `@simplysf/simply-utam`, adds one small dependency (`css-select`),
   and plugs into an existing WebdriverIO + Cucumber setup through three config hooks.

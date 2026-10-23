@@ -21,7 +21,11 @@ export const DOM_SNAPSHOT_VERSION = 1;
 
 /** What took a snapshot: a failed step, a capture step, or the `browser.domSnapshot` command. */
 export type SnapshotTrigger = 'failure' | 'step' | 'manual';
-export type SnapshotMask = 'labels' | 'structure' | 'full';
+/**
+ * How much text a snapshot keeps, from least to most: `structure`, `labels` (the default), `aria`
+ * (adds controls' accessible names), `full`.
+ */
+export type SnapshotMask = 'structure' | 'labels' | 'aria' | 'full';
 /**
  * How a shadow root was recorded. `unreadable` marks a custom element that most likely renders into
  * a closed shadow root, which neither the walker nor UTAM can see into.

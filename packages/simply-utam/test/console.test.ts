@@ -143,9 +143,12 @@ describe('snapshot console snippet', () => {
     expect(out.join('\n')).toContain('npx simply-utam snapshot console import');
   });
 
-  it('warns on mask full', async () => {
+  it('warns on mask full, and not on aria', async () => {
     const { err } = await snippet(['--mask', 'full']);
     expect(err).toEqual(['DOM snapshot: mask "full" keeps record data in the snapshot.']);
+    const aria = await snippet(['--mask', 'aria']);
+    expect(aria.result.snippet).toContain('"mask":"aria"');
+    expect(aria.err).toEqual([]);
   });
 
   it('exits 2 when --copy finds no clipboard tool', async () => {

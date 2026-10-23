@@ -23,6 +23,7 @@ import {
   matchSelector,
   nodeMatchesSelector,
   prepareSelector,
+  recaptureForNames,
   unseenNames,
   type SelectorScope,
 } from './selector.js';
@@ -206,6 +207,8 @@ function findByCss(snapshot: DomSnapshot, options: FindOptions): QueryResult<Fin
   if (found.length === 0) lines.push(...elsewhere(snapshot, css, scope));
   for (const name of maskedAttributes)
     lines.push(`Can't check [${name}=…] values: they're masked in this snapshot, so a masked node may not be listed.`);
+  const recapture = recaptureForNames(snapshot, maskedAttributes);
+  if (recapture) lines.push(recapture);
   lines.push(...notes);
   return {
     lines: limitLines(lines, options.limit ?? DEFAULT_OUTPUT_LIMIT, 'Narrow the selector, or raise --limit.'),

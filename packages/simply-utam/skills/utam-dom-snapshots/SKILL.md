@@ -156,7 +156,9 @@ selector doesn't reach into a shadow root, as in the browser. It searches the do
 where a root page object's selector is looked up. For an element of a page object, add `--within
 <handle>` for the page object's root element: alone it searches that element's light DOM
 (`elements`), and with `--shadow` its shadow root (`shadow.elements`). `%s` in an attribute matches
-any value; a test on a masked value can't be checked, and the output says so. With no match, it lists
+any value; a test on a masked value can't be checked, and the output says so. For `title`,
+`aria-label`, `placeholder` and `alt`, it also says to recapture with `UTAM_SNAPSHOT_MASK=aria`
+(`--mask aria` for the console snippet), which keeps them on controls. With no match, it lists
 where the selector does match, in a scope the search didn't cover: inside another node's shadow
 root, in `--within`'s light DOM when you searched its shadow root, or outside `--within` in the same
 tree. Each comes with the `--within` (and `--shadow`) that finds it. Lightning's synthetic shadow roots are boundaries too, as they are for
@@ -365,12 +367,17 @@ methods and its upgrades.
   `html`, each number is the nth child element, and `s` steps into a shadow root. An address stays
   the same in another snapshot of the same page, as long as the page's structure is the same.
   Commands don't take them; one passed to `--node` is refused with its handle.
-- **Masking** is set by `UTAM_SNAPSHOT_MASK` when the test runs, and the header shows the mode:
-  - `labels` (the default) keeps field labels, button text, tab names, column headers and object
-    names, and replaces other text with its length (`"•14"`), record ids with `•id` and email
-    addresses with `•email`.
+- **Masking** is set by `UTAM_SNAPSHOT_MASK` when the test runs, and the header shows the mode.
+  From least kept to most:
   - `structure` masks all text, and the labels of controls too: the safe mode, when record data
     mustn't leave the org. `find --text` then has nothing to match; search by tag, attribute or class.
+  - `labels` (the default) keeps field labels, button text, tab names, column headers and object
+    names, and replaces other text with its length (`"•14"`), record ids with `•id` and email
+    addresses with `•email`. It also masks accessible names, which Lightning often builds from the
+    record ("Show more actions for Acme"): `title`, `aria-label`, `placeholder` and `alt`, the
+    assistive text inside icon buttons, and headings in modals.
+  - `aria` is `labels` that keeps those accessible names on controls, so a selector like
+    `button[title="Edit"]` can be checked. Recapture with it when a `labels` snapshot can't check one.
   - `full` keeps everything, record values included, so `find --text` can match a value. Use it only
     on a dev org with no real data; capture warns when it's on.
 

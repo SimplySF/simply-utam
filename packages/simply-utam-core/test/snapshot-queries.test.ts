@@ -208,6 +208,11 @@ describe('find --css', () => {
     expect(lines).toContain(
       "Can't check [title=…] values: they're masked in this snapshot, so a masked node may not be listed.",
     );
+    expect(lines).toContain(
+      'Mask labels hides every [title] value. To check them on controls, recapture with UTAM_SNAPSHOT_MASK=aria.',
+    );
+    const aria = snapshotOf([el('span', { title: '•4' })], { mask: 'aria' });
+    expect(findNodes(aria, { css: "span[title='Acme']" }).lines.some((line) => line.includes('recapture'))).toBe(false);
   });
 
   it('drops :focus-within, :focus-visible and :checked whole, and an emptied :not() with them', () => {
@@ -721,6 +726,24 @@ describe('header and UTAM error', () => {
       `    npx simply-utam snapshot find --css 'button[title="Save"]'`,
     );
     expect(hint(`a[title="it's"]`)?.lines[1]).toBe(`    npx simply-utam snapshot find --css 'a[title="it'\\''s"]'`);
+  });
+
+  it('tells the reader to recapture with aria when the selector tests an accessible name the mask hides', () => {
+    const hint = (selector: string, mask: string): string[] | undefined =>
+      utamErrorHint(
+        snapshotOf([el('c-x')], {
+          mask,
+          error: `Can't find element with locator '${selector}' inside its scope element`,
+        }),
+      )?.lines;
+    expect(hint("button[title='Edit']", 'labels')?.at(-1)).toBe(
+      `    ${'Mask labels hides every [title] value. To check them on controls, recapture with UTAM_SNAPSHOT_MASK=aria.'}`,
+    );
+    expect(hint('input[placeholder="Search"][aria-label="Search"]', 'structure')?.at(-1)).toBe(
+      '    Mask structure hides every [placeholder], [aria-label] value. To check them on controls, recapture with UTAM_SNAPSHOT_MASK=aria.',
+    );
+    expect(hint("button[title='Edit']", 'aria')).toHaveLength(3);
+    expect(hint("c-x[data-id='a']", 'labels')).toHaveLength(3);
   });
 
   it("asks for both scopes when it can't tell where UTAM searched, and adds nothing for other errors", () => {

@@ -263,14 +263,17 @@ snapshots can end up in Allure reports. They must not copy record data by defaul
 `UTAM_SNAPSHOT_MASK` (through the injectable `env`) sets the mode, and the mode is recorded in the
 metadata.
 
-| Mode               | Text                                       | Attribute values                                                                                                                                                                         |
-| ------------------ | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `labels` (default) | Kept only for label-like elements (below). | `class`, `name`, `type`, `role`, `slot`, `aria-hidden`, `id`, `data-*` kept, except value attributes (below). `title`, `aria-label`, `placeholder`, `alt` kept only on controls (below). |
-| `structure`        | All masked.                                | As `labels`, but `title`, `aria-label`, `placeholder` and `alt` are always masked.                                                                                                       |
-| `full`             | All kept.                                  | All kept. Opt-in only, for example on a dev org with no real data. Capture logs a warning when it's used.                                                                                |
+The modes, from least kept to most:
 
-**Label-like elements** in `labels` mode: an element whose text is kept when it, or an ancestor in
-the same tree within two levels, matches one of:
+| Mode               | Text                                                                        | Attribute values                                                                                                                                               |
+| ------------------ | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `structure`        | All masked.                                                                 | `class`, `name`, `type`, `role`, `slot`, `aria-hidden`, `id`, `data-*` kept, except value attributes (below). Accessible names (below) masked.                 |
+| `labels` (default) | Kept only for label-like elements (below), except accessible names (below). | As `structure`.                                                                                                                                                |
+| `aria`             | Kept only for label-like elements, accessible names included.               | As `structure`, but `title`, `aria-label`, `placeholder` and `alt` are kept on controls (below). Opt-in, for projects whose control labels don't name records. |
+| `full`             | All kept.                                                                   | All kept. Opt-in only, for example on a dev org with no real data. Capture logs a warning when it's used.                                                      |
+
+**Label-like elements** in `labels` and `aria` modes: an element whose text is kept when it, or an
+ancestor in the same tree within two levels, matches one of:
 
 - `label`, `legend`, `button`, `option`, `th[scope="col"]`, `h2`–`h6`
 - `[role="button"]`, `[role="columnheader"]`, `[role="tab"]`
@@ -302,14 +305,28 @@ the rules above say:
   record. The console's split-view list, for example, labels each row's checkbox
   `aria-label="Select item <record name>"`.
 
-**Controls**, where `title`, `aria-label`, `placeholder` and `alt` are kept in `labels` mode outside
+**Accessible names** are masked in `labels` mode, because Lightning often builds them from the
+record: a record header's button menu is `title="Show more actions for <record>"`, a lookup pill's
+remove button is `aria-label="Remove <record>"`, and an edit modal's title is "Edit <record>". How a
+project's own components name their controls varies, so `labels` masks them all and `aria` opts back
+in. They are:
+
+- `title`, `aria-label`, `placeholder` and `alt`, on every element.
+- Assistive text (`.slds-assistive-text`, `.assistiveText`) on a control or within two levels of
+  one: icon buttons repeat their label in it.
+- `h2`–`h6` inside a dialog (`[role="dialog"]`, `[role="alertdialog"]` or `.slds-modal`, looked for
+  through shadow hosts), whatever classes they carry.
+
+A button's own text ("Save", "Edit") is kept: it's what the user sees, and rarely names a record.
+
+**Controls**, where `title`, `aria-label`, `placeholder` and `alt` are kept in `aria` mode outside
 the always-masked areas: `button`, `input`, `select`, `textarea`, and elements with a role of
 `button`, `tab`, `checkbox` or `combobox`. `a`, `option` and `menuitem` roles are not controls here,
 for the same reasons as above. One known over-mask: a related list card's `article[aria-label]` holds
 the list's name, but an `article` isn't a control, so it's masked.
 
 **Value attributes** hold record data even when it doesn't look like an ID, so they're masked in
-`labels` and `structure`: `value`, `data-value`, `data-text`, `data-label-value`, and `data-*` names
+every mode except `full`: `value`, `data-value`, `data-text`, `data-label-value`, and `data-*` names
 ending in `-value`. The list is data, like the label list.
 
 **In every mode except `full`**:
@@ -329,10 +346,12 @@ ending in `-value`. The list is data, like the label list.
 `meta.error` is copied as-is, even when a failed assertion's message includes record values, because
 the same text is already in the test report (see Open questions for `structure` mode).
 
-`labels` is a heuristic, and it will sometimes keep a record value or mask a label the agent needs.
-`structure` is the safe mode. Each rule above has a fixture test, so a known leak gets a test when
-it's fixed. Because text is masked, `find --text` matches labels, not record values: search by field
-label, or use `full` on a dev org.
+`labels` and `aria` are heuristics, and they will sometimes keep a record value or mask a label the
+agent needs. `structure` is the safe mode. Each rule above has a fixture test, so a known leak gets a
+test when it's fixed. Because text is masked, `find --text` matches labels, not record values:
+search by field label, or use `full` on a dev org. A selector that tests an accessible name, such as
+`[title="Edit"]`, can't be checked against a `labels` or `structure` snapshot: `find --css` and the
+hint for UTAM's not-found error say so, and to recapture with `UTAM_SNAPSHOT_MASK=aria`.
 
 ## 2. Snapshot format
 
@@ -492,8 +511,8 @@ An agent runs steps 1 and 3; only step 2 needs a person.
   `--focus` defaults to `auto` here; `--mask`, `--max-nodes` and `--max-hidden-nodes` are the other
   options.
 - **Masked in the page.** The mask mode is fixed when the snippet is generated (default
-  `UTAM_SNAPSHOT_MASK`, then `labels`), because masking runs in the walker. Record data in `labels`
-  and `structure` modes never reaches the clipboard. It warns on `full`, as capture does.
+  `UTAM_SNAPSHOT_MASK`, then `labels`), because masking runs in the walker. Text that `structure`,
+  `labels` or `aria` masks never reaches the clipboard. It warns on `full`, as capture does.
 - **The JSON goes to the clipboard**, through the console's `copy()`. Where `copy` isn't defined,
   as in an agent's browser tool or a bookmarklet, it downloads `dom-snapshot-<time>.json` through a
   Blob link instead, for `import --file`.
@@ -1118,11 +1137,13 @@ defensible.
    it; mask the My Domain part in `labels` and `structure`; mask it in `structure` only.
    Recommendation: mask it in `labels` and `structure`, keeping the domain suffix; no session needed
    the host.
-2. **Which of the unchecked masking candidates leak record data?** Not yet checked on a real page:
-   modal `h2` titles ("Edit <record>"), lookup pills' `aria-label` ("Remove <record>"), button menus
-   ("Show more actions for <record>"), the activity timeline, toasts, global search, and the Home
-   page's recent records. Recommendation: check the modal, pill and button-menu cases before release,
-   since they're on common record pages, and the rest as they come up, each fix with a fixture test.
+2. **Which of the unchecked masking candidates leak record data?** Modal titles ("Edit <record>"),
+   lookup pills' remove buttons ("Remove <record>") and button menus ("Show more actions for
+   <record>") are masked in `labels` mode, whatever their wording, because it masks every accessible
+   name (see Masking); each has a fixture test. `aria` keeps them. Not yet checked on a real page: the
+   activity timeline, toasts, global search, and the Home page's recent records. Recommendation:
+   check those as they come up, each fix with a fixture test. If `aria` is widely used, mask the
+   record part of known phrases ("Show more actions for •9") there too.
 3. **Should `structure` mode mask `meta.error`?** The error is copied as-is because the same text is
    in the test report, but an assertion's message can hold record values, and `structure` is the
    mode for when nothing may leave. Recommendation: mask quoted values in `structure`, so UTAM's

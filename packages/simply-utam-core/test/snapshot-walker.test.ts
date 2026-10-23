@@ -457,16 +457,18 @@ describe('walker: limits and focus', () => {
       byTag(snapshot, 'label')[0]?.text,
       byTag(snapshot, 'button')[0]?.attrs?.title,
     ];
+    // In aria mode, so the button's title is kept outside a masked area.
+    const walkAria = (body: string, options: WalkOptions = {}): DomSnapshot => walk(body, { mask: 'aria', ...options });
     // An ancestor of the focus element is the masked area: the focus walk runs before the main walk reaches it.
     const underRow = `<table><tbody><tr><td><section class="tabContent oneConsoleTab">${row}</section></td></tr></tbody></table>`;
-    expect(fields(walk(underRow))).toEqual(['•9', '•14']);
-    expect(fields(walk(underRow, { focus: 'auto' }))).toEqual(['•9', '•14']);
-    expect(walk(underRow, { focus: 'auto' }).meta.focus).toBeDefined();
+    expect(fields(walkAria(underRow))).toEqual(['•9', '•14']);
+    expect(fields(walkAria(underRow, { focus: 'auto' }))).toEqual(['•9', '•14']);
+    expect(walkAria(underRow, { focus: 'auto' }).meta.focus).toBeDefined();
     // The focus element is the masked area itself.
     const tabBar = `<ul class="tabBarItems">${row}</ul>`;
-    expect(fields(walk(tabBar, { focus: '.tabBarItems' }))).toEqual(['•9', '•14']);
+    expect(fields(walkAria(tabBar, { focus: '.tabBarItems' }))).toEqual(['•9', '•14']);
     // Outside a masked area the same labels are kept, focused or not.
-    expect(fields(walk(`<main>${row}</main>`, { focus: 'main' }))).toEqual(['Jo Bloggs', 'Edit Jo Bloggs']);
+    expect(fields(walkAria(`<main>${row}</main>`, { focus: 'main' }))).toEqual(['Jo Bloggs', 'Edit Jo Bloggs']);
   });
 
   it('focuses an element inside a shadow root by keeping its host chain', () => {
@@ -499,11 +501,11 @@ describe('walker: masking', () => {
     <span data-value="secret" data-recordid="0015g00000XyZabAAB" data-name-value="x" data-mail="a@b.co">v</span>
     <input value="typed" placeholder="Search Accounts">`;
 
-  const labels = walk(recordPage, {
-    setup: (window) => {
-      window.document.querySelector('lightning-formatted-text')!.attachShadow({ mode: 'open' }).append('Acme Corp');
-    },
-  });
+  const setup: WalkOptions['setup'] = (window) => {
+    window.document.querySelector('lightning-formatted-text')!.attachShadow({ mode: 'open' }).append('Acme Corp');
+  };
+  const labels = walk(recordPage, { setup });
+  const aria = walk(recordPage, { setup, mask: 'aria' });
   const text = (snapshot: DomSnapshot, tag: string, i = 0): string | undefined => byTag(snapshot, tag)[i]?.text;
 
   it('keeps label text and masks record values with their length, in labels mode', () => {
@@ -522,13 +524,76 @@ describe('walker: masking', () => {
     expect(byAttr(labels, 'role', 'menuitem')?.text).toBe('•11');
   });
 
-  it('keeps control labels, masks them elsewhere, and masks everything in tab bars and data rows', () => {
-    expect(byTag(labels, 'button')[0].attrs).toMatchObject({ 'aria-label': 'Edit Phone', title: 'Edit' });
-    expect(byTag(labels, 'article')[0].attrs?.['aria-label']).toBe('•8');
-    expect(text(labels, 'th', 1)).toBe('•9');
-    expect(byAttr(labels, 'type', 'checkbox')?.attrs?.['aria-label']).toBe('•21');
-    const tab = nodes(labels).find((node) => node.tag === 'a' && node.attrs?.title !== undefined);
+  it('masks control labels in labels mode, but keeps the text of the button', () => {
+    expect(byTag(labels, 'button')[0]).toMatchObject({ text: 'Edit', attrs: { 'aria-label': '•10', title: '•4' } });
+  });
+
+  it('keeps control labels in aria mode, masks them elsewhere, and masks everything in tab bars and data rows', () => {
+    expect(byTag(aria, 'button')[0].attrs).toMatchObject({ 'aria-label': 'Edit Phone', title: 'Edit' });
+    expect(byTag(aria, 'article')[0].attrs?.['aria-label']).toBe('•8');
+    expect(text(aria, 'th', 1)).toBe('•9');
+    expect(byAttr(aria, 'type', 'checkbox')?.attrs?.['aria-label']).toBe('•21');
+    const tab = nodes(aria).find((node) => node.tag === 'a' && node.attrs?.title !== undefined);
     expect(tab).toMatchObject({ text: '•9', attrs: { role: 'tab', title: '•9' } });
+    expect(text(aria, 'h1')).toBe('•9');
+    expect(aria.meta.mask).toBe('aria');
+  });
+
+  // Lightning names these after the record: a button menu or icon button in the record header,
+  // the assistive text an icon button repeats its label in, an edit modal's title, and a lookup
+  // pill's remove button.
+  const namedAfterRecord = `
+    <button class="slds-button slds-button_icon" title="Show more actions for Acme Corp">
+      <span class="slds-assistive-text">Show more actions for Acme Corp</span></button>
+    <lightning-button-menu title="Edit Jane Doe"></lightning-button-menu>
+    <div role="button" aria-label="Edit Jane Doe"><span><span class="assistiveText">Edit Jane Doe</span></span></div>
+    <label><span class="slds-assistive-text">required</span>Phone</label>
+    <div class="modal-container"><section role="dialog" class="slds-modal">
+      <h2 class="title slds-modal__title"><span>Edit Acme Corp</span></h2>
+      <h3 class="slds-section__title">Address Information</h3>
+      <button>Save</button></section></div>
+    <h2>Related</h2>
+    <lightning-modal-host></lightning-modal-host>
+    <span class="slds-pill"><button class="slds-pill__remove" aria-label="Remove Acme Corp"></button></span>`;
+  const inLwcDialog = (window: JSDOM['window']): void => {
+    const host = window.document.querySelector('lightning-modal-host')!;
+    shadow(
+      shadow(host, '<div role="dialog"><my-header></my-header></div>').querySelector('my-header')!,
+      '<h2>Edit Jo Bloggs</h2>',
+    );
+  };
+
+  it('masks accessible names that Lightning builds from the record, in labels mode', () => {
+    const snapshot = walk(namedAfterRecord, { setup: inLwcDialog });
+    expect(byTag(snapshot, 'button')[0].attrs?.title).toBe('•31');
+    expect(byTag(snapshot, 'lightning-button-menu')[0].attrs?.title).toBe('•13');
+    expect(byAttr(snapshot, 'role', 'button')?.attrs?.['aria-label']).toBe('•13');
+    expect(
+      nodes(snapshot)
+        .filter((node) => node.attrs?.class?.match(/assistive/i))
+        .map((n) => n.text),
+    ).toEqual(['•31', '•13', 'required']);
+    // The modal's h2 has no text of its own; its span is masked as part of the heading.
+    expect(byTag(snapshot, 'h2').map((node) => node.text)).toEqual(['Related', '•14']);
+    expect(byAttr(snapshot, 'role', 'dialog')?.children?.[0]).toMatchObject({ tag: 'span', text: '•14' });
+    expect(text(snapshot, 'h3')).toBe('•19');
+    expect(text(snapshot, 'button', 1)).toBe('Save');
+    expect(byTag(snapshot, 'button')[2].attrs?.['aria-label']).toBe('•16');
+  });
+
+  it('keeps those accessible names in aria mode', () => {
+    const snapshot = walk(namedAfterRecord, { setup: inLwcDialog, mask: 'aria' });
+    expect(byTag(snapshot, 'button')[0].attrs?.title).toBe('Show more actions for Acme Corp');
+    expect(byAttr(snapshot, 'role', 'button')?.attrs?.['aria-label']).toBe('Edit Jane Doe');
+    expect(
+      nodes(snapshot)
+        .filter((node) => node.attrs?.class?.match(/assistive/i))
+        .map((n) => n.text),
+    ).toEqual(['Show more actions for Acme Corp', 'Edit Jane Doe', 'required']);
+    expect(byAttr(snapshot, 'role', 'dialog')?.children?.[0].text).toBe('Edit Acme Corp');
+    expect(byTag(snapshot, 'h2').map((node) => node.text)).toEqual(['Related', 'Edit Jo Bloggs']);
+    expect(text(snapshot, 'h3')).toBe('Address Information');
+    expect(byTag(snapshot, 'button')[2].attrs?.['aria-label']).toBe('Remove Acme Corp');
   });
 
   it('masks value attributes, and record ids and emails in the values it keeps', () => {
@@ -540,8 +605,9 @@ describe('walker: masking', () => {
     });
     expect(byTag(labels, 'input').find((node) => node.attrs?.placeholder)?.attrs).toEqual({
       value: '•5',
-      placeholder: 'Search Accounts',
+      placeholder: '•15',
     });
+    expect(byTag(aria, 'input').find((node) => node.attrs?.placeholder)?.attrs?.placeholder).toBe('Search Accounts');
   });
 
   it('masks every text and control label in structure mode, and nothing in full mode', () => {

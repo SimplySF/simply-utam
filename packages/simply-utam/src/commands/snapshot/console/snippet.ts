@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 import { Command, Flags } from '@oclif/core';
-import { domSnapshotSnippet } from '@simplysf/simply-utam-core';
+import { domSnapshotSnippet, type SnapshotMask } from '@simplysf/simply-utam-core';
 import { ClipboardUnavailableError, systemClipboard, type Clipboard } from '../../../clipboard.js';
 import { BAD_INPUT } from '../../../snapshot-flags.js';
 
@@ -40,8 +40,8 @@ export default class SnapshotConsoleSnippet extends Command {
   public static override flags = {
     copy: Flags.boolean({ summary: 'Copy the snippet to the clipboard instead of printing it.', default: false }),
     mask: Flags.string({
-      summary: 'Mask mode. Defaults to UTAM_SNAPSHOT_MASK, then labels.',
-      options: ['labels', 'structure', 'full'],
+      summary: 'Mask mode, from least kept to most. Defaults to UTAM_SNAPSHOT_MASK, then labels.',
+      options: ['structure', 'labels', 'aria', 'full'],
     }),
     focus: Flags.string({
       summary: 'Where the walk starts: auto (the active Lightning page or console tab), none, or a CSS selector.',
@@ -57,7 +57,7 @@ export default class SnapshotConsoleSnippet extends Command {
   public async run(): Promise<SnippetResult> {
     const { flags } = await this.parse(SnapshotConsoleSnippet);
     const snippet = domSnapshotSnippet({
-      mask: flags.mask as 'labels' | 'structure' | 'full' | undefined,
+      mask: flags.mask as SnapshotMask | undefined,
       focus: flags.focus,
       maxNodes: flags['max-nodes'],
       maxHiddenNodes: flags['max-hidden-nodes'],

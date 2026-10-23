@@ -89,7 +89,13 @@ function domSnapshotWalker(input) {
   const ALWAYS_MASK_WITHIN = ['.tabBarItems', 'tbody', '[role="row"]:not(thead *)'];
   const CONTROL_TAGS = ['button', 'input', 'select', 'textarea'];
   const CONTROL_ROLES = ['button', 'tab', 'checkbox', 'combobox'];
-  const CONTROL_ONLY_ATTRS = ['title', 'aria-label', 'placeholder', 'alt'];
+  // Accessible names: masked in `labels` mode, kept on controls in `aria` mode. Lightning builds many
+  // from the record ("Show more actions for <record>"), and repeats them in assistive text.
+  const NAME_ATTRS = ['title', 'aria-label', 'placeholder', 'alt'];
+  const ASSISTIVE_TEXT_SELECTORS = ['.slds-assistive-text', '.assistiveText'];
+  // Headings in a dialog are never label-like in `labels` mode: a modal's title names its record.
+  const HEADING_SELECTORS = ['h2', 'h3', 'h4', 'h5', 'h6'];
+  const DIALOG_SELECTORS = ['[role="dialog"]', '[role="alertdialog"]', '.slds-modal'];
   const VALUE_ATTRS = ['value', 'data-value', 'data-text', 'data-label-value'];
   const FOCUS_SELECTORS = ['section.tabContent.oneConsoleTab', '.oneContent.lafPageHost', '[role="main"]', 'main'];
 
@@ -148,13 +154,39 @@ function domSnapshotWalker(input) {
     return matchesAny(el, NEVER_LABEL_SELECTORS);
   }
 
+  // In `labels` mode, text that names a control or a dialog's record: assistive text in a control,
+  // and headings in a dialog.
+  function isAccessibleName(el) {
+    if (mask !== 'labels') return false;
+    if (matchesAny(el, ASSISTIVE_TEXT_SELECTORS)) return isInControl(el);
+    return matchesAny(el, HEADING_SELECTORS) && isInDialog(el);
+  }
+
+  // The element or an ancestor within two levels, in the same tree, is a control.
+  function isInControl(el) {
+    let current = el;
+    for (let level = 0; level < 3 && current; level++) {
+      if (isControl(current)) return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
+  // The element or any ancestor, crossing shadow hosts, is a dialog.
+  function isInDialog(el) {
+    for (let current = el; current; current = current.parentElement || current.parentNode?.host) {
+      if (matchesAny(current, DIALOG_SELECTORS)) return true;
+    }
+    return false;
+  }
+
   // The element or an ancestor within two levels, in the same tree, matches the label list, and
-  // none of those levels is a never-label element.
+  // none of those levels is a never-label element or an accessible name.
   function isLabelLike(el) {
     let current = el;
     let labelLike = false;
     for (let level = 0; level < 3 && current; level++) {
-      if (isNeverLabel(current)) return false;
+      if (isNeverLabel(current) || isAccessibleName(current)) return false;
       if (!labelLike && matchesAny(current, LABEL_SELECTORS)) labelLike = true;
       current = current.parentElement;
     }
@@ -180,8 +212,8 @@ function domSnapshotWalker(input) {
   function maskAttr(name, value, el, inMaskZone) {
     if (mask === 'full') return value;
     if (isValueAttr(name)) return maskValue(value);
-    if (CONTROL_ONLY_ATTRS.includes(name)) {
-      if (mask === 'structure' || inMaskZone || !isControl(el)) return maskValue(value);
+    if (NAME_ATTRS.includes(name)) {
+      if (mask !== 'aria' || inMaskZone || !isControl(el)) return maskValue(value);
     }
     return scrub(value);
   }

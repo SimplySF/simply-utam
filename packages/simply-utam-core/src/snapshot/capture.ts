@@ -79,7 +79,7 @@ export type WalkerOptions = {
 
 function resolveMask(options: WalkerOptions): SnapshotMask {
   const value = options.mask ?? (options.env ?? process.env)[SNAPSHOT_MASK_ENV];
-  return value === 'structure' || value === 'full' ? value : 'labels';
+  return value === 'structure' || value === 'aria' || value === 'full' ? value : 'labels';
 }
 
 /** The default warning sink. */

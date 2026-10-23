@@ -172,6 +172,9 @@ describe('captureDomSnapshot', () => {
     expect(logged).toEqual(['DOM snapshot: mask "full" keeps record data in the snapshot.']);
     await captureDomSnapshot({ browser, env: { UTAM_SNAPSHOT_MASK: 'bogus' }, log: (m) => logged.push(m) });
     expect(browser.scripts[1]).toContain('"mask":"labels"');
+    await captureDomSnapshot({ browser, env: { UTAM_SNAPSHOT_MASK: 'aria' }, log: (m) => logged.push(m) });
+    expect(browser.scripts[2]).toContain('"mask":"aria"');
+    expect(logged).toHaveLength(1);
   });
 
   it('runs through any SnapshotPage, with the backstop timeout', async () => {

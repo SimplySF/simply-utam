@@ -24,7 +24,7 @@ import {
   type PageObjectIndex,
 } from './page-object-index.js';
 import type { QueryResult } from './query-result.js';
-import { scopeMatches, type SelectorScope } from './selector.js';
+import { recaptureForNames, scopeMatches, testedAttributes, type SelectorScope } from './selector.js';
 
 // Lazy and anchored on the text after it, so a selector with a quote in it, like `[title='Save']`, is kept whole.
 const UTAM_NOT_FOUND = /Can't find elements? with locator '(.+?)' inside its scope (element|shadow root)/;
@@ -94,6 +94,8 @@ export function utamErrorHint(snapshot: DomSnapshot, index?: PageObjectIndex): Q
       "    This snapshot doesn't say which element it searched from. Check the selector in both scopes: --within <handle>, with and without --shadow.",
     );
   }
+  const recapture = recaptureForNames(snapshot, testedAttributes(selector));
+  if (recapture) lines.push(`    ${recapture}`);
   return { lines, json: { selector, scope, candidates } };
 }
 

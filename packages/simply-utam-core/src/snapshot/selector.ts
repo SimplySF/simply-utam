@@ -291,6 +291,29 @@ export function querySnapshot(
   return { ...located, matches: located.matches.map(toFound) };
 }
 
+/** Accessible names: `aria` mode keeps them on controls, `labels` and `structure` mask them. */
+const NAME_ATTRIBUTES = ['title', 'aria-label', 'placeholder', 'alt'];
+
+/** The attributes a selector tests the values of, such as `title` in `[title="Edit"]`. */
+export function testedAttributes(selector: string): string[] {
+  return [...new Set([...selector.matchAll(/\[\s*([\w-]+)\s*[~|^$*]?=/g)].map((m) => m[1]))];
+}
+
+/**
+ * For a selector that tests accessible names this snapshot's mask hides, the line telling the reader
+ * to recapture with `aria`; undefined otherwise.
+ *
+ * @param snapshot The snapshot.
+ * @param attributes The attributes the selector tests.
+ */
+export function recaptureForNames(snapshot: DomSnapshot, attributes: string[]): string | undefined {
+  const { mask } = snapshot.meta;
+  if (mask !== 'labels' && mask !== 'structure') return undefined;
+  const names = attributes.filter((name) => NAME_ATTRIBUTES.includes(name));
+  if (names.length === 0) return undefined;
+  return `Mask ${mask} hides every ${names.map((name) => `[${name}]`).join(', ')} value. To check them on controls, recapture with UTAM_SNAPSHOT_MASK=aria.`;
+}
+
 /**
  * {@link querySnapshot}, keeping the located nodes.
  *
@@ -307,8 +330,7 @@ export function matchSelector(
   const test = compiledFor(prepared.selector);
   const candidates = scopeCandidates(snapshot, scope);
   const matches = candidates.filter((node) => test(node));
-  const tested = [...prepared.selector.matchAll(/\[\s*([\w-]+)\s*[~|^$*]?=/g)].map((m) => m[1]);
-  const maskedAttributes = [...new Set(tested)].filter((name) =>
+  const maskedAttributes = testedAttributes(prepared.selector).filter((name) =>
     candidates.some((node) => attribute(node.node.attrs, name)?.startsWith('•')),
   );
   return { matches, notes: [...prepared.notes, ...prunedNotes(snapshot, prepared.selector)], maskedAttributes };
