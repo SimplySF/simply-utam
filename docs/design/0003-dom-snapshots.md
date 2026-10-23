@@ -232,7 +232,10 @@ is what keeps capture fast; the backstop only stops a caller from hanging.
 - `visibility` is inherited but can be overridden: a descendant set back to `visible` still renders.
   So an element hidden only by `visibility` (not `display: none` or `opacity: 0`) that has such a
   descendant, in its light or shadow tree, isn't the top of a hidden subtree; its children are judged
-  on their own.
+  on their own. The search for that descendant keeps each element's answer, so nested
+  `visibility: hidden` levels don't search the same subtree again. It stops at `timeBudgetMs`, and
+  the elements it reads count against `maxNodes` (a count of their own, so they don't crowd out
+  visible nodes); cut short, it treats the element as hidden and adds `'time'` or `'nodes'`.
 - `checkVisibility` also returns false for `display: contents`, which LWC host elements can use and
   whose children still render. An element with computed `display: contents` is never marked hidden
   itself; its children are checked on their own. This covers `slot` elements too, which are

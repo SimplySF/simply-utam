@@ -269,6 +269,53 @@ describe('walker: visibility', () => {
       expect(byTag(snapshot, 'c-gone')[0].hidden).toBe(true);
     }
   });
+
+  // `<c-panel style="visibility: hidden">`, then `depth` nested `c-w`, then a visible `c-action`.
+  const nested = (depth: number): string =>
+    `<c-panel style="visibility: hidden">${'<c-w>'.repeat(depth)}<c-action style="visibility: visible"></c-action>${'</c-w>'.repeat(depth)}</c-panel>`;
+
+  /** Counts the walk's `getComputedStyle` reads of each tag, calling `onRead` with each element read. */
+  function countStyleReads(onRead?: (el: Element) => void): {
+    reads: Map<string, number>;
+    setup: (window: JSDOM['window']) => void;
+  } {
+    const reads = new Map<string, number>();
+    return {
+      reads,
+      setup: (window) => {
+        const original = window.getComputedStyle.bind(window);
+        window.getComputedStyle = (el: Element) => {
+          reads.set(el.localName, (reads.get(el.localName) ?? 0) + 1);
+          onRead?.(el);
+          return original(el);
+        };
+      },
+    };
+  }
+
+  it('reads each element once when searching nested visibility: hidden levels for a visible descendant', () => {
+    const { reads, setup } = countStyleReads();
+    const snapshot = walk(nested(10), { setup });
+    expect(byTag(snapshot, 'c-action')[0].hidden).toBeUndefined();
+    // Once by the search, once for its own visibility, once by the test's checkVisibility; not once per level.
+    expect(reads.get('c-action')).toBe(3);
+  });
+
+  it('keeps an element hidden, noting the node budget, when the search for a visible descendant reaches maxNodes', () => {
+    const snapshot = walk(nested(8), { maxNodes: 5 });
+    expect(byTag(snapshot, 'c-panel')[0].hidden).toBe(true);
+    expect(snapshot.meta.truncated).toEqual({ reasons: ['nodes'] });
+  });
+
+  it('keeps an element hidden, noting the time, when the search for a visible descendant runs out of time', () => {
+    let late = false;
+    const { setup } = countStyleReads((el) => {
+      if (el.localName === 'c-w') late = true;
+    });
+    const snapshot = walk(nested(8), { setup, timeBudgetMs: 100, clock: () => (late ? 1000 : 0) });
+    expect(byTag(snapshot, 'c-panel')[0].hidden).toBe(true);
+    expect(snapshot.meta.truncated).toEqual({ reasons: ['time'] });
+  });
 });
 
 describe('walker: shadow roots', () => {

@@ -103,6 +103,9 @@ function domSnapshotWalker(input) {
   let hiddenFull = false;
   let outOfTime = false;
   const hiddenQueue = [];
+  // Elements read by hasVisibleDescendant, and its answer for each element it has searched.
+  let checkedCount = 0;
+  const visibleDescendant = new WeakMap();
 
   function addReason(reason) {
     if (!reasons.includes(reason)) reasons.push(reason);
@@ -228,18 +231,28 @@ function domSnapshotWalker(input) {
   }
 
   // A light or shadow descendant whose own `visibility` is `visible`, under no `display: none` or
-  // `opacity: 0`.
+  // `opacity: 0`. Each element's answer is kept, so nested `visibility: hidden` levels don't search
+  // the same subtree again. The search stops at the time budget, and the elements it reads count
+  // against maxNodes; cut short, it answers no, so the element stays hidden.
   function hasVisibleDescendant(el) {
-    const children = (node) => [...node.children, ...(node.shadowRoot ? node.shadowRoot.children : [])];
-    const stack = children(el);
-    while (stack.length > 0) {
-      const child = stack.pop();
+    if (visibleDescendant.has(el)) return visibleDescendant.get(el);
+    let found = false;
+    for (const child of [...el.children, ...(el.shadowRoot ? el.shadowRoot.children : [])]) {
+      if (checkTime()) break;
+      if (checkedCount >= maxNodes) {
+        addReason('nodes');
+        break;
+      }
+      checkedCount++;
       const style = getComputedStyle(child);
       if (style.display === 'none' || style.opacity === '0') continue;
-      if (style.visibility === 'visible') return true;
-      stack.push(...children(child));
+      if (style.visibility === 'visible' || hasVisibleDescendant(child)) {
+        found = true;
+        break;
+      }
     }
-    return false;
+    visibleDescendant.set(el, found);
+    return found;
   }
 
   function shouldKeep(el, tag, inHidden) {
