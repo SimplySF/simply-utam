@@ -57,7 +57,28 @@ describe('scaffolded wdio.conf.mjs', () => {
 });
 
 describe('scaffolded wdio.conf.mjs pruning', () => {
-  it("still starts the run when old snapshot runs can't be pruned", async () => {
+  it('sets the run id before the run and prunes after it, so the run just finished counts among those kept', async () => {
+    vi.doMock('wdio-utam-service', () => ({ UtamWdioService: class {} }));
+    vi.doMock('@wdio/allure-reporter', () => ({ default: { addAttachment: vi.fn() } }));
+    const pruneDomSnapshots = vi.fn(async () => []);
+    vi.doMock('@simplysf/simply-utam', () => ({
+      captureDomSnapshot: vi.fn(),
+      pruneDomSnapshots,
+      serializeDomSnapshot,
+      snapshotRunId: vi.fn(() => '20261023T120000'),
+      writeDomSnapshot: vi.fn(),
+    }));
+    vi.stubEnv('UTAM_SNAPSHOT_RUN_ID', undefined);
+
+    const { config } = (await import(WDIO_CONFIG)) as { config: { onPrepare: Hook; onComplete: Hook } };
+    await config.onPrepare();
+    expect(process.env.UTAM_SNAPSHOT_RUN_ID).toBe('20261023T120000');
+    expect(pruneDomSnapshots).not.toHaveBeenCalled();
+    await config.onComplete(0);
+    expect(pruneDomSnapshots).toHaveBeenCalledWith({ keepRuns: 10 });
+  });
+
+  it("still finishes the run when old snapshot runs can't be pruned", async () => {
     vi.doMock('wdio-utam-service', () => ({ UtamWdioService: class {} }));
     vi.doMock('@wdio/allure-reporter', () => ({ default: { addAttachment: vi.fn() } }));
     vi.doMock('@simplysf/simply-utam', () => ({
@@ -72,10 +93,9 @@ describe('scaffolded wdio.conf.mjs pruning', () => {
     vi.stubEnv('UTAM_SNAPSHOT_RUN_ID', undefined);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const { config } = (await import(WDIO_CONFIG)) as { config: { onPrepare: Hook } };
-    await expect(config.onPrepare()).resolves.toBeUndefined();
+    const { config } = (await import(WDIO_CONFIG)) as { config: { onComplete: Hook } };
+    await expect(config.onComplete(0)).resolves.toBeUndefined();
 
-    expect(process.env.UTAM_SNAPSHOT_RUN_ID).toBe('20261023T120000');
     expect(warn).toHaveBeenCalledWith(
       'Old DOM snapshot runs not pruned: EBUSY: resource busy or locked, rmdir .utam/snapshots/20261016T120000',
     );
@@ -102,11 +122,12 @@ describe('scaffolded wdio.conf.mjs with a @simplysf/simply-utam that predates DO
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const { config } = (await import(WDIO_CONFIG)) as {
-      config: { onPrepare: Hook; before: Hook; afterStep: Hook };
+      config: { onPrepare: Hook; before: Hook; afterStep: Hook; onComplete: Hook };
     };
     await config.onPrepare();
     await config.before();
     await config.afterStep({ text: 'I click Save' }, { name: 'S' }, { error: 'boom' });
+    await config.onComplete(0);
 
     expect(warn).toHaveBeenCalledOnce();
     expect(warn).toHaveBeenCalledWith(

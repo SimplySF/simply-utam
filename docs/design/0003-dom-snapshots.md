@@ -410,8 +410,9 @@ fails. Its hook now captures the snapshot first, before anything else changes th
 it with `writeDomSnapshot` and attaches it to the Allure report, each in its own `try`, so neither
 failing can cost the other or the screenshot (`writeDomSnapshot` can throw on a full disk, or a
 `latest.json` another program holds open on Windows). The `onPrepare` hook sets one
-`UTAM_SNAPSHOT_RUN_ID` for every worker and prunes old runs. Core doesn't import Allure; the hook in
-the test project does, and `@wdio/allure-reporter` is already a dependency `init` checks for.
+`UTAM_SNAPSHOT_RUN_ID` for every worker, and the `onComplete` hook prunes old runs once this one is
+written, so the 10 it keeps include it; a failed prune only warns. Core doesn't import Allure; the
+hook in the test project does, and `@wdio/allure-reporter` is already a dependency `init` checks for.
 Cucumber doesn't call `afterStep` for an undefined step, so there is no useless failure snapshot for
 a step with no definition yet.
 
@@ -457,11 +458,11 @@ command (trigger `manual`), so it can be called from the REPL during `browser.de
 **Existing projects.** `init` only writes templates that are missing, so a project that already has
 `wdio.conf.mjs` doesn't get the new hooks. When `init` keeps an existing `wdio.conf.mjs` that doesn't
 capture snapshots, it prints a note pointing to the CLI README section with the snapshot API loader
-and the `onPrepare`, `before` and `afterStep` snippets to copy. The snapshot step is a new file, so
-`init` adds it to existing projects too. Like the step, the config loads `@simplysf/simply-utam` with
-`import()` and checks the snapshot functions are there, so a project that pins a version predating
-DOM snapshots and runs a newer `init` still gets a config that loads: the snapshot hooks skip, and
-`onPrepare` warns once to upgrade.
+and the `onPrepare`, `before`, `afterStep` and `onComplete` snippets to copy. The snapshot step is a
+new file, so `init` adds it to existing projects too. Like the step, the config loads
+`@simplysf/simply-utam` with `import()` and checks the snapshot functions are there, so a project
+that pins a version predating DOM snapshots and runs a newer `init` still gets a config that loads:
+the snapshot hooks skip, and `onPrepare` warns once to upgrade.
 
 ### From the browser console
 
@@ -547,10 +548,10 @@ simply-utam snapshot
 - Snapshots go to `.utam/snapshots/<runId>/<name>.json`. `runId` comes from `UTAM_SNAPSHOT_RUN_ID`
   (through the injectable `env`), which the scaffolded `onPrepare` hook sets once per test run to
   `snapshotRunId()`, the current time as `20261016T120000`, so every worker in a run uses the same
-  folder. In a project without the hook, each process uses the time of its first capture. Run ids
-  must sort in time order, since pruning keeps the ones that sort last; numbers in a custom id
-  compare as numbers (`build-9` before `build-10`). A `runId` option overrides both: console imports
-  pass `MANUAL_RUN_ID` (`manual`), so they collect in `.utam/snapshots/manual/`.
+  folder. In a project without the hook, each process uses the time of its first capture. A custom
+  run id can take any form, since pruning goes by when folders were written, not by their names. A
+  `runId` option overrides both: console imports pass `MANUAL_RUN_ID` (`manual`), so they collect
+  in `.utam/snapshots/manual/`.
 - `<name>` is `<scenario>--<step>` for failures, and `<scenario>--<label or number>` for the step and
   the custom command. A capture with no scenario, such as one from `browser.domSnapshot` or the
   console, uses `manual` in its place. Each part is cut down to letters, digits and `-`, and capped
@@ -564,9 +565,11 @@ simply-utam snapshot
   snapshot it read (see CLI).
 - It adds `meta.pageObjectPackages`: the version of each page-object package the index would read
   (see Page-object index).
-- `pruneDomSnapshots({ keepRuns })` deletes all but the newest `keepRuns` run folders; the scaffold
-  keeps 10. It never deletes `manual/` and doesn't count it as a run, so hand captures neither push
-  out test runs nor get pruned by them.
+- `pruneDomSnapshots({ keepRuns })` deletes all but the newest `keepRuns` run folders, newest by
+  when each was last written (then by name, numbers compared as numbers), so a `build-42` and
+  timestamp ids mix; the scaffold keeps 10, pruning in `onComplete` so the run just finished counts.
+  It never deletes `manual/` and doesn't count it as a run, so hand captures neither push out test
+  runs nor get pruned by them.
 - The file system is an injectable sink, so tests don't touch disk.
 
 Snapshots must not be committed. `init` adds `.utam/snapshots/` to `.gitignore` (creating the file

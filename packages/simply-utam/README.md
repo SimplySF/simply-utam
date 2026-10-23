@@ -65,9 +65,13 @@ export const config = {
       );
       return;
     }
-    // One DOM snapshot folder per test run, shared by every worker; keep the last 10 runs.
+    // One DOM snapshot folder per test run, shared by every worker.
     process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshots.snapshotRunId();
-    // Housekeeping must never cost the run: on Windows a locked old run folder can't be deleted.
+  },
+  onComplete: async function () {
+    if (!snapshots) return;
+    // Keep the last 10 runs, this one included. Housekeeping must never cost the run: on Windows a
+    // locked old run folder can't be deleted.
     try {
       await snapshots.pruneDomSnapshots({ keepRuns: 10 });
     } catch (pruneError) {

@@ -298,6 +298,7 @@ describe('writeDomSnapshot', () => {
         files.set(file, data);
       },
       readdir: async () => [],
+      stat: async () => ({ mtimeMs: 0 }),
       rm: async (target) => {
         calls.push(`rm ${target}`);
         files.delete(target);
@@ -416,11 +417,33 @@ describe('pruneDomSnapshots', () => {
     expect(fs.readdirSync(snapshots).sort()).toEqual(['manual', 'run-9']);
   });
 
-  it('compares numbers in custom run ids as numbers, so build-10 is newer than build-9', async () => {
+  it('keeps the runs written last, whatever their ids, so build ids and timestamps mix', async () => {
     const dir = tempDir();
     const snapshots = path.join(dir, '.utam', 'snapshots');
-    for (const run of ['build-10', 'build-8', 'build-9', 'build-11'])
+    // CI runs named by build number, older than the two local runs named by time.
+    const written: Array<[string, string]> = [
+      ['build-41', '2026-10-01T09:00:00Z'],
+      ['build-42', '2026-10-02T09:00:00Z'],
+      ['20261016T090000', '2026-10-16T09:00:00Z'],
+      ['20261017T090000', '2026-10-17T09:00:00Z'],
+    ];
+    for (const [run, time] of written) {
       fs.mkdirSync(path.join(snapshots, run), { recursive: true });
+      fs.utimesSync(path.join(snapshots, run), new Date(time), new Date(time));
+    }
+    const removed = await pruneDomSnapshots({ projectDir: dir, keepRuns: 2 });
+    expect(removed).toEqual([path.join('.utam', 'snapshots', 'build-41'), path.join('.utam', 'snapshots', 'build-42')]);
+    expect(fs.readdirSync(snapshots).sort()).toEqual(['20261016T090000', '20261017T090000']);
+  });
+
+  it('orders runs written at the same moment by name, numbers as numbers, so build-10 is newer than build-9', async () => {
+    const dir = tempDir();
+    const snapshots = path.join(dir, '.utam', 'snapshots');
+    const time = new Date('2026-10-16T09:00:00Z');
+    for (const run of ['build-10', 'build-8', 'build-9', 'build-11']) {
+      fs.mkdirSync(path.join(snapshots, run), { recursive: true });
+      fs.utimesSync(path.join(snapshots, run), time, time);
+    }
     const removed = await pruneDomSnapshots({ projectDir: dir, keepRuns: 2 });
     expect(removed).toEqual([path.join('.utam', 'snapshots', 'build-8'), path.join('.utam', 'snapshots', 'build-9')]);
     expect(fs.readdirSync(snapshots).sort()).toEqual(['build-10', 'build-11']);

@@ -34,6 +34,7 @@ export type SnapshotFileSystem = {
   mkdir(dir: string, options: { recursive: true }): Promise<unknown>;
   writeFile(file: string, data: string, options?: { flag?: string }): Promise<void>;
   readdir(dir: string, options: { withFileTypes: true }): Promise<Array<{ name: string; isDirectory(): boolean }>>;
+  stat(target: string): Promise<{ mtimeMs: number }>;
   rm(target: string, options: { recursive: true; force: true }): Promise<void>;
   rename(from: string, to: string): Promise<void>;
 };
@@ -72,8 +73,7 @@ function cleanPart(value: string): string {
 }
 
 /**
- * A run id for `UTAM_SNAPSHOT_RUN_ID`: the time as `20261016T120000`, which sorts in time order, so
- * run folders do too.
+ * A run id for `UTAM_SNAPSHOT_RUN_ID`: the time as `20261016T120000`.
  *
  * @param date The time; now when omitted.
  */
@@ -178,10 +178,11 @@ export async function writeDomSnapshot(snapshot: DomSnapshot, options: WriteDomS
 }
 
 /**
- * Delete all but the newest `keepRuns` run folders under `.utam/snapshots/`. Run folders are
- * named by run id, so run ids must sort in time order: a timestamp does, and numbers in a custom id
- * compare as numbers (`build-9` before `build-10`). The newest sort last. `latest.json` is kept, and
- * so is the `manual` folder of captures made by hand, which isn't counted as a run.
+ * Delete all but the newest `keepRuns` run folders under `.utam/snapshots/`. A folder's age is when
+ * it was last written to, so run ids of any form mix: a custom `build-42` and a timestamp compare by
+ * when their snapshots were written. Folders written at the same moment compare by name, numbers in
+ * it as numbers (`build-9` before `build-10`). `latest.json` is kept, and so is the `manual` folder
+ * of captures made by hand, which isn't counted as a run.
  *
  * @param options The project, how many runs to keep, and the file system.
  * @returns The run folders deleted, relative to the project folder.
@@ -197,10 +198,24 @@ export async function pruneDomSnapshots(options: PruneDomSnapshotsOptions = {}):
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
-  const runs = entries
+  const named = entries
     .filter((entry) => entry.isDirectory() && entry.name !== MANUAL_RUN_ID)
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    .map((entry) => entry.name);
+  const dated = await Promise.all(
+    named.map(async (name) => {
+      try {
+        return { name, mtimeMs: (await fs.stat(path.join(projectDir, SNAPSHOTS_DIR, name))).mtimeMs };
+      } catch (error) {
+        // Already gone, perhaps pruned by another run.
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+        throw error;
+      }
+    }),
+  );
+  const runs = dated
+    .filter((run) => run !== undefined)
+    .sort((a, b) => a.mtimeMs - b.mtimeMs || a.name.localeCompare(b.name, 'en', { numeric: true }))
+    .map((run) => run.name);
   const removed = runs.slice(0, Math.max(0, runs.length - keepRuns)).map((run) => path.join(SNAPSHOTS_DIR, run));
   await Promise.all(removed.map((dir) => fs.rm(path.join(projectDir, dir), { recursive: true, force: true })));
   return removed;

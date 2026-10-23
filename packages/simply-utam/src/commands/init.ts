@@ -145,7 +145,7 @@ export default class Init extends Command {
     if (result.snapshotHooksMissing) {
       this.log(
         '\nwdio.conf.mjs already exists, so it was kept, and it does not capture DOM snapshots on failure. ' +
-          `To add that, copy the snapshot API loader and the onPrepare, before and afterStep hooks from ${SNAPSHOT_HOOKS_DOCS}`,
+          `To add that, copy the snapshot API loader and the onPrepare, before, afterStep and onComplete hooks from ${SNAPSHOT_HOOKS_DOCS}`,
       );
     }
 
