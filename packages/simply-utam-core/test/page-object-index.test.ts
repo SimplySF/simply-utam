@@ -557,6 +557,29 @@ describe('buildPageObjectIndex: page-object packages', () => {
     );
   });
 
+  it('resolves import paths through an exports map that maps them only for import, as test code imports them', () => {
+    const ESM = 'node_modules/@esm/page-objects';
+    const esm = buildPageObjectIndex({
+      projectDir: project({
+        ...projectFiles,
+        'generator.config.json': { namespaces: { c: 'my-app/pageObjects/', esm: '@esm/page-objects/pageObjects/' } },
+        [`${ESM}/package.json`]: {
+          name: '@esm/page-objects',
+          version: '1.0.0',
+          exports: { './pageObjects/*': { import: './build/*.js' } },
+        },
+        [`${ESM}/src/__utam__/banner.utam.json`]: { root: true, selector: { css: 'esm-banner' } },
+        [`${ESM}/build/banner.js`]: '',
+        // Mapped, but never compiled: it has no file to import.
+        [`${ESM}/src/__utam__/draft.utam.json`]: { root: true, selector: { css: 'esm-draft' } },
+      }),
+    });
+    expect(esm.entries.get('@esm/page-objects/pageObjects/banner')?.importPath).toBe(
+      '@esm/page-objects/pageObjects/banner',
+    );
+    expect(esm.entries.get('@esm/page-objects/src/__utam__/draft.utam.json')?.importPath).toBeUndefined();
+  });
+
   it('indexes a package shipping one source twice once, and gives a same-named source no import path', () => {
     expect(bySource('shared-pageobjects').sort()).toEqual([
       'shared-pageobjects/pageObjects/card',

@@ -72,7 +72,7 @@ export function readNamespaceConfig(projectDir: string): NamespaceConfig {
 }
 
 /** The package an import prefix names: its first path segment, or its first two for a scoped package. */
-function packageOf(prefix: string): string | undefined {
+export function packageOf(prefix: string): string | undefined {
   const [first, second] = prefix.split('/');
   if (!first || first.startsWith('.')) return undefined;
   if (!first.startsWith('@')) return first;
@@ -80,7 +80,7 @@ function packageOf(prefix: string): string | undefined {
 }
 
 /** A package's folder, found the way `require` searches `node_modules` from the project. */
-function packageDir(projectDir: string, name: string): string | undefined {
+export function packageDir(projectDir: string, name: string): string | undefined {
   const require = createRequire(path.join(projectDir, 'package.json'));
   for (const dir of require.resolve.paths(name) ?? []) {
     const candidate = path.join(dir, name);

@@ -643,11 +643,13 @@ A package is read in one of two layouts:
 are each prefix that names the package plus the file's name without `.utam.json`, and the namespace
 map applied to the project's import path for that name. (A namespace map entry is a string prefix,
 not a folder, so the second form is the one a map-found package usually needs.) With a manifest, the
-candidate is the path the manifest rule gives. The index keeps the first candidate `require.resolve`
-finds from the project, which respects the package's `exports` map and confirms the compiled file
-ships. A package that exports its page objects to `import` only resolves nothing, so its entries get
-no import paths. `salesforce-pageobjects` 12.0.0 exports `./*` to `dist/*.cjs` for `require`, and
-checking all of its entries takes about 60 ms.
+candidate is the path the manifest rule gives. The index keeps the first candidate that resolves
+from the project: `require.resolve` finds it, which respects the package's `exports` map and
+confirms the compiled file ships, or, since test code is ESM, the package's `exports` map maps it
+under the `import`, `node` or `default` condition to a file that exists. That second check is done
+by hand, because Node 22's `import.meta.resolve` takes no parent without a flag; it covers a package
+that exports its page objects to `import` only. `salesforce-pageobjects` 12.0.0 exports `./*` to
+`dist/*.cjs` for `require`, and checking all of its entries takes about 60 ms.
 
 A file whose candidate doesn't resolve is still indexed, without an `importPath`: its tags and typed
 elements still help `lookup` and `path`, and the output says it has no known import path. A source

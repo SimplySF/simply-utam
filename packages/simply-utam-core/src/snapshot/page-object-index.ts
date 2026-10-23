@@ -19,6 +19,8 @@ import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import {
   discoverPageObjectPackages,
+  packageDir,
+  packageOf,
   readNamespaceConfig,
   type NamespaceConfig,
   type PageObjectPackage,
@@ -531,7 +533,14 @@ function addEntry(index: PageObjectIndex, entry: PageObjectEntry): void {
   if (entry.importPath) index.aliases.set(entry.importPath, entry.name);
 }
 
-/** Whether test code in the project can import `specifier`: it resolves through the package's `exports`. */
+/** The conditions an `import` from test code matches in an `exports` map; `default` always matches. */
+const IMPORT_CONDITIONS = new Set(['import', 'node', 'default']);
+
+/**
+ * Whether test code in the project can import `specifier`: `require` resolves it, or, for a package
+ * that maps it only under conditions `require` doesn't match (`import`), its `exports` map does and
+ * the file it maps to exists.
+ */
 function importable(projectDir: string): (specifier: string) => boolean {
   const require = createRequire(path.join(projectDir, 'package.json'));
   return (specifier) => {
@@ -539,19 +548,54 @@ function importable(projectDir: string): (specifier: string) => boolean {
       require.resolve(specifier);
       return true;
     } catch {
-      return false;
+      return importsThroughExports(projectDir, specifier);
     }
   };
 }
 
+/** Whether `specifier`'s package maps it, under the import conditions, to a file that exists. */
+function importsThroughExports(projectDir: string, specifier: string): boolean {
+  const name = packageOf(specifier);
+  if (!name || specifier === name) return false;
+  const dir = packageDir(projectDir, name);
+  if (!dir) return false;
+  const exportsField = readJson<{ exports?: unknown }>(path.join(dir, 'package.json'))?.exports;
+  const target = exportsTarget(exportsField, `.${specifier.slice(name.length)}`);
+  return target?.startsWith('./') === true && fs.existsSync(path.join(dir, target));
+}
+
 /**
- * The file a subpath maps to through `exports`, matched as Node matches it: the exact key, else the
- * `*` pattern with the longest prefix. Only string targets count; conditions aren't followed.
+ * The string an `exports` target picks under the import conditions: a string as it is, the first
+ * match in a fallback array, or the first key of a conditions object that's one of the conditions,
+ * nested conditions followed.
+ */
+function conditionalTarget(target: unknown): string | undefined {
+  if (typeof target === 'string') return target;
+  if (Array.isArray(target)) {
+    for (const item of target) {
+      const resolved = conditionalTarget(item);
+      if (resolved !== undefined) return resolved;
+    }
+    return undefined;
+  }
+  if (!target || typeof target !== 'object') return undefined;
+  for (const [condition, value] of Object.entries(target)) {
+    if (!IMPORT_CONDITIONS.has(condition)) continue;
+    const resolved = conditionalTarget(value);
+    if (resolved !== undefined) return resolved;
+  }
+  return undefined;
+}
+
+/**
+ * The file a subpath maps to through `exports`, matched as Node matches it for an `import`: the exact
+ * key, else the `*` pattern with the longest prefix, its target picked under the `import`, `node` and
+ * `default` conditions.
  */
 function exportsTarget(exportsField: unknown, subpath: string): string | undefined {
   if (!exportsField || typeof exportsField !== 'object' || Array.isArray(exportsField)) return undefined;
   const map = exportsField as Record<string, unknown>;
-  if (subpath in map) return typeof map[subpath] === 'string' ? map[subpath] : undefined;
+  if (subpath in map) return conditionalTarget(map[subpath]);
   const pattern = Object.keys(map)
     .filter((key) => {
       const [before, after, extra] = key.split('*');
@@ -564,8 +608,8 @@ function exportsTarget(exportsField: unknown, subpath: string): string | undefin
       );
     })
     .sort((a, b) => b.indexOf('*') - a.indexOf('*'))[0];
-  const target = pattern === undefined ? undefined : map[pattern];
-  if (typeof target !== 'string') return undefined;
+  const target = pattern === undefined ? undefined : conditionalTarget(map[pattern]);
+  if (target === undefined) return undefined;
   const [before, after] = pattern.split('*');
   return target.replaceAll('*', subpath.slice(before.length, subpath.length - after.length));
 }
