@@ -27,7 +27,7 @@ page objects likely reach an element. It also searches the page objects availabl
   `aria`. A stricter mode masks labels too.
   A failure's error message is kept as the test printed it.
 - **Low footprint.** It ships in `@simplysf/simply-utam`, adds one small dependency (`css-select`),
-  and plugs into an existing WebdriverIO + Cucumber setup through three config hooks.
+  and plugs into an existing WebdriverIO + Cucumber setup through four config hooks.
 
 ## Workflows
 

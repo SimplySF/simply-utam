@@ -376,8 +376,9 @@ methods and its upgrades.
     addresses with `•email`. It also masks accessible names, which Lightning often builds from the
     record ("Show more actions for Acme"): `title`, `aria-label`, `placeholder` and `alt`, the
     assistive text inside icon buttons, and headings in modals.
-  - `aria` is `labels` that keeps those accessible names on controls, so a selector like
-    `button[title="Edit"]` can be checked. Recapture with it when a `labels` snapshot can't check one.
+  - `aria` is `labels` that keeps those accessible names: the attributes on controls, the assistive
+    text and the modal headings. Then a selector like `button[title="Edit"]` can be checked.
+    Recapture with it when a `labels` snapshot can't check one.
   - `full` keeps everything, record values included, so `find --text` can match a value. Use it only
     on a dev org with no real data; capture warns when it's on.
 
