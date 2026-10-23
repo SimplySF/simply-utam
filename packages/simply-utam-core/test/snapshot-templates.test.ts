@@ -82,6 +82,42 @@ describe('scaffolded wdio.conf.mjs pruning', () => {
   });
 });
 
+describe('scaffolded wdio.conf.mjs with a @simplysf/simply-utam that predates DOM snapshots', () => {
+  it('loads, skips the snapshot hooks, and warns once to upgrade', async () => {
+    vi.doMock('wdio-utam-service', () => ({ UtamWdioService: class {} }));
+    vi.doMock('@wdio/allure-reporter', () => ({ default: { addAttachment: vi.fn() } }));
+    // A real module namespace reads a missing export as undefined; vitest's mock throws unless it's listed.
+    vi.doMock('@simplysf/simply-utam', () => ({
+      goToApplication: vi.fn(),
+      captureDomSnapshot: undefined,
+      pruneDomSnapshots: undefined,
+      serializeDomSnapshot: undefined,
+      snapshotRunId: undefined,
+      writeDomSnapshot: undefined,
+    }));
+    const takeScreenshot = vi.fn(async () => '');
+    const addCommand = vi.fn();
+    vi.stubGlobal('browser', { takeScreenshot, addCommand });
+    vi.stubEnv('UTAM_SNAPSHOT_RUN_ID', undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { config } = (await import(WDIO_CONFIG)) as {
+      config: { onPrepare: Hook; before: Hook; afterStep: Hook };
+    };
+    await config.onPrepare();
+    await config.before();
+    await config.afterStep({ text: 'I click Save' }, { name: 'S' }, { error: 'boom' });
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      'The installed @simplysf/simply-utam has no DOM snapshots, so none are captured. Upgrade it in package.json to capture them.',
+    );
+    expect(process.env.UTAM_SNAPSHOT_RUN_ID).toBeUndefined();
+    expect(addCommand).not.toHaveBeenCalled();
+    expect(takeScreenshot).toHaveBeenCalledOnce();
+  });
+});
+
 describe('scaffolded wdio.conf.mjs Allure attachment', () => {
   it("still saves the DOM snapshot when it can't be attached to the Allure report", async () => {
     vi.doMock('wdio-utam-service', () => ({ UtamWdioService: class {} }));

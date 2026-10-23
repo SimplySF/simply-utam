@@ -39,37 +39,53 @@ hooks you already have (`afterStep` most likely also takes a screenshot):
 
 ```js
 import allureReporter from '@wdio/allure-reporter';
-import {
-  captureDomSnapshot,
-  pruneDomSnapshots,
-  serializeDomSnapshot,
-  snapshotRunId,
-  writeDomSnapshot,
-} from '@simplysf/simply-utam';
+
+// Imported here rather than with a static import, so a project whose @simplysf/simply-utam predates
+// DOM snapshots still loads this config: the snapshot hooks then skip, and onPrepare says to upgrade.
+const snapshots = await loadSnapshotApi();
+
+async function loadSnapshotApi() {
+  const api = await import('@simplysf/simply-utam');
+  const names = [
+    'captureDomSnapshot',
+    'pruneDomSnapshots',
+    'serializeDomSnapshot',
+    'snapshotRunId',
+    'writeDomSnapshot',
+  ];
+  return names.every((name) => typeof api[name] === 'function') ? api : undefined;
+}
 
 export const config = {
   // …
   onPrepare: async function () {
+    if (!snapshots) {
+      console.warn(
+        'The installed @simplysf/simply-utam has no DOM snapshots, so none are captured. Upgrade it in package.json to capture them.',
+      );
+      return;
+    }
     // One DOM snapshot folder per test run, shared by every worker; keep the last 10 runs.
-    process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshotRunId();
+    process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshots.snapshotRunId();
     // Housekeeping must never cost the run: on Windows a locked old run folder can't be deleted.
     try {
-      await pruneDomSnapshots({ keepRuns: 10 });
+      await snapshots.pruneDomSnapshots({ keepRuns: 10 });
     } catch (pruneError) {
       console.warn(`Old DOM snapshot runs not pruned: ${pruneError?.message ?? pruneError}`);
     }
   },
   before: async function () {
+    if (!snapshots) return;
     // browser.domSnapshot('label') captures the page from the REPL during browser.debug().
     browser.addCommand('domSnapshot', async (label) => {
-      const snapshot = await captureDomSnapshot({ trigger: 'manual', label });
-      return snapshot ? writeDomSnapshot(snapshot) : undefined;
+      const snapshot = await snapshots.captureDomSnapshot({ trigger: 'manual', label });
+      return snapshot ? snapshots.writeDomSnapshot(snapshot) : undefined;
     });
   },
   afterStep: async function (step, scenario, { error }) {
     if (error) {
       // Capture the DOM snapshot first, before anything else changes the page.
-      const snapshot = await captureDomSnapshot({
+      const snapshot = await snapshots?.captureDomSnapshot({
         trigger: 'failure',
         scenario: scenario.name,
         step: step.text,
@@ -79,12 +95,16 @@ export const config = {
         // Saving and attaching each get their own try: neither failing may cost the other, or the
         // screenshot below.
         try {
-          console.log(`DOM snapshot written to ${await writeDomSnapshot(snapshot)}`);
+          console.log(`DOM snapshot written to ${await snapshots.writeDomSnapshot(snapshot)}`);
         } catch (writeError) {
           console.warn(`DOM snapshot not saved: ${writeError?.message ?? writeError}`);
         }
         try {
-          allureReporter.addAttachment('dom-snapshot.json', serializeDomSnapshot(snapshot), 'application/json');
+          allureReporter.addAttachment(
+            'dom-snapshot.json',
+            snapshots.serializeDomSnapshot(snapshot),
+            'application/json',
+          );
         } catch (attachError) {
           console.warn(`DOM snapshot not attached to the Allure report: ${attachError?.message ?? attachError}`);
         }

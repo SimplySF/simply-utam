@@ -448,9 +448,12 @@ command (trigger `manual`), so it can be called from the REPL during `browser.de
 
 **Existing projects.** `init` only writes templates that are missing, so a project that already has
 `wdio.conf.mjs` doesn't get the new hooks. When `init` keeps an existing `wdio.conf.mjs` that doesn't
-capture snapshots, it prints a note pointing to the CLI README section with the `onPrepare`, `before`
-and `afterStep` snippets to copy. The snapshot step is a new file, so `init` adds it to existing
-projects too.
+capture snapshots, it prints a note pointing to the CLI README section with the snapshot API loader
+and the `onPrepare`, `before` and `afterStep` snippets to copy. The snapshot step is a new file, so
+`init` adds it to existing projects too. Like the step, the config loads `@simplysf/simply-utam` with
+`import()` and checks the snapshot functions are there, so a project that pins a version predating
+DOM snapshots and runs a newer `init` still gets a config that loads: the snapshot hooks skip, and
+`onPrepare` warns once to upgrade.
 
 ### From the browser console
 

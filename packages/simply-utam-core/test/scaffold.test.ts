@@ -851,12 +851,12 @@ describe('scaffold service', () => {
   describe('DOM snapshots', () => {
     it('adds capture on failure, pruning, the custom command and a step timeout above UTAM waits to wdio.conf.mjs', () => {
       const config = generateWdioConfig('force-app');
-      expect(config).toContain(
-        "import {\n  captureDomSnapshot,\n  pruneDomSnapshots,\n  serializeDomSnapshot,\n  snapshotRunId,\n  writeDomSnapshot,\n} from '@simplysf/simply-utam';",
-      );
+      // Loaded with import(), so a @simplysf/simply-utam that predates DOM snapshots still loads the config.
+      expect(config).toContain("const api = await import('@simplysf/simply-utam');");
+      expect(config).not.toContain("from '@simplysf/simply-utam'");
       // The run id comes from core, so the template and writeDomSnapshot name run folders alike.
-      expect(config).toContain('process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshotRunId();');
-      expect(config).toContain('await pruneDomSnapshots({ keepRuns: 10 });');
+      expect(config).toContain('process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshots.snapshotRunId();');
+      expect(config).toContain('await snapshots.pruneDomSnapshots({ keepRuns: 10 });');
       expect(config).toContain("browser.addCommand('domSnapshot'");
       expect(config).toContain("trigger: 'failure'");
       expect(config).toContain('timeout: (DEBUG ? DEBUG_TIMEOUT : EXPLICIT_TIMEOUT) + STEP_TIMEOUT_MARGIN,');

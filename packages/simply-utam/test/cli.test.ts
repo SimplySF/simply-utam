@@ -235,7 +235,7 @@ describe('CLI command execution', () => {
 
       expect(result.snapshotHooksMissing).toBe(true);
       expect(output.find((message) => message.includes('does not capture DOM snapshots'))).toMatch(
-        /copy the onPrepare, before and afterStep hooks from https:\/\/github\.com\/SimplySF\/simply-utam\/tree\/main\/packages\/simply-utam#dom-snapshots-in-an-existing-project$/,
+        /copy the snapshot API loader and the onPrepare, before and afterStep hooks from https:\/\/github\.com\/SimplySF\/simply-utam\/tree\/main\/packages\/simply-utam#dom-snapshots-in-an-existing-project$/,
       );
     });
   });
