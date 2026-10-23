@@ -24,7 +24,7 @@ import {
   type DomSnapshotMeta,
 } from '@simplysf/simply-utam-core';
 import { ClipboardUnavailableError, systemClipboard, type Clipboard } from '../../../clipboard.js';
-import { BAD_INPUT, loadSnapshot, projectDirFlag } from '../../../snapshot-flags.js';
+import { BAD_INPUT, headerFor, projectDirFlag } from '../../../snapshot-flags.js';
 
 export type ImportResult = { file: string; meta: DomSnapshotMeta };
 
@@ -104,7 +104,8 @@ export default class SnapshotConsoleImport extends Command {
 
     const projectDir = flags['project-dir'];
     const file = await writeDomSnapshot(snapshot, { projectDir, runId: MANUAL_RUN_ID });
-    const { header } = await loadSnapshot(projectDir, path.join(projectDir, file));
+    // From the snapshot in memory: the header doesn't show the package versions the file gains.
+    const header = headerFor(projectDir, path.join(projectDir, file), snapshot);
     this.log(`DOM snapshot saved to ${file}`);
     for (const line of header) this.log(line);
     return { file, meta: snapshot.meta };

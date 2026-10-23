@@ -259,4 +259,33 @@ describe('snapshot find, path, tree and node', () => {
     await expect(run(SnapshotTree, ['--node', 'n99'])).rejects.toMatchObject({ oclif: { exit: 2 } });
     await expect(run(SnapshotPath, ['--node', 'n99'])).rejects.toMatchObject({ oclif: { exit: 2 } });
   });
+
+  it('reads the snapshot before indexing page objects, so path with no snapshot reports only that', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'simply-utam-snapshot-cli-'));
+    writeFiles(dir, {
+      'package.json': { name: 'my-app' },
+      'utam.config.json': { pageObjectsRootDir: './', pageObjectsFileMask: ['**/__utam__/**/*.utam.json'] },
+      'test/__utam__/broken.utam.json': '{',
+    });
+    const err: string[] = [];
+    const pathIn = async (): Promise<unknown> => {
+      const command = new SnapshotPath(['--node', 'n4', '--project-dir', dir], config);
+      command.log = (): void => {};
+      command.warn = (input: string | Error): string | Error => {
+        err.push(String(input));
+        return input;
+      };
+      return command.run();
+    };
+    try {
+      await expect(pathIn()).rejects.toMatchObject({ oclif: { exit: 2 } });
+      expect(err).toEqual([]);
+      // With a snapshot, the index is built and its warnings printed, once.
+      writeFiles(dir, { '.utam/snapshots/latest.json': failureSnapshot });
+      await pathIn();
+      expect(err).toEqual([`Skipped ${path.join('test', '__utam__', 'broken.utam.json')}: not valid JSON.`]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

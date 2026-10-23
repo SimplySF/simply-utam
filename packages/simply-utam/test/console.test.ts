@@ -19,7 +19,8 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { Config } from '@oclif/core';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { readDomSnapshot } from '@simplysf/simply-utam-core';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   ClipboardUnavailableError,
   runCommand,
@@ -29,6 +30,12 @@ import {
 } from '../src/clipboard.js';
 import SnapshotConsoleImport, { type ImportResult } from '../src/commands/snapshot/console/import.js';
 import SnapshotConsoleSnippet, { type SnippetResult } from '../src/commands/snapshot/console/snippet.js';
+
+// readDomSnapshot is watched, so a test can tell the import command doesn't read back the file it wrote.
+vi.mock('@simplysf/simply-utam-core', async (importOriginal) => {
+  const core: Record<string, unknown> = await importOriginal();
+  return { ...core, readDomSnapshot: vi.fn(core.readDomSnapshot as (file: string) => Promise<unknown>) };
+});
 
 const snapshotJson = JSON.stringify({
   format: 'simply-utam-dom-snapshot',
@@ -153,7 +160,13 @@ describe('snapshot console import', () => {
   const manual = path.join('.utam', 'snapshots', 'manual');
 
   it('saves the clipboard to the manual folder and latest.json, and prints the header', async () => {
+    vi.mocked(readDomSnapshot).mockClear();
     const { result, out } = await importSnapshot(['--label', 'account list']);
+    // The header comes from the snapshot in memory, not the file read back.
+    expect(readDomSnapshot).not.toHaveBeenCalled();
+    expect(out[1]).toBe(
+      `Snapshot ${path.relative(process.cwd(), path.join(projectDir, result.file))}: manual "account list", 2026-10-19T12:00:00.000Z, https://acme.lightning.force.com/lightning/o/Account/list, mask labels`,
+    );
     expect(result.file).toBe(path.join(manual, 'manual--account-list.json'));
     expect(result.meta).toMatchObject({ label: 'account list', trigger: 'manual' });
     expect(out[0]).toBe(`DOM snapshot saved to ${result.file}`);

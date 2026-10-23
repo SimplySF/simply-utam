@@ -54,24 +54,37 @@ export const BAD_INPUT = 2;
 /** A snapshot a query command was pointed at, and its header. */
 export type LoadedSnapshot = { snapshot: DomSnapshot; header: string[] };
 
+/** The page-object index, or a function that builds it when it's needed. */
+export type IndexSource = PageObjectIndex | (() => PageObjectIndex);
+
+/**
+ * The header for a snapshot read from, or saved to, `file`, naming the file relative to the current
+ * folder.
+ *
+ * @param projectDir The test project.
+ * @param file The snapshot's file, absolute or relative to the current folder.
+ * @param snapshot The snapshot.
+ * @param index The page-object index, when the command has one; otherwise it's built only for UTAM's
+ * not-found error.
+ */
+export function headerFor(projectDir: string, file: string, snapshot: DomSnapshot, index?: IndexSource): string[] {
+  const resolved = path.resolve(file);
+  return snapshotHeader(snapshot, {
+    file: path.relative(process.cwd(), resolved) || resolved,
+    index: index ?? ((): PageObjectIndex => buildPageObjectIndex({ projectDir })),
+  });
+}
+
 /**
  * Read the snapshot a query command was pointed at, and the header that names it.
  *
  * @param projectDir The test project.
  * @param file The `--file` flag; the project's latest snapshot when omitted.
- * @param index The page-object index, when the command has built it; otherwise it's built only for
- * UTAM's not-found error.
+ * @param index The page-object index, when the command has one; otherwise it's built only for UTAM's
+ * not-found error.
  */
-export async function loadSnapshot(
-  projectDir: string,
-  file?: string,
-  index?: PageObjectIndex,
-): Promise<LoadedSnapshot> {
+export async function loadSnapshot(projectDir: string, file?: string, index?: IndexSource): Promise<LoadedSnapshot> {
   const resolved = file ? path.resolve(file) : path.resolve(projectDir, LATEST_SNAPSHOT);
   const snapshot = await readDomSnapshot(resolved);
-  const header = snapshotHeader(snapshot, {
-    file: path.relative(process.cwd(), resolved) || resolved,
-    index: index ?? ((): PageObjectIndex => buildPageObjectIndex({ projectDir })),
-  });
-  return { snapshot, header };
+  return { snapshot, header: headerFor(projectDir, resolved, snapshot, index) };
 }

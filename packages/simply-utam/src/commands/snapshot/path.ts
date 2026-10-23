@@ -21,6 +21,7 @@ import {
   componentPathByText,
   DomSnapshotError,
   type FindResult,
+  type PageObjectIndex,
   type PathResult,
 } from '@simplysf/simply-utam-core';
 import { BAD_INPUT, fileFlag, limitFlag, loadSnapshot, projectDirFlag } from '../../snapshot-flags.js';
@@ -59,10 +60,17 @@ export default class SnapshotPath extends Command {
   public async run(): Promise<PathResult | { candidates: FindResult }> {
     const { flags } = await this.parse(SnapshotPath);
     try {
-      const index = buildPageObjectIndex({ projectDir: flags['project-dir'] });
-      for (const warning of index.warnings) this.warn(warning);
-      const { snapshot, header } = await loadSnapshot(flags['project-dir'], flags.file, index);
-      const options = { index, limit: flags.limit };
+      // Built once, after the snapshot is read, so a missing snapshot doesn't index every package first.
+      let built: PageObjectIndex | undefined;
+      const pageObjects = (): PageObjectIndex => {
+        if (!built) {
+          built = buildPageObjectIndex({ projectDir: flags['project-dir'] });
+          for (const warning of built.warnings) this.warn(warning);
+        }
+        return built;
+      };
+      const { snapshot, header } = await loadSnapshot(flags['project-dir'], flags.file, pageObjects);
+      const options = { index: pageObjects(), limit: flags.limit };
       if (flags.node !== undefined) {
         const result = componentPath(snapshot, flags.node, options);
         for (const line of [...header, ...result.lines]) this.log(line);
