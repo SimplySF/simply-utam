@@ -247,16 +247,54 @@ export function generateUtamConfig(templatesDir = DEFAULT_TEMPLATES_DIR): Record
 }
 
 /**
+ * Whether the template's globs, which take every `test` folder under the source folder, reach a test
+ * folder: it's under the source folder, with a `test` folder on the way.
+ */
+function underSourceTestGlobs(sourceDir: string, testDir: string): boolean {
+  const relative = path.relative(sourceDir, testDir);
+  return !relative.startsWith('..') && !path.isAbsolute(relative) && relative.split(path.sep).includes('test');
+}
+
+/** Adds entries to a one-line `key: [...]` array in the generated config, one per line. */
+function appendToArray(content: string, key: string, entries: string[]): string {
+  return content.replace(new RegExp(`^( *)${key}: \\[(.*)\\],$`, 'm'), (_line, indent: string, items: string) => {
+    const all = [...items.split(/,\s*/), ...entries.map((entry) => `'${entry.replaceAll("'", "\\'")}'`)];
+    return `${indent}${key}: [\n${all.map((item) => `${indent}  ${item},\n`).join('')}${indent}],`;
+  });
+}
+
+/**
  * Generates the wdio.conf.mjs configuration script content by loading its external template.
  *
  * @param sourceDir - The primary Salesforce source directory.
  * @param templatesDir - Optional custom directory containing the template file.
+ * @param testDirs - The project's UTAM test folders. Those the template's globs don't reach, such as
+ * `test/utam` at the project root or `<sourceDir>/tests/utam`, are added to `specs` and
+ * `cucumberOpts.require`.
  * @returns Formatted JavaScript module text for wdio.conf.mjs.
  */
-export function generateWdioConfig(sourceDir: string, templatesDir = DEFAULT_TEMPLATES_DIR): string {
-  return loadTemplate('wdio.conf.mjs', templatesDir, {
+export function generateWdioConfig(
+  sourceDir: string,
+  templatesDir = DEFAULT_TEMPLATES_DIR,
+  testDirs: string[] = [],
+): string {
+  const content = loadTemplate('wdio.conf.mjs', templatesDir, {
     sourceDir: toPosixRelative(sourceDir) || '.',
   });
+  const extraDirs = testDirs.filter((dir) => !underSourceTestGlobs(sourceDir, dir)).map(toPosixRelative);
+  if (extraDirs.length === 0) {
+    return content;
+  }
+  const specs = appendToArray(
+    content,
+    'specs',
+    extraDirs.map((dir) => `${dir}/**/*.feature`),
+  );
+  return appendToArray(
+    specs,
+    'require',
+    extraDirs.map((dir) => `${dir}/**/*.steps.mjs`),
+  );
 }
 
 /**
@@ -770,6 +808,7 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     generated.namespace,
   );
 
+  const utamTests = planUtamTests(projectDir, sourceDir, templatesDir, force);
   const filesToCreate = [
     {
       relativePath: 'generator.config.json',
@@ -781,7 +820,8 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     },
     {
       relativePath: 'wdio.conf.mjs',
-      content: generateWdioConfig(sourceDir, templatesDir),
+      // Its globs cover every UTAM test folder, so they reach the snapshot step wherever it goes.
+      content: generateWdioConfig(sourceDir, templatesDir, utamTests.testDirs),
     },
     {
       relativePath: path.join('.utam', 'namespace-map.json'),
@@ -789,7 +829,6 @@ export function scaffoldProject(options?: ScaffoldOptions): Promise<ScaffoldResu
     },
   ];
 
-  const utamTests = planUtamTests(projectDir, sourceDir, templatesDir, force);
   filesToCreate.push(...utamTests.files, ...planSnapshotFiles(utamTests.testDirs[0], templatesDir));
 
   const { createdFiles, skippedFiles } = writeScaffoldFiles(projectDir, filesToCreate, force, dryRun);

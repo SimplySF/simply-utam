@@ -430,6 +430,11 @@ And I capture the DOM snapshot
 And I capture the DOM snapshot "after opening Account"
 ```
 
+`init` puts the step in the project's first UTAM test folder, which in an existing project can be
+`<sourceDir>/tests/utam` or `test/utam` at the project root, beyond those globs. When `init` also
+generates `wdio.conf.mjs`, it adds such a folder to `specs` and `cucumberOpts.require`, so the step
+is defined wherever it lands.
+
 A `Before` hook in the same file records the scenario's name for the file name. The step imports
 `@simplysf/simply-utam` when it runs, not when the file loads: `init` adds the file to existing
 projects, and one whose installed `@simplysf/simply-utam` predates DOM snapshots would otherwise fail

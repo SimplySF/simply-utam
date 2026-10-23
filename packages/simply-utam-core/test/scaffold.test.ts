@@ -113,6 +113,28 @@ describe('scaffold service', () => {
       expect(config).toContain("runner: 'local'");
     });
 
+    it('generateWdioConfig adds the test folders its globs miss to specs and require', () => {
+      const config = generateWdioConfig('force-app', DEFAULT_TEMPLATES_DIR, [
+        path.join('force-app', 'test', 'utam'),
+        path.join('force-app', 'tests', 'utam'),
+        path.join('test', 'utam'),
+      ]);
+      expect(config).toContain(
+        "  specs: [\n    'force-app/**/test/*.feature',\n    'force-app/**/test/**/*.feature',\n" +
+          "    'force-app/tests/utam/**/*.feature',\n    'test/utam/**/*.feature',\n  ],\n",
+      );
+      expect(config).toContain(
+        "    require: [\n      'force-app/**/test/*.steps.mjs',\n      'force-app/**/test/**/*.steps.mjs',\n" +
+          "      'force-app/tests/utam/**/*.steps.mjs',\n      'test/utam/**/*.steps.mjs',\n    ],\n",
+      );
+    });
+
+    it('generateWdioConfig leaves the globs alone when they reach every test folder', () => {
+      const config = generateWdioConfig('force-app', DEFAULT_TEMPLATES_DIR, [path.join('force-app', 'test', 'utam')]);
+      expect(config).toBe(generateWdioConfig('force-app'));
+      expect(generateWdioConfig('.', DEFAULT_TEMPLATES_DIR, [path.join('test', 'utam')])).toBe(generateWdioConfig('.'));
+    });
+
     it('generateNamespaceMap should map application pageObjects to shared library', () => {
       const map = generateNamespaceMap('test-app');
       expect(map['test-app/pageObjects/shared']).toBe('shared-components-pageobjects/pageObjects/shared');
@@ -273,6 +295,30 @@ describe('scaffold service', () => {
       // The usage guide ships as an agent skill in @simplysf/simply-utam, not a scaffolded file.
       expect(fs.existsSync(path.join(existingUtamDir, 'SNAPSHOTS.md'))).toBe(false);
       expect(fs.existsSync(path.join(existingUtamDir, 'step_definitions', 'dom-snapshot.steps.mjs'))).toBe(true);
+    });
+
+    it('requires the snapshot step from an existing test/utam at the project root', async () => {
+      fs.mkdirSync(path.join(tempDir, 'test', 'utam'), { recursive: true });
+
+      const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+      expect(result.createdFiles).toContain(path.join('test', 'utam', 'step_definitions', 'dom-snapshot.steps.mjs'));
+      const config = fs.readFileSync(path.join(tempDir, 'wdio.conf.mjs'), 'utf-8');
+      expect(config).toContain("'test/utam/**/*.steps.mjs',");
+      expect(config).toContain("'test/utam/**/*.feature',");
+    });
+
+    it('requires the snapshot step from an existing <sourceDir>/tests/utam', async () => {
+      fs.mkdirSync(path.join(tempDir, 'force-app', 'tests', 'utam'), { recursive: true });
+
+      const result = await scaffoldProject({ projectDir: tempDir, sourceDir: 'force-app' });
+
+      expect(result.createdFiles).toContain(
+        path.join('force-app', 'tests', 'utam', 'step_definitions', 'dom-snapshot.steps.mjs'),
+      );
+      const config = fs.readFileSync(path.join(tempDir, 'wdio.conf.mjs'), 'utf-8');
+      expect(config).toContain("'force-app/tests/utam/**/*.steps.mjs',");
+      expect(config).toContain("'force-app/tests/utam/**/*.feature',");
     });
 
     it('should skip existing files unless force is true', async () => {
