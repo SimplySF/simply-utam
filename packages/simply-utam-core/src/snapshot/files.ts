@@ -115,14 +115,25 @@ function baseName(snapshot: DomSnapshot): { name: string; numbered: boolean } {
   return label ? { name: `${scenario}--${label}`, numbered: false } : { name: scenario, numbered: true };
 }
 
-/** The version of each page-object package the index reads for this project. */
 /** The run id for captures made outside a run that set one: the time of this process's first capture. */
 let processRunId: string | undefined;
 
+/** Each project folder's page-object package versions, looked up once per process. */
+const packageVersions = new Map<string, Record<string, string>>();
+
+/**
+ * The version of each page-object package the index reads for this project. Packages don't change
+ * during a test run, so it's read once per project folder, not on every write.
+ */
 function installedPageObjectPackages(projectDir: string): Record<string, string> {
   const dir = path.resolve(projectDir);
-  const { packages } = discoverPageObjectPackages(dir, readNamespaceConfig(dir));
-  return Object.fromEntries(packages.flatMap((pkg) => (pkg.version ? [[pkg.name, pkg.version]] : [])));
+  let versions = packageVersions.get(dir);
+  if (!versions) {
+    const { packages } = discoverPageObjectPackages(dir, readNamespaceConfig(dir));
+    versions = Object.fromEntries(packages.flatMap((pkg) => (pkg.version ? [[pkg.name, pkg.version]] : [])));
+    packageVersions.set(dir, versions);
+  }
+  return versions;
 }
 
 /**
@@ -131,7 +142,8 @@ function installedPageObjectPackages(projectDir: string): Record<string, string>
  * id comes from `runId`, then `UTAM_SNAPSHOT_RUN_ID`, then the time this process first wrote a snapshot.
  * A name already taken gets a number; files are created exclusively, so two workers can't both take
  * one name. Records the version of each page-object package the project's namespaces map to in the
- * file's `meta.pageObjectPackages`, leaving `snapshot` unchanged.
+ * file's `meta.pageObjectPackages`, leaving `snapshot` unchanged; the versions are looked up once per
+ * project folder in a process.
  *
  * @param snapshot The snapshot to write.
  * @param options Where and how to write it.

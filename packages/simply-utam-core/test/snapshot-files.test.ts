@@ -32,6 +32,7 @@ import {
   writeDomSnapshot,
   type DomSnapshot,
   type SnapshotFileSystem,
+  type WriteDomSnapshotOptions,
 } from '../src/index.js';
 
 /** A small snapshot as the walker writes it: addresses, no handles. */
@@ -280,6 +281,31 @@ describe('writeDomSnapshot', () => {
     });
     // The caller's snapshot isn't changed, so writing it again, or attaching it elsewhere, sees what it was given.
     expect(snapshot.meta.pageObjectPackages).toBeUndefined();
+  });
+
+  it('looks the versions up once per project folder, and takes versions it is given over them', async () => {
+    const dir = tempDir();
+    const pkg = path.join(dir, 'node_modules', 'salesforce-pageobjects', 'package.json');
+    fs.mkdirSync(path.dirname(pkg), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"p"}');
+    fs.writeFileSync(
+      path.join(dir, 'generator.config.json'),
+      '{"namespaces":{"lightning":"salesforce-pageobjects/lightning/pageObjects/"}}',
+    );
+    fs.writeFileSync(pkg, '{"name":"salesforce-pageobjects","version":"12.0.0"}');
+    const snapshot = parseDomSnapshot(rawSnapshot({ trigger: 'step', scenario: 'S' }));
+    const versions = async (options: WriteDomSnapshotOptions): Promise<unknown> => {
+      const file = await writeDomSnapshot(snapshot, { env, ...options });
+      return (JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')) as DomSnapshot).meta.pageObjectPackages;
+    };
+
+    expect(await versions({ projectDir: dir })).toEqual({ 'salesforce-pageobjects': '12.0.0' });
+    // A later write in the same process doesn't read the package again, by any spelling of the folder.
+    fs.writeFileSync(pkg, '{"name":"salesforce-pageobjects","version":"13.0.0"}');
+    expect(await versions({ projectDir: `${dir}${path.sep}` })).toEqual({ 'salesforce-pageobjects': '12.0.0' });
+    expect(await versions({ projectDir: dir, pageObjectPackages: { 'salesforce-pageobjects': '9.9.9' } })).toEqual({
+      'salesforce-pageobjects': '9.9.9',
+    });
   });
 
   /** A file system in memory; `rename` throws `renameError` when set. */

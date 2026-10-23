@@ -564,7 +564,8 @@ simply-utam snapshot
   `latest.json` is whichever finished last, which is why every command prints a header saying which
   snapshot it read (see CLI).
 - It adds `meta.pageObjectPackages`: the version of each page-object package the index would read
-  (see Page-object index).
+  (see Page-object index). The versions are looked up once per project folder in a process, not on
+  every write; a `pageObjectPackages` option replaces them.
 - `pruneDomSnapshots({ keepRuns })` deletes all but the newest `keepRuns` run folders, newest by
   when each was last written (then by name, numbers compared as numbers), so a `build-42` and
   timestamp ids mix; the scaffold keeps 10, pruning in `onComplete` so the run just finished counts.
