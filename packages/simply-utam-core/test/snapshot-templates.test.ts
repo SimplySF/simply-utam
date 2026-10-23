@@ -27,6 +27,7 @@ afterEach(() => {
   vi.resetModules();
   vi.doUnmock('@simplysf/simply-utam');
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -52,6 +53,32 @@ describe('scaffolded wdio.conf.mjs', () => {
 
     expect(takeScreenshot).toHaveBeenCalledOnce();
     expect(warn).toHaveBeenCalledWith('DOM snapshot not saved: EPERM: operation not permitted, rename latest.json');
+  });
+});
+
+describe('scaffolded wdio.conf.mjs pruning', () => {
+  it("still starts the run when old snapshot runs can't be pruned", async () => {
+    vi.doMock('wdio-utam-service', () => ({ UtamWdioService: class {} }));
+    vi.doMock('@wdio/allure-reporter', () => ({ default: { addAttachment: vi.fn() } }));
+    vi.doMock('@simplysf/simply-utam', () => ({
+      captureDomSnapshot: vi.fn(),
+      pruneDomSnapshots: vi.fn(async () => {
+        throw new Error('EBUSY: resource busy or locked, rmdir .utam/snapshots/20261016T120000');
+      }),
+      serializeDomSnapshot,
+      snapshotRunId: vi.fn(() => '20261023T120000'),
+      writeDomSnapshot: vi.fn(),
+    }));
+    vi.stubEnv('UTAM_SNAPSHOT_RUN_ID', undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { config } = (await import(WDIO_CONFIG)) as { config: { onPrepare: Hook } };
+    await expect(config.onPrepare()).resolves.toBeUndefined();
+
+    expect(process.env.UTAM_SNAPSHOT_RUN_ID).toBe('20261023T120000');
+    expect(warn).toHaveBeenCalledWith(
+      'Old DOM snapshot runs not pruned: EBUSY: resource busy or locked, rmdir .utam/snapshots/20261016T120000',
+    );
   });
 });
 

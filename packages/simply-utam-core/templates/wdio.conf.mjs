@@ -63,7 +63,12 @@ export const config = {
   onPrepare: async function () {
     // One DOM snapshot folder per test run, shared by every worker; keep the last 10 runs.
     process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshotRunId();
-    await pruneDomSnapshots({ keepRuns: 10 });
+    // Housekeeping must never cost the run: on Windows a locked old run folder can't be deleted.
+    try {
+      await pruneDomSnapshots({ keepRuns: 10 });
+    } catch (pruneError) {
+      console.warn(`Old DOM snapshot runs not pruned: ${pruneError?.message ?? pruneError}`);
+    }
   },
   before: async function () {
     // browser.domSnapshot('label') captures the page from the REPL during browser.debug().
