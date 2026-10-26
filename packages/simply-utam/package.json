@@ -46,7 +46,7 @@
     "@simplysf/simply-utam-core": "workspace:*"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.12",
     "oclif": "^6.0.10",
     "shx": "^0.4.0",
     "vitest": "^4.1.10"
