@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { discoverProject } from '../discovery/index.js';
 import { detectIndentation } from '../overrides/index.js';
+import { resolveNamespaceMappings } from './namespace-map.js';
 
 export interface RewriteNamespacesOptions {
   rootDir?: string;
@@ -127,69 +128,6 @@ export function updateValueWithMappings(
   return value;
 }
 
-interface MappingResolutionResult {
-  sortedMappings: Array<[string, string]>;
-  configMissingOrEmpty: boolean;
-  notice?: string;
-}
-
-function resolveMappings(
-  rootDir: string,
-  configFile?: string,
-  mappings?: Record<string, string>,
-): MappingResolutionResult {
-  let rawMappings: Record<string, string> = {};
-
-  if (mappings) {
-    rawMappings = mappings;
-  } else {
-    const configPath = configFile
-      ? path.isAbsolute(configFile)
-        ? configFile
-        : path.resolve(rootDir, configFile)
-      : path.join(rootDir, '.utam', 'namespace-map.json');
-
-    if (!fs.existsSync(configPath)) {
-      return {
-        sortedMappings: [],
-        configMissingOrEmpty: true,
-        notice: `Namespace configuration file not found at ${configPath}. Exiting cleanly.`,
-      };
-    }
-
-    try {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const parsed: unknown = JSON.parse(configContent);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        rawMappings = parsed as Record<string, string>;
-      }
-    } catch (err: unknown) {
-      return {
-        sortedMappings: [],
-        configMissingOrEmpty: true,
-        notice: `Failed to parse namespace config file: ${(err as Error).message}`,
-      };
-    }
-  }
-
-  const mappingEntries = Object.entries(rawMappings).filter(
-    ([prefix, replacement]) => typeof prefix === 'string' && prefix.trim() && typeof replacement === 'string',
-  );
-
-  if (mappingEntries.length === 0) {
-    return {
-      sortedMappings: [],
-      configMissingOrEmpty: true,
-      notice: 'Namespace mapping object is empty. No rewrites required.',
-    };
-  }
-
-  return {
-    sortedMappings: [...mappingEntries].sort((a, b) => b[0].length - a[0].length),
-    configMissingOrEmpty: false,
-  };
-}
-
 function processSingleUtamFile(
   file: string,
   sortedMappings: Array<[string, string]>,
@@ -247,7 +185,7 @@ export function rewriteUtamNamespaces(options: RewriteNamespacesOptions = {}): R
   const rootDir = path.resolve(options.rootDir ?? process.cwd());
   const dryRun = Boolean(options.dryRun);
 
-  const resolution = resolveMappings(rootDir, options.configFile, options.mappings);
+  const resolution = resolveNamespaceMappings(rootDir, options.configFile, options.mappings);
   if (resolution.configMissingOrEmpty) {
     return {
       filesScanned: 0,
