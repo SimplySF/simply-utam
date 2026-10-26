@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [0.3.0](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam-core%400.2.0...%40simplysf%2Fsimply-utam-core%400.3.0) (2026-10-26)
+
+### Features
+
+- DOM snapshots for UTAM test authoring and failure diagnosis ([#20](https://github.com/SimplySF/simply-utam/issues/20)) ([560be28](https://github.com/SimplySF/simply-utam/commit/560be28390930af8a54d2ff6b4043cf7f24928ea)), closes [#id](https://github.com/SimplySF/simply-utam/issues/id)
+
 # [0.2.0](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam-core%400.1.3...%40simplysf%2Fsimply-utam-core%400.2.0) (2026-10-21)
 
 ### Bug Fixes
