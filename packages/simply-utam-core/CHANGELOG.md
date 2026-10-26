@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.3.1](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam-core%400.3.0...%40simplysf%2Fsimply-utam-core%400.3.1) (2026-10-26)
+
+### Bug Fixes
+
+- **deps:** bump @salesforce/core from 9.3.6 to 9.4.1 ([#21](https://github.com/SimplySF/simply-utam/issues/21)) ([2427d80](https://github.com/SimplySF/simply-utam/commit/2427d80e9dddab06a23c5ce59658abca8ed24dec))
+
 # [0.3.0](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam-core%400.2.0...%40simplysf%2Fsimply-utam-core%400.3.0) (2026-10-26)
 
 ### Features
