@@ -74,15 +74,33 @@ interface Template {
   file: string;
 }
 
-function readJson(file: string): Record<string, unknown> | undefined {
+/**
+ * Reads a JSON config file.
+ *
+ * @returns The parsed object, or `undefined` when the file does not exist.
+ * @throws When the file exists but is not a JSON object, so a typo is not mistaken for a missing file.
+ */
+function readJsonConfig(file: string): Record<string, unknown> | undefined {
+  let content: string;
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : undefined;
-  } catch {
-    return undefined;
+    content = fs.readFileSync(file, 'utf-8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return undefined;
+    }
+    throw error;
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Cannot read ${file}: ${(error as Error).message}`, { cause: error });
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Cannot read ${file}: expected a JSON object.`);
+  }
+  return parsed as Record<string, unknown>;
 }
 
 /**
@@ -231,7 +249,7 @@ function findBundles(rootDir: string, explicitSourceDirs?: string[]): string[] {
 
 /** Every page object the compiler will read, per `utam.config.json`'s root and file mask. */
 function compiledSources(rootDir: string, utamConfigPath: string): string[] {
-  const config = readJson(utamConfigPath) ?? {};
+  const config = readJsonConfig(utamConfigPath) ?? {};
   const configDir = fs.existsSync(utamConfigPath) ? path.dirname(utamConfigPath) : rootDir;
   const pageObjectsRoot = path.resolve(
     configDir,
@@ -299,17 +317,28 @@ function renameDescription(json: Record<string, unknown>, oldName: string, newNa
   }
 }
 
-function applyRename(rename: PageObjectRename): void {
+/**
+ * The renamed page object's content, with its description updated and its formatting kept.
+ *
+ * @throws Naming the file, when it is not valid JSON.
+ */
+function renderRename(rename: PageObjectRename): string {
   const content = fs.readFileSync(rename.from, 'utf-8');
-  const json = JSON.parse(content) as Record<string, unknown>;
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(content) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(`Cannot rename ${rename.from}: ${(error as Error).message}. Nothing was renamed.`, {
+      cause: error,
+    });
+  }
   renameDescription(json, path.basename(rename.from, UTAM_EXT), rename.name);
 
   let output = JSON.stringify(json, null, detectIndentation(content));
   if (content.endsWith('\n') && !output.endsWith('\n')) {
     output += '\n';
   }
-  fs.writeFileSync(rename.to, output, 'utf-8');
-  fs.rmSync(rename.from);
+  return output;
 }
 
 /**
@@ -324,7 +353,9 @@ function applyRename(rename: PageObjectRename): void {
  *
  * @param options - Naming options.
  * @returns The renames, any collisions, and page objects that match no template.
- * @throws When the generator config does not write page objects into `__utam__` beside each template.
+ * @throws When a config file is not valid JSON, when the generator config does not write page objects
+ * into `__utam__` beside each template, or when a page object to rename is not valid JSON. Nothing is
+ * renamed in any of these cases.
  */
 export function nameSecondaryPageObjects(
   options: NameSecondaryPageObjectsOptions = {},
@@ -334,7 +365,7 @@ export function nameSecondaryPageObjects(
   const result: NameSecondaryPageObjectsResult = { renames: [], collisions: [], unmatched: [], dryRun };
 
   const generatorConfigPath = path.resolve(rootDir, options.generatorConfigPath ?? 'generator.config.json');
-  const generatorConfig = readJson(generatorConfigPath);
+  const generatorConfig = readJsonConfig(generatorConfigPath);
   if (!generatorConfig) {
     result.skipped = `No generator config at ${generatorConfigPath}, so no generated page objects to name`;
     return result;
@@ -356,8 +387,11 @@ export function nameSecondaryPageObjects(
     return result;
   }
 
-  for (const rename of result.renames) {
-    applyRename(rename);
+  // Render every file before writing any, so one unreadable page object leaves the folder as it was.
+  const rendered = result.renames.map((rename) => ({ rename, output: renderRename(rename) }));
+  for (const { rename, output } of rendered) {
+    fs.writeFileSync(rename.to, output, 'utf-8');
+    fs.rmSync(rename.from);
   }
   return result;
 }

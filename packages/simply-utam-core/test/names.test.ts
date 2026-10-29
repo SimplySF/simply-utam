@@ -329,6 +329,41 @@ describe('nameSecondaryPageObjects', () => {
     expect(() => run()).toThrow(/outputDir: "po", outputFileExtension: ".json"/);
   });
 
+  it('fails, naming the file, when the generator config is not valid JSON', () => {
+    const utamDir = bundle('component_1', ['fooTemplate.html'], ['fooTemplate']);
+    const configPath = path.join(tempDir, 'generator.config.json');
+    fs.writeFileSync(configPath, '{ "outputDir": "__utam__", relativeOutputDir: true');
+
+    expect(() => run()).toThrow(`Cannot read ${configPath}`);
+    expect(utamFiles(utamDir)).toEqual(['fooTemplate.utam.json']);
+  });
+
+  it('fails when the generator config is not a JSON object', () => {
+    fs.writeFileSync(path.join(tempDir, 'generator.config.json'), '[]');
+
+    expect(() => run()).toThrow(/expected a JSON object/);
+  });
+
+  it('fails when utam.config.json is not valid JSON', () => {
+    bundle('component_1', ['fooTemplate.html'], ['fooTemplate']);
+    const configPath = path.join(tempDir, 'utam.config.json');
+    fs.writeFileSync(configPath, '{ oops');
+
+    expect(() => run()).toThrow(`Cannot read ${configPath}`);
+  });
+
+  it('renames nothing, and names the file, when one page object is not valid JSON', () => {
+    const first = bundle('a', ['foo.html'], ['foo']);
+    const second = bundle('b', ['foo.html'], []);
+    const broken = path.join(second, 'foo.utam.json');
+    fs.writeFileSync(broken, '{ not json');
+
+    expect(() => run()).toThrow(`Cannot rename ${broken}`);
+    expect(() => run()).toThrow(/Nothing was renamed/);
+    expect(utamFiles(first)).toEqual(['foo.utam.json']);
+    expect(utamFiles(second)).toEqual(['foo.utam.json']);
+  });
+
   it('only looks in the given source directories', () => {
     const utamDir = bundle('component_1', ['fooTemplate.html'], ['fooTemplate']);
 
