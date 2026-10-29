@@ -260,6 +260,17 @@ function planBundle(bundleDir: string, bundleName: string): BundlePlan {
   return plan;
 }
 
+/**
+ * Orders paths the same way on every platform. A plain sort compares the separator too, and `\`
+ * sorts after letters where `/` sorts before them, so `lwc\aB\…` would come before `lwc\a\…` on
+ * Windows only, and results would list bundles and collision sources in a different order there.
+ */
+function comparePaths(a: string, b: string): number {
+  const left = a.split(path.sep).join('/');
+  const right = b.split(path.sep).join('/');
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 /** Every LWC bundle folder under the source directories, or the project's package directories. */
 function findBundles(rootDir: string, explicitSourceDirs?: string[]): string[] {
   let sourceDirs = explicitSourceDirs;
@@ -285,7 +296,7 @@ function findBundles(rootDir: string, explicitSourceDirs?: string[]): string[] {
       }
     }
   }
-  return [...bundles].sort();
+  return [...bundles].sort(comparePaths);
 }
 
 /** Every page object the compiler will read, per `utam.config.json`'s root and file mask. */
@@ -337,7 +348,7 @@ function findCollisions(
     ...compiledSources(rootDir, utamConfigPath).map((file) => path.resolve(file)),
     ...renamedFrom.keys(),
   ]);
-  for (const source of [...sources].sort()) {
+  for (const source of [...sources].sort(comparePaths)) {
     const rename = renamedFrom.get(source);
     if (rename) {
       add(rename.name, source);
