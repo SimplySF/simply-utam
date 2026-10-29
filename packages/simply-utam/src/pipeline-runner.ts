@@ -21,6 +21,7 @@ import {
   discoverProject,
   generateLwcRules,
   applyUtamOverrides,
+  nameSecondaryPageObjects,
   rewriteUtamNamespaces,
 } from '@simplysf/simply-utam-core';
 
@@ -30,6 +31,8 @@ export interface BuildPipelineOptions {
   generatorConfigPath?: string;
   utamConfigPath?: string;
   namespaceMapPath?: string;
+  /** Leave out the `names` stage, keeping the generated names of secondary template page objects. */
+  skipNames?: boolean;
   dryRun?: boolean;
   spawnCommand?: (
     command: string,
@@ -43,10 +46,13 @@ export interface BuildPipelineResult {
   success: boolean;
   rulesModified: number;
   overridesApplied: number;
+  pageObjectsRenamed: number;
   namespacesRewritten: number;
   generatorExecuted: boolean;
   compilerExecuted: boolean;
   errors: string[];
+  /** Warnings from the stages that ran, such as a template that can take a component's rules file. */
+  warnings: string[];
 }
 
 type CommandRunner = (
@@ -130,17 +136,17 @@ function executeRulesStage(
   sourceDirs: string[],
   dryRun: boolean,
   onStage?: StageLogger,
-): { modified: number; error?: string } {
+): { modified: number; warnings: string[]; error?: string } {
   onStage?.('rules', 'start');
   try {
     const res = generateLwcRules({ rootDir: projectDir, sourceDirs, dryRun });
     const count = res.filesCreated.length + res.filesUpdated.length;
     onStage?.('rules', 'success', `Generated rules for ${count} components`);
-    return { modified: count };
+    return { modified: count, warnings: res.warnings };
   } catch (err) {
     const msg = (err as Error).message;
     onStage?.('rules', 'error', msg);
-    return { modified: 0, error: `Rules generation failed: ${msg}` };
+    return { modified: 0, warnings: [], error: `Rules generation failed: ${msg}` };
   }
 }
 
@@ -188,6 +194,48 @@ function executeOverridesStage(
     const msg = (err as Error).message;
     onStage?.('overrides', 'error', msg);
     return { modified: 0, error: `Overrides failed: ${msg}` };
+  }
+}
+
+function executeNamesStage(
+  projectDir: string,
+  sourceDirs: string[],
+  generatorConfigRel: string,
+  utamConfigRel: string,
+  skip: boolean,
+  dryRun: boolean,
+  onStage?: StageLogger,
+): { modified: number; error?: string } {
+  if (skip) {
+    onStage?.('names', 'skip', 'Skipped with skipNames');
+    return { modified: 0 };
+  }
+
+  onStage?.('names', 'start');
+  try {
+    const res = nameSecondaryPageObjects({
+      rootDir: projectDir,
+      sourceDirs,
+      generatorConfigPath: generatorConfigRel,
+      utamConfigPath: utamConfigRel,
+      dryRun,
+    });
+    if (res.skipped) {
+      onStage?.('names', 'skip', res.skipped);
+      return { modified: 0 };
+    }
+    if (res.collisions.length > 0) {
+      const names = res.collisions.map((collision) => `${collision.name} (${collision.sources.join(', ')})`);
+      const msg = `These page objects would compile to the same file, so nothing was renamed: ${names.join('; ')}`;
+      onStage?.('names', 'error', msg);
+      return { modified: 0, error: `Page object naming failed: ${msg}` };
+    }
+    onStage?.('names', 'success', `Renamed ${res.renames.length} secondary template page objects`);
+    return { modified: res.renames.length };
+  } catch (err) {
+    const msg = (err as Error).message;
+    onStage?.('names', 'error', msg);
+    return { modified: 0, error: `Page object naming failed: ${msg}` };
   }
 }
 
@@ -249,116 +297,105 @@ async function executeCompilerStage(
   return { executed: true };
 }
 
+/** The pipeline options with their defaults filled in. */
+function resolveOptions(options?: BuildPipelineOptions): {
+  projectDir: string;
+  dryRun: boolean;
+  runner: CommandRunner;
+  onStage?: StageLogger;
+  generatorConfigPath: string;
+  utamConfigPath: string;
+  namespaceMapPath: string;
+  skipNames: boolean;
+} {
+  return {
+    projectDir: path.resolve(options?.projectDir ?? process.cwd()),
+    dryRun: options?.dryRun ?? false,
+    runner: options?.spawnCommand ?? defaultSpawn,
+    onStage: options?.onStage,
+    generatorConfigPath: options?.generatorConfigPath ?? 'generator.config.json',
+    utamConfigPath: options?.utamConfigPath ?? 'utam.config.json',
+    namespaceMapPath: options?.namespaceMapPath ?? path.join('.utam', 'namespace-map.json'),
+    skipNames: options?.skipNames ?? false,
+  };
+}
+
 /**
  * Executes the complete SimplyUTAM compilation build pipeline sequentially:
- * rules -> utam-generate -> overrides -> rewrite -> utam compiler.
+ * rules -> utam-generate -> overrides -> names -> rewrite -> utam compiler.
  *
  * @param options - Build pipeline execution options.
  * @returns Summary of execution results across all pipeline stages.
  */
 export async function executeBuildPipeline(options?: BuildPipelineOptions): Promise<BuildPipelineResult> {
-  const projectDir = path.resolve(options?.projectDir ?? process.cwd());
-  const dryRun = options?.dryRun ?? false;
-  const runner = options?.spawnCommand ?? defaultSpawn;
-  const onStage = options?.onStage;
+  const { projectDir, dryRun, runner, onStage, generatorConfigPath, utamConfigPath, namespaceMapPath, skipNames } =
+    resolveOptions(options);
 
   const sourceDirs = resolveSourceDirs(projectDir, options?.sourceDirs);
 
+  const result: BuildPipelineResult = {
+    success: false,
+    rulesModified: 0,
+    overridesApplied: 0,
+    pageObjectsRenamed: 0,
+    namespacesRewritten: 0,
+    generatorExecuted: false,
+    compilerExecuted: false,
+    errors: [],
+    warnings: [],
+  };
+  const fail = (error: string): BuildPipelineResult => ({ ...result, errors: [error] });
+
   // Stage 1: rules
   const rules = executeRulesStage(projectDir, sourceDirs, dryRun, onStage);
+  result.rulesModified = rules.modified;
+  result.warnings.push(...rules.warnings);
   if (rules.error) {
-    return {
-      success: false,
-      rulesModified: rules.modified,
-      overridesApplied: 0,
-      namespacesRewritten: 0,
-      generatorExecuted: false,
-      compilerExecuted: false,
-      errors: [rules.error],
-    };
+    return fail(rules.error);
   }
 
   // Stage 2: utam-generate
-  const gen = await executeGeneratorStage(
-    projectDir,
-    options?.generatorConfigPath ?? 'generator.config.json',
-    dryRun,
-    runner,
-    onStage,
-  );
+  const gen = await executeGeneratorStage(projectDir, generatorConfigPath, dryRun, runner, onStage);
+  result.generatorExecuted = gen.executed;
   if (gen.error) {
-    return {
-      success: false,
-      rulesModified: rules.modified,
-      overridesApplied: 0,
-      namespacesRewritten: 0,
-      generatorExecuted: gen.executed,
-      compilerExecuted: false,
-      errors: [gen.error],
-    };
+    return fail(gen.error);
   }
 
   // Stage 3: overrides
   const over = executeOverridesStage(projectDir, sourceDirs, dryRun, onStage);
+  result.overridesApplied = over.modified;
   if (over.error) {
-    return {
-      success: false,
-      rulesModified: rules.modified,
-      overridesApplied: over.modified,
-      namespacesRewritten: 0,
-      generatorExecuted: gen.executed,
-      compilerExecuted: false,
-      errors: [over.error],
-    };
+    return fail(over.error);
   }
 
-  // Stage 4: rewrite
-  const rew = executeRewriteStage(
+  // Stage 4: names, after overrides so overrides files keep the template's own name
+  const names = executeNamesStage(
     projectDir,
     sourceDirs,
-    options?.namespaceMapPath ?? path.join('.utam', 'namespace-map.json'),
+    generatorConfigPath,
+    utamConfigPath,
+    skipNames,
     dryRun,
     onStage,
   );
+  result.pageObjectsRenamed = names.modified;
+  if (names.error) {
+    return fail(names.error);
+  }
+
+  // Stage 5: rewrite
+  const rew = executeRewriteStage(projectDir, sourceDirs, namespaceMapPath, dryRun, onStage);
+  result.namespacesRewritten = rew.modified;
   if (rew.error) {
-    return {
-      success: false,
-      rulesModified: rules.modified,
-      overridesApplied: over.modified,
-      namespacesRewritten: rew.modified,
-      generatorExecuted: gen.executed,
-      compilerExecuted: false,
-      errors: [rew.error],
-    };
+    return fail(rew.error);
   }
 
-  // Stage 5: utam compiler
-  const comp = await executeCompilerStage(
-    projectDir,
-    options?.utamConfigPath ?? 'utam.config.json',
-    dryRun,
-    runner,
-    onStage,
-  );
+  // Stage 6: utam compiler
+  const comp = await executeCompilerStage(projectDir, utamConfigPath, dryRun, runner, onStage);
+  result.compilerExecuted = comp.executed;
   if (comp.error) {
-    return {
-      success: false,
-      rulesModified: rules.modified,
-      overridesApplied: over.modified,
-      namespacesRewritten: rew.modified,
-      generatorExecuted: gen.executed,
-      compilerExecuted: comp.executed,
-      errors: [comp.error],
-    };
+    return fail(comp.error);
   }
 
-  return {
-    success: true,
-    rulesModified: rules.modified,
-    overridesApplied: over.modified,
-    namespacesRewritten: rew.modified,
-    generatorExecuted: gen.executed,
-    compilerExecuted: comp.executed,
-    errors: [],
-  };
+  return { ...result, success: true };
 }

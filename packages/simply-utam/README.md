@@ -19,9 +19,10 @@ Requires Node.js 22 or later.
 - `simply-utam init`: Scaffolds starter UTAM configs (`generator.config.json`, `utam.config.json`, `wdio.conf.mjs`, `.utam/namespace-map.json`) and the DOM snapshot capture step (`step_definitions/dom-snapshot.steps.mjs`) in the UTAM test folder, adds `.utam/snapshots/` to `.gitignore` (`--no-gitignore` to skip), non-destructively injects standard Wireit tasks into `package.json`, and adds any missing UTAM rules to `.forceignore` under a `# Ignore UTAM` comment so LWC bundles that contain UTAM files deploy successfully. Existing lines are never changed; new rules go inside the `# -- START CUSTOMIZATION` / `# -- END CUSTOMIZATION` region when one exists (`--forceignore-region-start` / `--forceignore-region-end` to change the markers, `--no-forceignore` to skip). The UTAM namespace is the `package.json` name, scope included, so page objects can import each other by the package's own name (`--app-name` to override). It also adds `"./pageObjects/*": "./pageObjects/*.js"` to `package.json` `exports`, which those imports resolve through; an existing entry is never changed.
 - `simply-utam rules`: Scans LWC component definitions and generates or updates UTAM `.rules.json` files for root components. A component with no `<component>.html` template, such as a datatable with only custom type templates, is skipped, and a rules file left from an earlier run is kept and listed with `--verbose`. It warns when another template in the bundle (`orders.html` in `ordersTable`) could take the rules file, since the UTAM generator pairs rules files with templates by name prefix.
 - `simply-utam overrides`: Deeply merges custom element assertions, wait conditions, and visibility rules from `*.utam-overrides.json` into generated `*.utam.json` files while preserving file indentation.
+- `simply-utam names`: Renames the page objects generated from an LWC bundle's secondary templates (every template not named after the bundle, such as a datatable's custom type templates) to `<bundle><Template>`, so same-named templates in different bundles stop overwriting each other in the compiler's single output folder. Runs after `overrides`, so overrides files keep the template's own name. Fails, renaming nothing, when a new name would match another page object the compiler reads. See [Secondary template page objects](#secondary-template-page-objects).
 - `simply-utam rewrite`: Rewrites namespace prefixes across compiled `*.utam.json` files according to `.utam/namespace-map.json`.
 - `simply-utam steps`: Statically analyzes Gherkin `.feature` files, compiles existing step expressions, detects true undefined steps, and appends formatted Cucumber expressions into target step files.
-- `simply-utam build`: Convenience runner executing all compilation and transformation stages sequentially (`rules -> utam-generate -> overrides -> rewrite -> utam`).
+- `simply-utam build`: Convenience runner executing all compilation and transformation stages sequentially (`rules -> utam-generate -> overrides -> names -> rewrite -> utam`). `--skip-names` leaves out the `names` stage.
 - `simply-utam snapshot find`: Finds nodes in a DOM snapshot by `--text`, `--attr`, `--tag` or `--class`, visible matches first; or tests a CSS selector with `--css` as UTAM's `findElement` runs it, in the document or `--within` a node's light DOM or, with `--shadow`, its shadow root. `--all` lists hidden matches in full.
 - `simply-utam snapshot path`: Shows the custom elements from the document down to a node (`--node` or `--text`), with each shadow crossing, the page object for each element, the route to it from the page object above, and warnings for a root selector that loads a hidden copy or an element declared in the wrong scope. Exits 1 when `--text` doesn't find exactly one visible node.
 - `simply-utam snapshot tree`: Prints the tree under a node (`--node`, `--depth`), shadow root first, then light DOM.
@@ -156,6 +157,7 @@ In a Salesforce test project:
     "build:utam-rules": "wireit",
     "build:utam-generate": "wireit",
     "build:utam-overrides": "wireit",
+    "build:utam-names": "wireit",
     "build:utam-rewrite-namespaces": "wireit",
     "build:utam": "wireit",
     "test:ui": "wireit"
@@ -172,9 +174,13 @@ In a Salesforce test project:
       "command": "simply-utam overrides",
       "dependencies": ["build:utam-generate"]
     },
+    "build:utam-names": {
+      "command": "simply-utam names",
+      "dependencies": ["build:utam-overrides"]
+    },
     "build:utam-rewrite-namespaces": {
       "command": "simply-utam rewrite -c .utam/namespace-map.json",
-      "dependencies": ["build:utam-overrides"]
+      "dependencies": ["build:utam-names"]
     },
     "build:utam": {
       "command": "utam -c utam.config.json",
@@ -189,6 +195,43 @@ In a Salesforce test project:
   }
 }
 ```
+
+## Secondary template page objects
+
+`utam-generate` makes a page object for every template and names it after the HTML file, and the UTAM
+compiler writes every page object to one folder. So when two components have a template of the same
+name, as datatables with custom types usually do (`picklistTemplate.html` in every table), one page
+object silently overwrites the other. The `names` stage renames each secondary template's page objects
+to `<component><Template>`:
+
+| Template                            | Page object                   |
+| ----------------------------------- | ----------------------------- |
+| `component_1/component_1.html`      | `component_1` (unchanged)     |
+| `component_1/fooTemplate.html`      | `component_1FooTemplate`      |
+| `ordersTable/picklistTemplate.html` | `ordersTablePicklistTemplate` |
+| `casesTable/picklistTemplate.html`  | `casesTablePicklistTemplate`  |
+
+`simply-utam build` runs it. A project scaffolded before the stage existed runs it from Wireit by adding
+the task and pointing the rewrite task at it, keeping its own rewrite command:
+
+```json
+{
+  "scripts": { "build:utam-names": "wireit" },
+  "wireit": {
+    "build:utam-names": {
+      "command": "simply-utam names",
+      "dependencies": ["build:utam-overrides"]
+    },
+    "build:utam-rewrite-namespaces": {
+      "command": "simply-utam rewrite -c .utam/namespace-map.json",
+      "dependencies": ["build:utam-names"]
+    }
+  }
+}
+```
+
+To keep the generated names, leave the task out or run `simply-utam build --skip-names`. Same-named
+templates then overwrite each other again.
 
 ## Re-exports
 

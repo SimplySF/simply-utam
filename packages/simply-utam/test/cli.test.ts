@@ -26,6 +26,7 @@ import Overrides from '../src/commands/overrides.js';
 import Rewrite from '../src/commands/rewrite.js';
 import Steps from '../src/commands/steps.js';
 import Build from '../src/commands/build.js';
+import Names from '../src/commands/names.js';
 
 describe('CLI command execution', () => {
   let tempDir: string;
@@ -516,6 +517,69 @@ Given('step is defined', async () => {});
       );
 
       expect(result.undefinedStepsCount).toBe(0);
+    });
+  });
+
+  describe('Names command', () => {
+    function writeGenerated(component: string, template: string): string {
+      const compDir = path.join(tempDir, 'force-app', 'main', 'default', 'lwc', component);
+      fs.mkdirSync(path.join(compDir, '__utam__'), { recursive: true });
+      fs.writeFileSync(path.join(compDir, `${template}.html`), '<template></template>', 'utf-8');
+      fs.writeFileSync(
+        path.join(compDir, '__utam__', `${template}.utam.json`),
+        JSON.stringify({ description: { text: [`Page Object: ${template}`] } }),
+        'utf-8',
+      );
+      return path.join(compDir, '__utam__');
+    }
+
+    beforeEach(() => {
+      fs.writeFileSync(
+        path.join(tempDir, 'generator.config.json'),
+        JSON.stringify({ outputDir: '__utam__', relativeOutputDir: true }),
+        'utf-8',
+      );
+    });
+
+    it('should rename secondary template page objects and list them with --verbose', async () => {
+      const utamDir = writeGenerated('ordersTable', 'picklistTemplate');
+      const output: string[] = [];
+      const command = new Names(
+        ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app'), '--verbose'],
+        config,
+      );
+      command.log = (message?: string): void => {
+        output.push(message ?? '');
+      };
+
+      const result = await command.run();
+
+      expect(result.renames).toHaveLength(1);
+      expect(fs.readdirSync(utamDir)).toEqual(['ordersTablePicklistTemplate.utam.json']);
+      expect(output).toContain('Renamed 1 secondary template page objects.');
+      expect(output.some((line) => line.endsWith('picklistTemplate.utam.json -> ordersTablePicklistTemplate'))).toBe(
+        true,
+      );
+    });
+
+    it('should fail, renaming nothing, when two page objects would get one name', async () => {
+      const first = writeGenerated('a', 'bC');
+      writeGenerated('aB', 'c');
+
+      await expect(
+        Names.run(['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app')], config),
+      ).rejects.toThrow(/would compile to the same file, so nothing was renamed[\s\S]*aBC/);
+      expect(fs.readdirSync(first)).toEqual(['bC.utam.json']);
+    });
+
+    it('should skip a project without a generator config', async () => {
+      fs.rmSync(path.join(tempDir, 'generator.config.json'));
+      const utamDir = writeGenerated('ordersTable', 'picklistTemplate');
+
+      const result = await Names.run(['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app')], config);
+
+      expect(result.skipped).toContain('No generator config');
+      expect(fs.readdirSync(utamDir)).toEqual(['picklistTemplate.utam.json']);
     });
   });
 
