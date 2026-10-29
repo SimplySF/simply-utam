@@ -254,6 +254,7 @@ describe('CLI command execution', () => {
 </LightningComponentBundle>`,
         'utf-8',
       );
+      fs.writeFileSync(path.join(lwcDir, 'myComp.html'), '<template></template>', 'utf-8');
 
       const result = await Rules.run(['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app')], config);
 
@@ -274,6 +275,7 @@ describe('CLI command execution', () => {
 </LightningComponentBundle>`,
         'utf-8',
       );
+      fs.writeFileSync(path.join(lwcDir, 'myComp.html'), '<template></template>', 'utf-8');
 
       const result = await Rules.run(
         ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app'), '--dry-run'],
@@ -282,6 +284,42 @@ describe('CLI command execution', () => {
 
       expect(result.filesCreated).toHaveLength(1);
       expect(fs.existsSync(path.join(lwcDir, 'myComp.rules.json'))).toBe(false);
+    });
+
+    it('should warn about a template that can take the rules file, and list skips with --verbose', async () => {
+      const lwc = path.join(tempDir, 'force-app', 'main', 'default', 'lwc');
+      const meta = `<LightningComponentBundle><targets><target>lightning__AppPage</target></targets></LightningComponentBundle>`;
+      for (const [name, templates] of [
+        ['ordersTable', ['ordersTable.html', 'orders.html']],
+        ['casesTable', ['picklistTemplate.html']],
+      ] as const) {
+        fs.mkdirSync(path.join(lwc, name), { recursive: true });
+        fs.writeFileSync(path.join(lwc, name, `${name}.js-meta.xml`), meta, 'utf-8');
+        for (const template of templates) {
+          fs.writeFileSync(path.join(lwc, name, template), '<template></template>', 'utf-8');
+        }
+      }
+      fs.writeFileSync(path.join(lwc, 'casesTable', 'casesTable.rules.json'), '{}', 'utf-8');
+      const output: string[] = [];
+      const warnings: string[] = [];
+      const command = new Rules(
+        ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app'), '--verbose'],
+        config,
+      );
+      command.log = (message?: string): void => {
+        output.push(message ?? '');
+      };
+      command.warn = (input: string | Error): string | Error => {
+        warnings.push(String(input));
+        return input;
+      };
+
+      await command.run();
+
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('ordersTable/orders.html can take ordersTable.rules.json');
+      expect(output.some((line) => line.includes('casesTable: skipped: No casesTable.html template'))).toBe(true);
+      expect(output.some((line) => line.startsWith('  - Left in place, configures no template:'))).toBe(true);
     });
   });
 

@@ -149,12 +149,12 @@ internal.
 
 ### Rules Generation
 
-| Export                                     | Description                                                                   |
-| ------------------------------------------ | ----------------------------------------------------------------------------- |
-| `generateLwcRules(options?)`               | Scans LWC components and generates or updates `<component>.rules.json` files. |
-| `convertLwcNameToHtml(componentName, ns?)` | Converts component name to kebab-case HTML tag with namespace prefix.         |
-| `getTargetsFromMeta(xmlContent)`           | Extracts targets from `<targets>` in a `*.js-meta.xml` file.                  |
-| `ROOT_TARGETS`                             | Target page names that designate an LWC as a root component.                  |
+| Export                                     | Description                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generateLwcRules(options?)`               | Scans LWC components and generates or updates `<component>.rules.json` files. Skips a component with no `<component>.html` (`leftoverRulesFiles` lists a rules file left from an earlier run), and `warnings` names any other template the UTAM generator could pair the rules file with by prefix. |
+| `convertLwcNameToHtml(componentName, ns?)` | Converts component name to kebab-case HTML tag with namespace prefix.                                                                                                                                                                                                                               |
+| `getTargetsFromMeta(xmlContent)`           | Extracts targets from `<targets>` in a `*.js-meta.xml` file.                                                                                                                                                                                                                                        |
+| `ROOT_TARGETS`                             | Target page names that designate an LWC as a root component.                                                                                                                                                                                                                                        |
 
 ### Overrides Merger
 
