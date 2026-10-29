@@ -1,6 +1,6 @@
 # 0005 — Unique names for secondary template page objects
 
-**Status:** Draft
+**Status:** Implemented (branch `fix/secondary-template-page-object-names`, not yet merged)
 **Package:** `packages/simply-utam-core`, `packages/simply-utam`
 **Date:** 2026-10-29
 
@@ -138,21 +138,23 @@ same-named templates before any stage runs, and renaming afterwards cannot recov
 
 ### Changes to `rules`
 
-`generateLwcRules` checks for `<component>.html` in the bundle folder before it reads `js-meta.xml`.
-When the file is missing, the component is reported as `skipped` with the reason
-`No <component>.html template`, like a component without `js-meta.xml` today, and no rules file is
-created or updated.
+Once `generateLwcRules` has found a root component from its `js-meta.xml`, it checks for
+`<component>.html` in the bundle folder. When the file is missing, the component is reported as
+`skipped` with the reason `No <component>.html template`, and no rules file is created or updated. A
+component that is not a root keeps its `Not a root component` reason, which says more.
 
 A rules file already there, from an earlier run, is left alone: `rules` cannot tell one it wrote from
-one a person edited. `--verbose` lists it, so a project can delete it. Until it is deleted, a secondary
-template whose name is a prefix of the component's name still picks it up.
+one a person edited. The result lists it in `leftoverRulesFiles` (and marks the action `leftover`), and
+`--verbose` prints it, so a project can delete it. Until it is deleted, a secondary template whose name
+is a prefix of the component's name still picks it up, so the prefix warning below covers it too.
 
 This does not leave the component without something it needs: a rules file is not a stub for a root
 page object, and with no template of its own there is nothing to generate one from.
 
 When a bundle has `<component>.html` and also a template whose name is a prefix of the component's name
-(`orders.html` in `ordersTable`), `rules` still writes the rules file and adds a warning to its result
-naming both templates: the generator may pair the rules with the wrong one, depending on the order the
+(`orders.html` in `ordersTable`), `rules` still writes the rules file and adds a warning to the
+action's `warnings` and the result's `warnings`, naming the template. The CLI prints it on every run,
+and `build` passes it on in its result's `warnings`: the generator may pair the rules with the wrong one, depending on the order the
 filesystem lists them. `rules` cannot prevent that by naming the file differently, since any name that
 starts with `ordersTable` also starts with `orders`. The warning is a warning, not a failure, because the
 only fixes are a rename or a move of the template into a subfolder, both changes to component code.
@@ -202,7 +204,7 @@ const cell = await page.getCustomCell(1, 2, OrdersTablePicklistTemplate);
 `row` and `col` are DOM positions, as in `lightning/datatable`'s own `cellByIndex`: `col` counts the
 checkbox column and the row header when the table shows them.
 
-The root README documents this recipe. Generating the container for components that extend
+Generating the container for components that extend
 `LightningDatatable` is out of scope here.
 
 ### The rename
@@ -240,12 +242,17 @@ stage that edits JSON before the compile.
 ### Surfaces
 
 - `simply-utam-core`: `nameSecondaryPageObjects(options)` alongside `applyUtamOverrides`, with
-  the same option shape (`rootDir`, `sourceDirs`, `dryRun`, `verbose`) and a result listing each rename
-  and any collision.
-- `simply-utam names`: a command over it, shaped like `simply-utam overrides`.
+  the same option shape (`rootDir`, `sourceDirs`, `dryRun`, `verbose`) plus `generatorConfigPath` and
+  `utamConfigPath`. Its result lists the `renames`, any `collisions` and the `unmatched` page objects,
+  and says why it `skipped`: it does nothing without a generator config, since the page objects are
+  then not generated and renaming them would rename hand-written files. `secondaryPageObjectName` gives
+  the rule on its own.
+- `simply-utam names`: a command over it, shaped like `simply-utam overrides`, with
+  `--generator-config` and `--utam-config`. It exits 1 on a collision, naming each one.
 - `executeBuildPipeline` and `simply-utam build`: the new stage between overrides and rewrite, reported
   as `names` and counted in the result as `pageObjectsRenamed`. `executeBuildPipeline` takes
-  `skipNames`, and `build` takes `--skip-names`, to leave the stage out.
+  `skipNames`, and `build` takes `--skip-names`, to leave the stage out. The result also gains
+  `warnings`, which carries the `rules` warnings.
 - The scaffolded Wireit chain (`templates/wireit.json`): a `build:utam-names` task running
   `simply-utam names`, depending on `build:utam-overrides`, with `build:utam-rewrite-namespaces`
   depending on it instead.
@@ -282,7 +289,7 @@ template names happen to be unique.
   ```
 
   plus `"build:utam-names": "wireit"` under `scripts`. A project that changed the rewrite task's
-  command keeps it: only `dependencies` changes. The root README and the release notes carry the same
+  command keeps it: only `dependencies` changes. The `simply-utam` README and the release notes carry the same
   snippet.
 
 - Any page object already published or imported as `<namespace>/pageObjects/fooTemplate` changes name.
@@ -341,10 +348,10 @@ so `**/node_modules/**` has to stay in it:
 4. `templates/wireit.json`: the new task and the changed dependency.
 5. `generateLwcRules`: the `No <component>.html template` skip, the prefix warning, and the
    `--verbose` listing of a rules file left behind.
-6. The root README: the stage, `--skip-names`, the Wireit snippet for existing projects, and the
-   custom cell container recipe. The `simply-utam` README: `names` in `## Commands`, the stage in
-   `build`'s pipeline string, the skip and warning in `rules`, and `skipNames` and
-   `pageObjectsRenamed` on `executeBuildPipeline`, which `simply-utam` exports.
+6. The `simply-utam` README: `names` in `## Commands`, the stage in `build`'s pipeline string, the
+   skip and warning in `rules`, the stage in the Wireit snippet, and a "Secondary template page
+   objects" section with the snippet for existing projects and `--skip-names`. The root README: the new task in the scaffolded task list and chain. The core
+   README: the new exports and the rules result fields.
 7. Update this document and the design index to match what shipped.
 
 Commit the rules change separately from the naming stage: it changes what `rules` writes on its own.
