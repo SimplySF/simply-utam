@@ -26,6 +26,13 @@ const EXPECTED_LAYOUT = { outputDir: '__utam__', relativeOutputDir: true, output
 const GENERATOR_DEFAULTS = { outputDir: '__utam__', relativeOutputDir: false, outputFileExtension: '.utam.json' };
 
 const DEFAULT_PAGE_OBJECTS_FILE_MASK = ['**/__utam__/**/*.utam.json'];
+
+/**
+ * The description line the stage adds to every page object it renames. It is how a later run tells
+ * its own output, which it replaces, from a page object someone wrote or renamed by hand, which it
+ * must not overwrite.
+ */
+const RENAMED_MARKER = 'Renamed by simply-utam names from ';
 const UTAM_EXT = '.utam.json';
 
 export interface NameSecondaryPageObjectsOptions {
@@ -118,14 +125,46 @@ export function secondaryPageObjectName(bundleName: string, templateName: string
  */
 function assertGeneratorLayout(configPath: string, config: Record<string, unknown>): void {
   const effective = { ...GENERATOR_DEFAULTS, ...config };
-  const wrong = (Object.keys(EXPECTED_LAYOUT) as Array<keyof typeof EXPECTED_LAYOUT>).filter(
-    (key) => effective[key] !== EXPECTED_LAYOUT[key],
+  const wrong = (Object.keys(EXPECTED_LAYOUT) as Array<keyof typeof EXPECTED_LAYOUT>).filter((key) =>
+    key === 'outputDir' ? !isUtamFolder(effective.outputDir) : effective[key] !== EXPECTED_LAYOUT[key],
   );
   if (wrong.length > 0) {
     const found = wrong.map((key) => `${key}: ${JSON.stringify(effective[key])}`).join(', ');
     throw new Error(
       `${configPath} must set "outputDir": "__utam__", "relativeOutputDir": true and "outputFileExtension": ".utam.json" for page objects to be named per component (found ${found}). With one output folder, the generator overwrites same-named templates before they can be renamed.`,
     );
+  }
+}
+
+/** Whether an `outputDir` value names the `__utam__` folder, however it is spelled (`./__utam__`, `__utam__/`). */
+function isUtamFolder(outputDir: unknown): boolean {
+  return (
+    typeof outputDir === 'string' && path.normalize(outputDir).replace(/[\\/]+$/, '') === EXPECTED_LAYOUT.outputDir
+  );
+}
+
+/**
+ * Fails when a rules file beside a template sets its own `outputDir`. The generator honours it, so
+ * that template's page objects go somewhere other than `__utam__`, where this stage would never find
+ * them, and the clash it exists to prevent would stay without a word.
+ */
+function assertNoRulesOutputDir(folders: Iterable<string>): void {
+  for (const folder of folders) {
+    let files: string[];
+    try {
+      files = fs.readdirSync(folder).filter((file) => file.endsWith('.rules.json'));
+    } catch {
+      continue;
+    }
+    for (const file of files) {
+      const rulesPath = path.join(folder, file);
+      const outputDir = readJsonConfig(rulesPath)?.['outputDir'];
+      if (outputDir !== undefined && !isUtamFolder(outputDir)) {
+        throw new Error(
+          `${rulesPath} sets "outputDir": ${JSON.stringify(outputDir)}, so its page objects are not written to __utam__ beside the template, and cannot be named per component. Remove "outputDir" from the rules file.`,
+        );
+      }
+    }
   }
 }
 
@@ -178,7 +217,9 @@ interface BundlePlan {
 
 function planBundle(bundleDir: string, bundleName: string): BundlePlan {
   const plan: BundlePlan = { renames: [], unmatched: [] };
-  for (const [folder, templates] of findTemplates(bundleDir)) {
+  const templatesByFolder = findTemplates(bundleDir);
+  assertNoRulesOutputDir(templatesByFolder.keys());
+  for (const [folder, templates] of templatesByFolder) {
     const utamDir = path.join(folder, '__utam__');
     let files: string[];
     try {
@@ -278,7 +319,13 @@ function findCollisions(
   utamConfigPath: string,
 ): PageObjectNameCollision[] {
   const renamedFrom = new Map(renames.map((rename) => [path.resolve(rename.from), rename]));
-  const replacedTargets = new Set(renames.map((rename) => path.resolve(rename.to)));
+  // A target this stage wrote on an earlier run is replaced by its rename, so it is not a second
+  // source. Any other file already at a target is someone's page object, and it collides.
+  const replacedTargets = new Set(
+    renames
+      .map((rename) => path.resolve(rename.to))
+      .filter((target) => !fs.existsSync(target) || isRenamedByThisStage(target)),
+  );
   const byName = new Map<string, { name: string; sources: string[] }>();
   const add = (name: string, source: string): void => {
     const entry = byName.get(name.toLowerCase()) ?? { name, sources: [] };
@@ -295,7 +342,6 @@ function findCollisions(
     if (rename) {
       add(rename.name, source);
     } else if (!replacedTargets.has(source)) {
-      // A target from an earlier run is overwritten by its rename, so it is not a second source.
       add(path.basename(source, UTAM_EXT), source);
     }
   }
@@ -303,17 +349,49 @@ function findCollisions(
   return [...byName.values()].filter((entry) => entry.sources.length > 1);
 }
 
-/** Rewrites the generator's `Page Object: <old>` description entry to the new name. */
-function renameDescription(json: Record<string, unknown>, oldName: string, newName: string): void {
+/** The description's text lines, whichever of UTAM's shapes it has (a string, or an object with `text`). */
+function descriptionText(json: Record<string, unknown>): unknown[] {
   const description = json['description'];
-  if (!description || typeof description !== 'object' || Array.isArray(description)) {
-    return;
+  if (typeof description === 'string') {
+    return [description];
   }
-  const text = (description as Record<string, unknown>)['text'];
-  if (Array.isArray(text)) {
-    (description as Record<string, unknown>)['text'] = text.map((line: unknown) =>
-      line === `Page Object: ${oldName}` ? `Page Object: ${newName}` : line,
+  if (description && typeof description === 'object' && !Array.isArray(description)) {
+    const text = (description as Record<string, unknown>)['text'];
+    return Array.isArray(text) ? text : [];
+  }
+  return [];
+}
+
+/**
+ * Rewrites the generator's `Page Object: <old>` description entry to the new name, and adds the
+ * {@link RENAMED_MARKER} line. Other text is kept, including a description set through generator config.
+ */
+function renameDescription(json: Record<string, unknown>, oldName: string, newName: string): void {
+  const text = descriptionText(json).map((line) =>
+    line === `Page Object: ${oldName}` ? `Page Object: ${newName}` : line,
+  );
+  text.push(`${RENAMED_MARKER}${oldName}`);
+
+  const description = json['description'];
+  if (description && typeof description === 'object' && !Array.isArray(description)) {
+    (description as Record<string, unknown>)['text'] = text;
+  } else {
+    json['description'] = { text };
+  }
+}
+
+/** Whether `file` is a page object this stage wrote, which a rename may replace. */
+function isRenamedByThisStage(file: string): boolean {
+  try {
+    const json = JSON.parse(fs.readFileSync(file, 'utf-8')) as unknown;
+    if (!json || typeof json !== 'object' || Array.isArray(json)) {
+      return false;
+    }
+    return descriptionText(json as Record<string, unknown>).some(
+      (line) => typeof line === 'string' && line.startsWith(RENAMED_MARKER),
     );
+  } catch {
+    return false;
   }
 }
 
@@ -353,9 +431,9 @@ function renderRename(rename: PageObjectRename): string {
  *
  * @param options - Naming options.
  * @returns The renames, any collisions, and page objects that match no template.
- * @throws When a config file is not valid JSON, when the generator config does not write page objects
- * into `__utam__` beside each template, or when a page object to rename is not valid JSON. Nothing is
- * renamed in any of these cases.
+ * @throws When a config file is not valid JSON, when the generator config or a rules file beside a
+ * template does not write page objects into `__utam__` beside each template, or when a page object to
+ * rename is not valid JSON. Nothing is renamed in any of these cases.
  */
 export function nameSecondaryPageObjects(
   options: NameSecondaryPageObjectsOptions = {},
@@ -388,10 +466,14 @@ export function nameSecondaryPageObjects(
   }
 
   // Render every file before writing any, so one unreadable page object leaves the folder as it was.
+  // Then remove every source before writing any target: one rename's target can be another's source
+  // (`B` becomes `aB` while `aB` becomes `aAB`), and removing that source afterwards would delete it.
   const rendered = result.renames.map((rename) => ({ rename, output: renderRename(rename) }));
+  for (const { rename } of rendered) {
+    fs.rmSync(rename.from);
+  }
   for (const { rename, output } of rendered) {
     fs.writeFileSync(rename.to, output, 'utf-8');
-    fs.rmSync(rename.from);
   }
   return result;
 }

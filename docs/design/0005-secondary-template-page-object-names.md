@@ -133,8 +133,14 @@ The stage looks for page objects where the scaffolded `generator.config.json` pu
 `outputDir: "__utam__"`, `relativeOutputDir: true` and `outputFileExtension: ".utam.json"`, the layout the
 `overrides` stage already assumes. It reads those three keys from the generator config (the
 `--generator-config` path `build` already takes) and fails, before renaming anything, when they differ.
-With `relativeOutputDir: false` every page object goes to one folder, so the generator itself overwrites
+`outputDir` is compared after normalizing, so `./__utam__` and `__utam__/` pass. With
+`relativeOutputDir: false` every page object goes to one folder, so the generator itself overwrites
 same-named templates before any stage runs, and renaming afterwards cannot recover them.
+
+A rules file can also set `outputDir`, and the generator honours it for the template it pairs the file
+with. That template's page objects then go somewhere this stage never looks, and the clash would stay
+without a word. So the stage also fails, before renaming anything, when a `*.rules.json` beside a
+template sets an `outputDir` other than `__utam__`.
 
 ### Changes to `rules`
 
@@ -209,11 +215,18 @@ Generating the container for components that extend
 
 ### The rename
 
-- The new file replaces any file already at the target, which is the copy the previous run renamed.
-  The generated file is then removed, so after the stage a secondary template has one page object, not
-  two.
-- The root `description.text` entry `Page Object: <t>` is rewritten to the new name. Other text is left
-  alone, including a description set through generator config.
+- The root `description.text` entry `Page Object: <t>` is rewritten to the new name, and a line
+  `Renamed by simply-utam names from <t>` is added. Other text is left alone, including a description
+  set through generator config.
+- That line is how a later run tells its own output from someone else's. A file already at the target
+  that carries it is the copy an earlier run renamed, and the new file replaces it. A file at the target
+  without it, such as a page object someone renamed and edited by hand, is never overwritten: it counts
+  as a collision (below).
+- Every renamed file is prepared before anything is written. Then every generated file is removed,
+  and only then are the new files written, because one rename's target can be another rename's source:
+  in bundle `a`, `B.html` becomes `aB` while `aB.html` becomes `aAB`. Removing the sources one by one,
+  after each write, would delete `B`'s renamed page object. After the stage a secondary template has one
+  page object, not two.
 - The file's formatting is kept, as the `overrides` and `rewrite` stages keep it (`detectIndentation`).
 - `--dry-run` reports the renames and writes nothing.
 

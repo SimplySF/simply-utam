@@ -42,6 +42,13 @@ function generated(name: string): string {
   );
 }
 
+/** What the stage writes for a page object `generated(from)` renamed to `to`. */
+function renamed(from: string, to: string): string {
+  const json = JSON.parse(generated(from)) as { description: { text: string[] } };
+  json.description.text = [`Page Object: ${to}`, `Renamed by simply-utam names from ${from}`];
+  return JSON.stringify(json, null, 4);
+}
+
 describe('secondaryPageObjectName', () => {
   it('appends the template name with its first letter upper-cased', () => {
     expect(secondaryPageObjectName('component_1', 'fooTemplate')).toBe('component_1FooTemplate');
@@ -115,7 +122,7 @@ describe('nameSecondaryPageObjects', () => {
     ]);
     expect(utamFiles(utamDir)).toEqual(['component_1.utam.json', 'component_1FooTemplate.utam.json']);
     const content = fs.readFileSync(path.join(utamDir, 'component_1FooTemplate.utam.json'), 'utf-8');
-    expect(content).toBe(generated('component_1FooTemplate'));
+    expect(content).toBe(renamed('fooTemplate', 'component_1FooTemplate'));
   });
 
   it('keeps a trailing newline and the file indentation', () => {
@@ -125,9 +132,17 @@ describe('nameSecondaryPageObjects', () => {
 
     run();
 
-    expect(fs.readFileSync(path.join(utamDir, 'component_1FooTemplate.utam.json'), 'utf-8')).toBe(
-      content.replace('Page Object: fooTemplate', 'Page Object: component_1FooTemplate'),
-    );
+    const expected =
+      JSON.stringify(
+        {
+          description: {
+            text: ['Page Object: component_1FooTemplate', 'Renamed by simply-utam names from fooTemplate'],
+          },
+        },
+        null,
+        2,
+      ) + '\n';
+    expect(fs.readFileSync(path.join(utamDir, 'component_1FooTemplate.utam.json'), 'utf-8')).toBe(expected);
   });
 
   it('gives two bundles with the same secondary template different names', () => {
@@ -199,18 +214,57 @@ describe('nameSecondaryPageObjects', () => {
 
   it('replaces the copy a previous run renamed, and lists nothing as unmatched on a second run', () => {
     const utamDir = bundle('component_1', ['fooTemplate.html'], ['fooTemplate']);
-    fs.writeFileSync(path.join(utamDir, 'component_1FooTemplate.utam.json'), '{"stale": true}');
+    const target = path.join(utamDir, 'component_1FooTemplate.utam.json');
+    fs.writeFileSync(
+      target,
+      JSON.stringify({ stale: true, description: { text: ['Renamed by simply-utam names from fooTemplate'] } }),
+    );
 
     const first = run();
     const second = run();
 
     expect(first.collisions).toEqual([]);
-    expect(
-      JSON.parse(fs.readFileSync(path.join(utamDir, 'component_1FooTemplate.utam.json'), 'utf-8')),
-    ).not.toHaveProperty('stale');
+    expect(JSON.parse(fs.readFileSync(target, 'utf-8'))).not.toHaveProperty('stale');
     expect(second.renames).toEqual([]);
     expect(second.unmatched).toEqual([]);
     expect(utamFiles(utamDir)).toEqual(['component_1FooTemplate.utam.json']);
+  });
+
+  it('replaces its own output on every run, as the generator writes the old name again', () => {
+    const utamDir = bundle('component_1', ['fooTemplate.html'], ['fooTemplate']);
+    run();
+    fs.writeFileSync(path.join(utamDir, 'fooTemplate.utam.json'), generated('fooTemplate'));
+
+    const second = run();
+
+    expect(second.collisions).toEqual([]);
+    expect(utamFiles(utamDir)).toEqual(['component_1FooTemplate.utam.json']);
+  });
+
+  it('never overwrites a page object at the target that it did not write', () => {
+    const utamDir = bundle('component_1', ['fooTemplate.html'], ['fooTemplate']);
+    const target = path.join(utamDir, 'component_1FooTemplate.utam.json');
+    const handRenamed = JSON.stringify({ description: { text: ['Page Object: fooTemplate'] }, edited: 'by hand' });
+    fs.writeFileSync(target, handRenamed);
+
+    const result = run();
+
+    expect(result.collisions).toEqual([
+      { name: 'component_1FooTemplate', sources: [target, path.join(utamDir, 'fooTemplate.utam.json')] },
+    ]);
+    expect(fs.readFileSync(target, 'utf-8')).toBe(handRenamed);
+    expect(utamFiles(utamDir)).toEqual(['component_1FooTemplate.utam.json', 'fooTemplate.utam.json']);
+  });
+
+  it("keeps every page object when one rename's target is another's source", () => {
+    const utamDir = bundle('a', ['B.html', 'aB.html'], ['B', 'aB']);
+
+    const result = run();
+
+    expect(result.renames.map((rename) => rename.name)).toEqual(['aB', 'aAB']);
+    expect(utamFiles(utamDir)).toEqual(['aAB.utam.json', 'aB.utam.json']);
+    expect(fs.readFileSync(path.join(utamDir, 'aB.utam.json'), 'utf-8')).toBe(renamed('B', 'aB'));
+    expect(fs.readFileSync(path.join(utamDir, 'aAB.utam.json'), 'utf-8')).toBe(renamed('aB', 'aAB'));
   });
 
   it('renames nothing when the rule gives two page objects one name', () => {
@@ -280,7 +334,7 @@ describe('nameSecondaryPageObjects', () => {
     const json = JSON.parse(fs.readFileSync(path.join(utamDir, 'component_1FooTemplate.utam.json'), 'utf-8')) as {
       description: { text: string[] };
     };
-    expect(json.description.text).toEqual(['Our own words']);
+    expect(json.description.text).toEqual(['Our own words', 'Renamed by simply-utam names from fooTemplate']);
   });
 
   it('reports renames without writing on a dry run', () => {
@@ -318,6 +372,39 @@ describe('nameSecondaryPageObjects', () => {
 
     expect(() => run()).toThrow(/relativeOutputDir: false/);
     expect(utamFiles(utamDir)).toEqual(['fooTemplate.utam.json']);
+  });
+
+  it('accepts other spellings of the __utam__ output folder', () => {
+    bundle('component_1', ['fooTemplate.html'], ['fooTemplate']);
+    for (const outputDir of ['./__utam__', '__utam__/', './__utam__/']) {
+      fs.writeFileSync(
+        path.join(tempDir, 'generator.config.json'),
+        JSON.stringify({ ...SCAFFOLDED_GENERATOR_CONFIG, outputDir }),
+      );
+
+      expect(run({ dryRun: true }).renames).toHaveLength(1);
+    }
+  });
+
+  it('fails, renaming nothing, when a rules file beside a template sets its own outputDir', () => {
+    const first = bundle('ordersTable', ['picklistTemplate.html'], ['picklistTemplate']);
+    bundle('casesTable', ['picklistTemplate.html'], ['picklistTemplate']);
+    const rulesPath = path.join(lwcDir, 'casesTable', 'picklistTemplate.rules.json');
+    fs.writeFileSync(rulesPath, JSON.stringify({ outputDir: 'pageobjects' }));
+
+    expect(() => run()).toThrow(`${rulesPath} sets "outputDir": "pageobjects"`);
+    expect(utamFiles(first)).toEqual(['picklistTemplate.utam.json']);
+  });
+
+  it('accepts a rules file whose outputDir is __utam__, and rules files without one', () => {
+    bundle('ordersTable', ['ordersTable.html', 'picklistTemplate.html'], ['picklistTemplate']);
+    fs.writeFileSync(
+      path.join(lwcDir, 'ordersTable', 'picklistTemplate.rules.json'),
+      JSON.stringify({ outputDir: './__utam__' }),
+    );
+    fs.writeFileSync(path.join(lwcDir, 'ordersTable', 'ordersTable.rules.json'), JSON.stringify({ root: true }));
+
+    expect(run().renames).toHaveLength(1);
   });
 
   it('fails for another output folder name or extension', () => {
