@@ -18,15 +18,46 @@
 // so the names stage is checked against what the generator actually writes, not against a fake that
 // encodes the same assumptions as the code under test. See docs/design/0005.
 
+import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { executeBuildPipeline } from '../src/pipeline-runner.js';
 
-const PACKAGE_NODE_MODULES = fileURLToPath(new URL('../node_modules', import.meta.url));
 const TIMEOUT = 120_000;
+
+const UTAM_PACKAGE_JSON = createRequire(import.meta.url).resolve('utam/package.json');
+const UTAM_BINS = (JSON.parse(fs.readFileSync(UTAM_PACKAGE_JSON, 'utf-8')) as { bin: Record<string, string> }).bin;
+
+/**
+ * Runs the real `utam-generate` or `utam` script with this Node, in place of the pipeline's own
+ * spawn. The project has no `node_modules`, so the pipeline asks for the bare command name.
+ *
+ * Linking the project's `node_modules` to this package's instead works on macOS and Linux, but on
+ * Windows pnpm's `.cmd` launchers then look for their script through the link and fail with
+ * `Cannot find module`. Running the script directly behaves the same on every platform.
+ */
+function runUtam(
+  command: string,
+  args: string[],
+  cwd: string,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const bin = UTAM_BINS[path.basename(command).replace(/\.cmd$/, '')];
+  if (!bin) {
+    throw new Error(`The pipeline ran an unexpected command: ${command}`);
+  }
+  return new Promise((resolve) => {
+    const proc = spawn(process.execPath, [path.join(path.dirname(UTAM_PACKAGE_JSON), bin), ...args], { cwd });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
+    proc.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+    proc.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+    proc.on('error', (error) => resolve({ code: 1, stdout, stderr: error.message }));
+  });
+}
 
 /** The scaffolded generator config, as `simply-utam init` writes it. */
 const GENERATOR_CONFIG = {
@@ -63,8 +94,6 @@ describe('executeBuildPipeline with the real UTAM generator and compiler', () =>
     );
     fs.writeFileSync(path.join(projectDir, 'generator.config.json'), JSON.stringify(GENERATOR_CONFIG));
     fs.writeFileSync(path.join(projectDir, 'utam.config.json'), JSON.stringify(UTAM_CONFIG));
-    // The pipeline runs `node_modules/.bin/utam-generate` and `utam` from the project.
-    fs.symlinkSync(PACKAGE_NODE_MODULES, path.join(projectDir, 'node_modules'), 'junction');
 
     // Two components switching to a same-named template in render().
     for (const component of ['component_1', 'component_2']) {
@@ -120,7 +149,7 @@ describe('executeBuildPipeline with the real UTAM generator and compiler', () =>
         JSON.stringify([{ name: 'button', element: { nullable: true } }]),
       );
 
-      const result = await executeBuildPipeline({ projectDir });
+      const result = await executeBuildPipeline({ projectDir, spawnCommand: runUtam });
 
       expect(result.errors).toEqual([]);
       expect(result.success).toBe(true);
@@ -150,10 +179,10 @@ describe('executeBuildPipeline with the real UTAM generator and compiler', () =>
   it(
     'gives the same files on a second run, when the generator writes the old names again',
     async () => {
-      await executeBuildPipeline({ projectDir });
+      await executeBuildPipeline({ projectDir, spawnCommand: runUtam });
       const firstRun = generatedFiles();
 
-      const result = await executeBuildPipeline({ projectDir });
+      const result = await executeBuildPipeline({ projectDir, spawnCommand: runUtam });
 
       expect(result.success).toBe(true);
       expect(generatedFiles()).toEqual(firstRun);
@@ -165,7 +194,7 @@ describe('executeBuildPipeline with the real UTAM generator and compiler', () =>
   it(
     'with skipNames, compiles same-named templates to one file, which is the clash the stage prevents',
     async () => {
-      const result = await executeBuildPipeline({ projectDir, skipNames: true });
+      const result = await executeBuildPipeline({ projectDir, spawnCommand: runUtam, skipNames: true });
 
       expect(result.success).toBe(true);
       expect(compiled()).toEqual([
@@ -186,7 +215,7 @@ describe('executeBuildPipeline with the real UTAM generator and compiler', () =>
       fs.mkdirSync(testUtam, { recursive: true });
       fs.writeFileSync(path.join(testUtam, 'component_1FooTemplate.utam.json'), JSON.stringify({ elements: [] }));
 
-      const result = await executeBuildPipeline({ projectDir });
+      const result = await executeBuildPipeline({ projectDir, spawnCommand: runUtam });
 
       expect(result.success).toBe(false);
       expect(result.errors[0]).toMatch(/^Page object naming failed: .*component_1FooTemplate/);
