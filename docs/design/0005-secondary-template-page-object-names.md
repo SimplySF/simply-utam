@@ -375,14 +375,21 @@ change there.
   rules file for one is left alone and listed, a template whose name is a prefix of the component's
   name produces the warning, and a component with only its primary template is unaffected.
 - `init`: a new project gets the Wireit task and dependency.
-- Integration checks outside the unit suite, through `simply-utam rules`, `utam-generate`, the stage
-  and `utam`:
-  - the first reproduction gives `component_1FooTemplate.js` and `component_2FooTemplate.js`, and an
-    overrides file named after the template is still applied;
-  - the datatable reproduction gives `ordersTablePicklistTemplate.js`, `ordersTableLookupTemplate.js`,
-    `casesTablePicklistTemplate.js` and `casesTableLookupTemplate.js`, and writes no
-    `ordersTable.rules.json`;
-  - in an org, the renamed custom type page objects load through the container recipe above.
+- `simply-utam`'s `test/pipeline.e2e.test.ts` runs `executeBuildPipeline` against the real
+  `utam-generate` and `utam` compiler (`utam` is a dev dependency), on both reproductions together, so
+  the stage is checked against what the generator writes rather than against a fake built on the same
+  assumptions:
+  - the compiled output is `component_1FooTemplate.js`, `component_2FooTemplate.js`,
+    `ordersTablePicklistTemplate.js`, `ordersTableLookupTemplate.js`, `casesTablePicklistTemplate.js`
+    and `casesTableLookupTemplate.js` beside the two primaries, an overrides file named after the
+    template is still applied, and no `ordersTable.rules.json` is written;
+  - a second run gives the same files;
+  - with `skipNames`, the same-named templates compile to one file each, the clash itself;
+  - a new name that matches a hand-written page object stops the build before the compiler runs.
+- By hand, in an org: the renamed custom type page objects load through the container recipe above.
+- Malformed input renames nothing: a generator or compiler config that is not valid JSON fails naming
+  the file instead of being read as missing, and a page object that is not valid JSON fails before any
+  file is written.
 
 ## Resolved questions
 

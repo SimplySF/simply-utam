@@ -562,6 +562,30 @@ Given('step is defined', async () => {});
       );
     });
 
+    it('should preview renames with --dry-run and list unmatched page objects with --verbose', async () => {
+      const utamDir = writeGenerated('ordersTable', 'picklistTemplate');
+      fs.writeFileSync(path.join(utamDir, 'handWritten.utam.json'), '{}', 'utf-8');
+      const output: string[] = [];
+      const command = new Names(
+        ['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app'), '--dry-run', '--verbose'],
+        config,
+      );
+      command.log = (message?: string): void => {
+        output.push(message ?? '');
+      };
+
+      const result = await command.run();
+
+      expect(result.dryRun).toBe(true);
+      expect(fs.readdirSync(utamDir).sort()).toEqual(['handWritten.utam.json', 'picklistTemplate.utam.json']);
+      expect(output).toContain('[dry-run] Page object names preview:');
+      expect(
+        output.some(
+          (line) => line.startsWith('  - Left alone, matches no template:') && line.endsWith('handWritten.utam.json'),
+        ),
+      ).toBe(true);
+    });
+
     it('should fail, renaming nothing, when two page objects would get one name', async () => {
       const first = writeGenerated('a', 'bC');
       writeGenerated('aB', 'c');
@@ -589,6 +613,66 @@ Given('step is defined', async () => {});
 
       expect(result.success).toBe(true);
       expect(result.errors).toHaveLength(0);
+    });
+
+    describe('with generated page objects', () => {
+      let utamDir: string;
+
+      beforeEach(() => {
+        fs.writeFileSync(
+          path.join(tempDir, 'sfdx-project.json'),
+          JSON.stringify({ packageDirectories: [{ path: 'force-app', default: true }] }),
+          'utf-8',
+        );
+        fs.writeFileSync(
+          path.join(tempDir, 'generator.config.json'),
+          JSON.stringify({ outputDir: '__utam__', relativeOutputDir: true }),
+          'utf-8',
+        );
+        const compDir = path.join(tempDir, 'force-app', 'main', 'default', 'lwc', 'ordersTable');
+        utamDir = path.join(compDir, '__utam__');
+        fs.mkdirSync(utamDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(compDir, 'ordersTable.js-meta.xml'),
+          '<LightningComponentBundle><targets><target>lightning__AppPage</target></targets></LightningComponentBundle>',
+          'utf-8',
+        );
+        for (const template of ['ordersTable', 'orders']) {
+          fs.writeFileSync(path.join(compDir, `${template}.html`), '<template></template>', 'utf-8');
+          fs.writeFileSync(path.join(utamDir, `${template}.utam.json`), '{}', 'utf-8');
+        }
+      });
+
+      function quietBuild(args: string[]): { command: Build; warnings: string[] } {
+        const warnings: string[] = [];
+        const command = new Build(['--project-dir', tempDir, '--dry-run', ...args], config);
+        command.log = (): void => {};
+        command.warn = (input: string | Error): string | Error => {
+          warnings.push(String(input));
+          return input;
+        };
+        return { command, warnings };
+      }
+
+      it('should run the names stage and print the rules warnings', async () => {
+        const { command, warnings } = quietBuild([]);
+
+        const result = await command.run();
+
+        expect(result.pageObjectsRenamed).toBe(1);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain('ordersTable/orders.html can take ordersTable.rules.json');
+        expect(fs.readdirSync(utamDir).sort()).toEqual(['orders.utam.json', 'ordersTable.utam.json']);
+      });
+
+      it('should leave the names stage out with --skip-names', async () => {
+        const { command } = quietBuild(['--skip-names']);
+
+        const result = await command.run();
+
+        expect(result.success).toBe(true);
+        expect(result.pageObjectsRenamed).toBe(0);
+      });
     });
   });
 });
