@@ -161,13 +161,14 @@ describe('scaffold service', () => {
       const res = injectWireitConfiguration(pkg);
 
       expect(res.updated).toBe(true);
-      expect(res.addedScripts).toHaveLength(6);
-      expect(res.addedTasks).toHaveLength(6);
+      expect(res.addedScripts).toHaveLength(7);
+      expect(res.addedTasks).toHaveLength(7);
 
       const scripts = res.packageJson['scripts'] as Record<string, string>;
       expect(scripts['build:utam-rules']).toBe('wireit');
       expect(scripts['build:utam-generate']).toBe('wireit');
       expect(scripts['build:utam-overrides']).toBe('wireit');
+      expect(scripts['build:utam-names']).toBe('wireit');
       expect(scripts['build:utam-rewrite-namespaces']).toBe('wireit');
       expect(scripts['build:utam']).toBe('wireit');
       expect(scripts['test:ui']).toBe('wireit');
@@ -175,6 +176,13 @@ describe('scaffold service', () => {
       const wireit = res.packageJson['wireit'] as Record<string, unknown>;
       expect(wireit['build:utam-rules']).toBeDefined();
       expect(wireit['build:utam-generate']).toBeDefined();
+      expect(wireit['build:utam-names']).toEqual({
+        command: 'simply-utam names',
+        dependencies: ['build:utam-overrides'],
+      });
+      expect((wireit['build:utam-rewrite-namespaces'] as { dependencies: string[] }).dependencies).toEqual([
+        'build:utam-names',
+      ]);
     });
 
     it('should not overwrite existing scripts or tasks', () => {

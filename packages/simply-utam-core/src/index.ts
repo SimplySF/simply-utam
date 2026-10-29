@@ -115,6 +115,15 @@ export {
 } from './overrides/index.js';
 
 export {
+  nameSecondaryPageObjects,
+  secondaryPageObjectName,
+  type NameSecondaryPageObjectsOptions,
+  type NameSecondaryPageObjectsResult,
+  type PageObjectNameCollision,
+  type PageObjectRename,
+} from './names/index.js';
+
+export {
   findUtamJsonFiles,
   updateValueWithMappings,
   rewriteUtamNamespaces,

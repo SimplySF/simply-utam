@@ -95,6 +95,10 @@ describe('@simplysf/simply-utam-core', () => {
         'mergeElements',
         'walkElements',
 
+        // secondary template page object names
+        'nameSecondaryPageObjects',
+        'secondaryPageObjectName',
+
         // namespaces
         'findUtamJsonFiles',
         'rewriteUtamNamespaces',
