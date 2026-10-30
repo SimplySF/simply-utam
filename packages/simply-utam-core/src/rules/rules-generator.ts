@@ -40,6 +40,10 @@ export interface RuleAction {
   selector: string;
   action: 'created' | 'updated' | 'skipped';
   reason?: string;
+  /** Templates in the bundle that the UTAM generator could give this rules file to instead. */
+  warnings?: string[];
+  /** True when the component was skipped but a rules file from an earlier run is still there. */
+  leftover?: boolean;
 }
 
 export interface GenerateRulesResult {
@@ -47,6 +51,10 @@ export interface GenerateRulesResult {
   rootComponentsIdentified: number;
   filesCreated: string[];
   filesUpdated: string[];
+  /** Rules files left from an earlier run for components that now have no primary template. */
+  leftoverRulesFiles: string[];
+  /** Every action's warnings, in scan order. */
+  warnings: string[];
   dryRun: boolean;
   actions: RuleAction[];
 }
@@ -101,6 +109,35 @@ export function getTargetsFromMeta(xmlContent: string): string[] {
   return targetMatches.map((match) => match[1].trim()).filter(Boolean);
 }
 
+/**
+ * Finds the bundle's other templates that the UTAM generator could pair `<componentName>.rules.json`
+ * with. The generator gives a rules file to the first HTML file in the same folder whose name the
+ * rules file's name starts with, so `orders.html` can take `ordersTable.rules.json` from
+ * `ordersTable.html`. Which one wins depends on the order the filesystem lists them.
+ *
+ * @param componentDir - The LWC bundle folder.
+ * @param componentName - The bundle's name.
+ * @returns Warnings naming each such template, empty when there are none.
+ */
+export function findRulesFileClaimants(componentDir: string, componentName: string): string[] {
+  const rulesName = `${componentName}.rules`;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(componentDir);
+  } catch {
+    return [];
+  }
+
+  return entries
+    .filter((file) => file.endsWith('.html') && file !== `${componentName}.html`)
+    .filter((file) => rulesName.startsWith(path.parse(file).name))
+    .sort()
+    .map(
+      (file) =>
+        `${componentName}/${file} can take ${componentName}.rules.json: the UTAM generator gives a rules file to the first template whose name its name starts with. Rename the template or move it into a subfolder.`,
+    );
+}
+
 function processComponentRules(
   componentDir: string,
   componentName: string,
@@ -149,6 +186,26 @@ function processComponentRules(
     };
   }
 
+  // A rules file configures the page object generated from `<componentName>.html`. Without that
+  // template (a datatable with custom types has only secondary ones) it configures nothing, and the
+  // generator can pair it with a secondary template by prefix, making that template the root.
+  if (!fs.existsSync(path.join(componentDir, `${componentName}.html`))) {
+    // A rules file from an earlier run is left alone: it may have been edited by hand. While it is
+    // there, a template named like a prefix of the component can still take it.
+    const leftover = fs.existsSync(rulesFilePath);
+    const warnings = leftover ? findRulesFileClaimants(componentDir, componentName) : [];
+    return {
+      componentName,
+      componentDir,
+      rulesFilePath,
+      selector: '',
+      action: 'skipped',
+      reason: `No ${componentName}.html template`,
+      ...(leftover ? { leftover } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
+  }
+
   const selector = convertLwcNameToHtml(componentName, namespace);
   let rulesJson: RulesStructure = {};
   let isExisting = false;
@@ -173,12 +230,14 @@ function processComponentRules(
     fs.writeFileSync(rulesFilePath, jsonString, 'utf-8');
   }
 
+  const warnings = findRulesFileClaimants(componentDir, componentName);
   return {
     componentName,
     componentDir,
     rulesFilePath,
     selector,
     action: isExisting ? 'updated' : 'created',
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 
@@ -213,8 +272,11 @@ function scanLwcDirRules(
     } else if (action.action === 'updated') {
       result.rootComponentsIdentified++;
       result.filesUpdated.push(action.rulesFilePath);
+    } else if (action.leftover) {
+      result.leftoverRulesFiles.push(action.rulesFilePath);
     }
 
+    result.warnings.push(...(action.warnings ?? []));
     result.actions.push(action);
   }
 }
@@ -246,6 +308,8 @@ export function generateLwcRules(options: GenerateRulesOptions = {}): GenerateRu
     rootComponentsIdentified: 0,
     filesCreated: [],
     filesUpdated: [],
+    leftoverRulesFiles: [],
+    warnings: [],
     dryRun,
     actions: [],
   };

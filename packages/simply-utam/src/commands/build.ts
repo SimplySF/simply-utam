@@ -22,7 +22,7 @@ import { executeBuildPipeline, type BuildPipelineResult } from '../pipeline-runn
  */
 export default class Build extends Command {
   public static override summary =
-    'Run the end-to-end SimplyUTAM build pipeline (rules -> utam-generate -> overrides -> rewrite -> utam).';
+    'Run the end-to-end SimplyUTAM build pipeline (rules -> utam-generate -> overrides -> names -> rewrite -> utam).';
 
   public static override description =
     'Standalone convenience runner executing all transformation and compilation stages sequentially. Note: Wireit tasks (configured via simply-utam init) remain the recommended mechanism for granular caching in everyday developer workflows.';
@@ -56,6 +56,11 @@ export default class Build extends Command {
       summary: 'Path to namespace-map.json.',
       default: '.utam/namespace-map.json',
     }),
+    'skip-names': Flags.boolean({
+      summary:
+        'Leave out the names stage, keeping the generated names of secondary template page objects (same-named templates in different components then overwrite each other).',
+      default: false,
+    }),
     'dry-run': Flags.boolean({
       char: 'd',
       summary: 'Preview pipeline execution without invoking compilers or modifying files.',
@@ -79,6 +84,7 @@ export default class Build extends Command {
       generatorConfigPath: flags['generator-config'],
       utamConfigPath: flags['utam-config'],
       namespaceMapPath: flags['namespace-map'],
+      skipNames: flags['skip-names'],
       dryRun: flags['dry-run'],
       onStage: (stage, status, message) => {
         const symbol = status === 'success' ? '✓' : status === 'skip' ? '○' : status === 'error' ? '✗' : '►';
@@ -86,6 +92,10 @@ export default class Build extends Command {
         this.log(`  ${symbol} [${stage}] ${status}${msgSuffix}`);
       },
     });
+
+    for (const warning of result.warnings) {
+      this.warn(warning);
+    }
 
     if (!result.success) {
       this.error(`Build pipeline failed:\n${result.errors.join('\n')}`, { exit: 1 });

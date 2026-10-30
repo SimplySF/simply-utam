@@ -18,7 +18,25 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { convertLwcNameToHtml, getTargetsFromMeta, generateLwcRules } from '../src/rules/index.js';
+import {
+  convertLwcNameToHtml,
+  findRulesFileClaimants,
+  getTargetsFromMeta,
+  generateLwcRules,
+} from '../src/rules/index.js';
+
+const ROOT_META = `<LightningComponentBundle><targets><target>lightning__RecordPage</target></targets></LightningComponentBundle>`;
+
+/** Writes an exposed component bundle with the given templates. */
+function writeRootComponent(lwcDir: string, name: string, templates: string[] = [`${name}.html`]): string {
+  const dir = path.join(lwcDir, name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${name}.js-meta.xml`), ROOT_META, 'utf-8');
+  for (const template of templates) {
+    fs.writeFileSync(path.join(dir, template), '<template><span>x</span></template>', 'utf-8');
+  }
+  return dir;
+}
 
 describe('Rules Generator Service', () => {
   let tempDir: string;
@@ -110,6 +128,7 @@ describe('Rules Generator Service', () => {
         `<LightningComponentBundle><targets><target>lightningCommunity__Page</target></targets></LightningComponentBundle>`,
         'utf-8',
       );
+      fs.writeFileSync(path.join(rootCompDir, 'rootWidget.html'), '<template></template>', 'utf-8');
       fs.writeFileSync(
         path.join(rootCompDir, 'rootWidget.rules.json'),
         JSON.stringify({ customField: 'keepMe', selector: { custom: true } }, null, 2),
@@ -159,6 +178,7 @@ describe('Rules Generator Service', () => {
         `<LightningComponentBundle><targets><target>lightning__RecordPage</target></targets></LightningComponentBundle>`,
         'utf-8',
       );
+      fs.writeFileSync(path.join(invalidRulesComp, 'invalidRulesComp.html'), '<template></template>', 'utf-8');
       fs.writeFileSync(path.join(invalidRulesComp, 'invalidRulesComp.rules.json'), 'INVALID_JSON{', 'utf-8');
 
       const result = generateLwcRules({
@@ -204,6 +224,7 @@ describe('Rules Generator Service', () => {
         `<LightningComponentBundle><targets><target>lightning__RecordPage</target></targets></LightningComponentBundle>`,
         'utf-8',
       );
+      fs.writeFileSync(path.join(compDir, 'freshRoot.html'), '<template></template>', 'utf-8');
 
       const result = generateLwcRules({
         rootDir: tempDir,
@@ -217,6 +238,105 @@ describe('Rules Generator Service', () => {
 
       // Verify file was NOT written
       expect(fs.existsSync(path.join(compDir, 'freshRoot.rules.json'))).toBe(false);
+    });
+  });
+  describe('components without a primary template', () => {
+    it('skips a root component with no <component>.html and writes no rules file', () => {
+      const lwcDir = path.join(tempDir, 'force-app', 'lwc');
+      const dir = writeRootComponent(lwcDir, 'ordersTable', ['picklistTemplate.html', 'lookupTemplate.html']);
+
+      const result = generateLwcRules({ rootDir: tempDir, sourceDirs: ['force-app'] });
+
+      const action = result.actions.find((a) => a.componentName === 'ordersTable');
+      expect(action?.action).toBe('skipped');
+      expect(action?.reason).toBe('No ordersTable.html template');
+      expect(result.rootComponentsIdentified).toBe(0);
+      expect(result.filesCreated).toHaveLength(0);
+      expect(result.leftoverRulesFiles).toHaveLength(0);
+      expect(result.warnings).toHaveLength(0);
+      expect(fs.existsSync(path.join(dir, 'ordersTable.rules.json'))).toBe(false);
+    });
+
+    it('still reports a non-root component without a template as not a root component', () => {
+      const dir = path.join(tempDir, 'force-app', 'lwc', 'childWidget');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'childWidget.js-meta.xml'), '<LightningComponentBundle/>', 'utf-8');
+
+      const result = generateLwcRules({ rootDir: tempDir, sourceDirs: ['force-app'] });
+
+      expect(result.actions[0]?.reason).toContain('Not a root component');
+    });
+
+    it('leaves a rules file from an earlier run alone and lists it', () => {
+      const lwcDir = path.join(tempDir, 'force-app', 'lwc');
+      const dir = writeRootComponent(lwcDir, 'ordersTable', ['picklistTemplate.html']);
+      const rulesPath = path.join(dir, 'ordersTable.rules.json');
+      const original = JSON.stringify({ root: true, selector: { css: 'c-orders-table' }, edited: 'by hand' });
+      fs.writeFileSync(rulesPath, original, 'utf-8');
+
+      const result = generateLwcRules({ rootDir: tempDir, sourceDirs: ['force-app'] });
+
+      expect(result.leftoverRulesFiles).toEqual([rulesPath]);
+      expect(result.actions[0]?.leftover).toBe(true);
+      expect(result.warnings).toHaveLength(0);
+      expect(fs.readFileSync(rulesPath, 'utf-8')).toBe(original);
+    });
+
+    it('warns when a template can take a leftover rules file', () => {
+      const lwcDir = path.join(tempDir, 'force-app', 'lwc');
+      const dir = writeRootComponent(lwcDir, 'ordersTable', ['orders.html']);
+      fs.writeFileSync(path.join(dir, 'ordersTable.rules.json'), '{}', 'utf-8');
+
+      const result = generateLwcRules({ rootDir: tempDir, sourceDirs: ['force-app'] });
+
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toContain('ordersTable/orders.html can take ordersTable.rules.json');
+    });
+  });
+
+  describe('templates that can take the rules file', () => {
+    it('writes the rules file and warns when another template is named like a prefix of the component', () => {
+      const lwcDir = path.join(tempDir, 'force-app', 'lwc');
+      const dir = writeRootComponent(lwcDir, 'ordersTable', ['ordersTable.html', 'orders.html', 'cell.html']);
+
+      const result = generateLwcRules({ rootDir: tempDir, sourceDirs: ['force-app'] });
+
+      expect(result.filesCreated).toEqual([path.join(dir, 'ordersTable.rules.json')]);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toContain('ordersTable/orders.html');
+      expect(result.actions[0]?.warnings).toEqual(result.warnings);
+    });
+
+    it('does not warn for a component with only its primary template', () => {
+      const lwcDir = path.join(tempDir, 'force-app', 'lwc');
+      writeRootComponent(lwcDir, 'ordersTable');
+
+      const result = generateLwcRules({ rootDir: tempDir, sourceDirs: ['force-app'] });
+
+      expect(result.filesCreated).toHaveLength(1);
+      expect(result.warnings).toHaveLength(0);
+      expect(result.actions[0]?.warnings).toBeUndefined();
+    });
+
+    it('matches the generator: by prefix of `<component>.rules`, in the same folder only', () => {
+      const lwcDir = path.join(tempDir, 'force-app', 'lwc');
+      const dir = writeRootComponent(lwcDir, 'ordersTable', [
+        'ordersTable.html',
+        'o.html',
+        'ordersTable.rules.html',
+        'order.html',
+        'tableOrders.html',
+      ]);
+      fs.mkdirSync(path.join(dir, 'templates'));
+      fs.writeFileSync(path.join(dir, 'templates', 'orders.html'), '<template></template>', 'utf-8');
+
+      const claimants = findRulesFileClaimants(dir, 'ordersTable').map((w) => w.split(' ')[0]);
+
+      expect(claimants).toEqual(['ordersTable/o.html', 'ordersTable/order.html', 'ordersTable/ordersTable.rules.html']);
+    });
+
+    it('returns nothing for a folder it cannot read', () => {
+      expect(findRulesFileClaimants(path.join(tempDir, 'missing'), 'ordersTable')).toEqual([]);
     });
   });
 });

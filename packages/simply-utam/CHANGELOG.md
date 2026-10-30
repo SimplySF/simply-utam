@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [0.4.0](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.3.4...%40simplysf%2Fsimply-utam%400.4.0) (2026-10-30)
+
+### Bug Fixes
+
+- give secondary template page objects unique names ([#26](https://github.com/SimplySF/simply-utam/issues/26)) ([9f3baad](https://github.com/SimplySF/simply-utam/commit/9f3baad5606c15849358c20eaf2a424ad1065bb4))
+
+### BREAKING CHANGES
+
+- simply-utam build now renames page objects generated
+  from secondary LWC templates to <component><Template>, so tests that
+  import one by its template name (pageObjects/fooTemplate) must import
+  pageObjects/<component>FooTemplate instead, or run build --skip-names
+  to keep the old names.
+
 ## [0.3.4](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.3.3...%40simplysf%2Fsimply-utam%400.3.4) (2026-10-26)
 
 **Note:** Version bump only for package @simplysf/simply-utam
