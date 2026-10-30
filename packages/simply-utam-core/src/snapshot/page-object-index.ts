@@ -17,6 +17,7 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
+import { globFiles } from '../path-utils.js';
 import {
   discoverPageObjectPackages,
   packageDir,
@@ -515,16 +516,6 @@ function readEntry(
     privateElements,
     methods,
   };
-}
-
-function globFiles(rootDir: string, masks: string[]): string[] {
-  const files = new Set<string>();
-  for (const mask of masks) {
-    for (const file of fs.globSync(mask, { cwd: rootDir, exclude: (name: string) => name === 'node_modules' })) {
-      files.add(path.join(rootDir, file));
-    }
-  }
-  return [...files].sort();
 }
 
 function addEntry(index: PageObjectIndex, entry: PageObjectEntry): void {

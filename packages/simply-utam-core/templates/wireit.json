@@ -3,6 +3,7 @@
     "build:utam-rules": "wireit",
     "build:utam-generate": "wireit",
     "build:utam-overrides": "wireit",
+    "build:utam-names": "wireit",
     "build:utam-rewrite-namespaces": "wireit",
     "build:utam": "wireit",
     "test:ui": "wireit"
@@ -19,9 +20,13 @@
       "command": "simply-utam overrides",
       "dependencies": ["build:utam-generate"]
     },
+    "build:utam-names": {
+      "command": "simply-utam names",
+      "dependencies": ["build:utam-overrides"]
+    },
     "build:utam-rewrite-namespaces": {
       "command": "simply-utam rewrite -c .utam/namespace-map.json",
-      "dependencies": ["build:utam-overrides"]
+      "dependencies": ["build:utam-names"]
     },
     "build:utam": {
       "command": "utam -c utam.config.json",

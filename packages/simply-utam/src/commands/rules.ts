@@ -24,7 +24,7 @@ export default class Rules extends Command {
   public static override summary = 'Scan LWC component definitions and generate UTAM .rules.json files.';
 
   public static override description =
-    'Discovers root components in package directories matching target page types and generates or updates corresponding *.rules.json schemas.';
+    'Discovers root components in package directories matching target page types and generates or updates corresponding *.rules.json schemas. A component with no <component>.html template (such as a datatable with only custom type templates) is skipped, and a warning names any other template the UTAM generator could give the rules file to.';
 
   public static override examples = [
     '<%= config.bin %> <%= command.id %>',
@@ -87,9 +87,17 @@ export default class Rules extends Command {
       this.log(`Updated ${result.filesUpdated.length} rules files.`);
     }
 
+    for (const warning of result.warnings) {
+      this.warn(warning);
+    }
+
     if (flags.verbose) {
       for (const action of result.actions) {
-        this.log(`  - ${action.componentName}: ${action.action} (${action.rulesFilePath})`);
+        const reason = action.reason ? `: ${action.reason}` : '';
+        this.log(`  - ${action.componentName}: ${action.action}${reason} (${action.rulesFilePath})`);
+      }
+      for (const leftover of result.leftoverRulesFiles) {
+        this.log(`  - Left in place, configures no template: ${leftover}`);
       }
     }
 

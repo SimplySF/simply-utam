@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 // Internal helpers. Not exported from src/index.ts, so they aren't part of the public API.
@@ -53,4 +54,21 @@ export function isAbsoluteOnAnyPlatform(dir: string): boolean {
  */
 export function isOutsideProject(dir: string): boolean {
   return isAbsoluteOnAnyPlatform(dir) || dir === '..' || dir.startsWith('../');
+}
+
+/**
+ * Every file under `rootDir` that matches one of the glob `masks`, skipping `node_modules` folders at
+ * any depth.
+ *
+ * @returns Absolute paths, sorted.
+ */
+export function globFiles(rootDir: string, masks: string[]): string[] {
+  const files = new Set<string>();
+  for (const mask of masks) {
+    // `exclude` is called with each entry's own name, so this skips nested `node_modules` too.
+    for (const file of fs.globSync(mask, { cwd: rootDir, exclude: (name: string) => name === 'node_modules' })) {
+      files.add(path.join(rootDir, file));
+    }
+  }
+  return [...files].sort();
 }

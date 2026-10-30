@@ -64,7 +64,7 @@ This command inspects your Salesforce project and non-destructively scaffolds:
 - `.utam/namespace-map.json` — Cross-package namespace rewriting rules.
 - `<sourceDir>/test/utam/` — Starter "Hello World" Cucumber smoke test (`features/hello.feature` and `step_definitions/hello.steps.mjs`), scaffolded automatically unless an existing `test/utam` directory is found.
 - `<sourceDir>/test/utam/step_definitions/dom-snapshot.steps.mjs` — A step that captures a DOM snapshot on demand. The scaffolded `wdio.conf.mjs` also captures one when a step fails. Added to existing projects too. The guide to snapshots ships as an [agent skill](packages/simply-utam/README.md#agent-skills) you can install.
-- `package.json` — Injects standard Wireit tasks (`build:utam-rules`, `build:utam-generate`, `build:utam-overrides`, `build:utam-rewrite-namespaces`, `build:utam`, and `test:ui`), and adds a `"./pageObjects/*"` entry to `exports` so compiled page objects can import each other.
+- `package.json` — Injects standard Wireit tasks (`build:utam-rules`, `build:utam-generate`, `build:utam-overrides`, `build:utam-names`, `build:utam-rewrite-namespaces`, `build:utam`, and `test:ui`), and adds a `"./pageObjects/*"` entry to `exports` so compiled page objects can import each other.
 - `.gitignore` — Adds `.utam/snapshots/` so DOM snapshots stay out of git (`--no-gitignore` to skip).
 - `.forceignore` — Adds the UTAM rules that keep UTAM artifacts out of Salesforce deploys (`--no-forceignore` to skip).
 
@@ -166,7 +166,7 @@ npm run test:ui
 ```
 
 Wireit automatically resolves and executes all required compilation steps in the dependency graph before launching WebdriverIO:
-`build:utam-rules` ➔ `build:utam-generate` ➔ `build:utam-overrides` ➔ `build:utam-rewrite-namespaces` ➔ `build:utam` ➔ `wdio run wdio.conf.mjs`.
+`build:utam-rules` ➔ `build:utam-generate` ➔ `build:utam-overrides` ➔ `build:utam-names` ➔ `build:utam-rewrite-namespaces` ➔ `build:utam` ➔ `wdio run wdio.conf.mjs`.
 
 ## Contributing
 
