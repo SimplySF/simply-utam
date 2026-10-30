@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { nameSecondaryPageObjects, secondaryPageObjectName } from '../src/names/index.js';
 
 const SCAFFOLDED_GENERATOR_CONFIG = {
@@ -71,6 +71,7 @@ describe('nameSecondaryPageObjects', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -267,6 +268,85 @@ describe('nameSecondaryPageObjects', () => {
     expect(fs.readFileSync(path.join(utamDir, 'aAB.utam.json'), 'utf-8')).toBe(renamed('aB', 'aAB'));
   });
 
+  it('does not rename its own output again when the new name reads as a frame of another template', () => {
+    const utamDir = bundle('a_b', ['a_b.html', 'a.html', 'x.html'], ['a_b', 'a', 'x']);
+    run();
+    fs.writeFileSync(path.join(utamDir, 'a.utam.json'), generated('a'));
+    fs.writeFileSync(path.join(utamDir, 'x.utam.json'), generated('x'));
+
+    const second = run();
+
+    expect(second.renames.map((rename) => rename.name)).toEqual(['a_bA', 'a_bX']);
+    expect(second.unmatched).toEqual([]);
+    expect(utamFiles(utamDir)).toEqual(['a_b.utam.json', 'a_bA.utam.json', 'a_bX.utam.json']);
+  });
+
+  it("does not rename its own output again when the new name is another template's name", () => {
+    const utamDir = bundle('a', ['B.html', 'aB.html'], ['B', 'aB']);
+    run();
+
+    const second = run();
+
+    expect(second.renames).toEqual([]);
+    expect(second.unmatched).toEqual([]);
+    expect(fs.readFileSync(path.join(utamDir, 'aB.utam.json'), 'utf-8')).toBe(renamed('B', 'aB'));
+    expect(fs.readFileSync(path.join(utamDir, 'aAB.utam.json'), 'utf-8')).toBe(renamed('aB', 'aAB'));
+  });
+
+  it('lists its own output as unmatched once the template it came from is gone', () => {
+    const utamDir = bundle('component_1', ['component_1.html', 'fooTemplate.html'], ['component_1', 'fooTemplate']);
+    run();
+    fs.rmSync(path.join(lwcDir, 'component_1', 'fooTemplate.html'));
+
+    expect(run().unmatched).toEqual([path.join(utamDir, 'component_1FooTemplate.utam.json')]);
+  });
+
+  it('keeps every page object, and leaves no temporary file, when a write fails', () => {
+    const first = bundle('a', ['foo.html'], ['foo']);
+    const second = bundle('b', ['foo.html'], ['foo']);
+    const write = fs.writeFileSync;
+    let calls = 0;
+    vi.spyOn(fs, 'writeFileSync').mockImplementation((...args: Parameters<typeof fs.writeFileSync>) => {
+      calls += 1;
+      if (calls === 2) {
+        throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+      }
+      write(...args);
+    });
+
+    expect(() => run()).toThrow('ENOSPC');
+    expect(utamFiles(first)).toEqual(['foo.utam.json']);
+    expect(utamFiles(second)).toEqual(['foo.utam.json']);
+    expect(fs.readFileSync(path.join(first, 'foo.utam.json'), 'utf-8')).toBe(generated('foo'));
+  });
+
+  it('keeps every page object when moving one into place fails', () => {
+    const first = bundle('a', ['foo.html'], ['foo']);
+    const second = bundle('b', ['foo.html'], ['foo']);
+    const rename = fs.renameSync;
+    let calls = 0;
+    vi.spyOn(fs, 'renameSync').mockImplementation((...args: Parameters<typeof fs.renameSync>) => {
+      calls += 1;
+      if (calls === 2) {
+        throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+      }
+      rename(...args);
+    });
+
+    expect(() => run()).toThrow('EPERM');
+    expect(utamFiles(first)).toEqual(['aFoo.utam.json', 'foo.utam.json']);
+    expect(utamFiles(second)).toEqual(['foo.utam.json']);
+  });
+
+  it('skips page objects under a nested node_modules folder when checking for collisions', () => {
+    bundle('component_1', ['fooTemplate.html'], ['fooTemplate']);
+    const vendored = path.join(tempDir, 'force-app', 'vendor', 'node_modules', 'pkg', '__utam__');
+    fs.mkdirSync(vendored, { recursive: true });
+    fs.writeFileSync(path.join(vendored, 'component_1FooTemplate.utam.json'), '{}');
+
+    expect(run().collisions).toEqual([]);
+  });
+
   it('renames nothing when the rule gives two page objects one name', () => {
     const first = bundle('a', ['bC.html'], ['bC']);
     const second = bundle('aB', ['c.html'], ['c']);
@@ -364,13 +444,17 @@ describe('nameSecondaryPageObjects', () => {
     expect(run({ generatorConfigPath: 'gen.json' }).renames).toHaveLength(1);
   });
 
-  it('fails before renaming anything when the generator writes one output folder', () => {
+  it('skips with a warning, renaming nothing, when the generator writes one output folder', () => {
     const utamDir = bundle('component_1', ['fooTemplate.html'], ['fooTemplate']);
     const withoutRelative: Partial<typeof SCAFFOLDED_GENERATOR_CONFIG> = { ...SCAFFOLDED_GENERATOR_CONFIG };
     delete withoutRelative.relativeOutputDir;
     fs.writeFileSync(path.join(tempDir, 'generator.config.json'), JSON.stringify(withoutRelative));
 
-    expect(() => run()).toThrow(/relativeOutputDir: false/);
+    const result = run();
+
+    expect(result.skipped).toMatch(/does not write page objects into __utam__/);
+    expect(result.warnings).toEqual([expect.stringMatching(/found relativeOutputDir: false/)]);
+    expect(result.renames).toEqual([]);
     expect(utamFiles(utamDir)).toEqual(['fooTemplate.utam.json']);
   });
 
@@ -386,14 +470,50 @@ describe('nameSecondaryPageObjects', () => {
     }
   });
 
-  it('fails, renaming nothing, when a rules file beside a template sets its own outputDir', () => {
+  it('leaves a template alone, with a warning, when its rules file sets its own outputDir', () => {
     const first = bundle('ordersTable', ['picklistTemplate.html'], ['picklistTemplate']);
-    bundle('casesTable', ['picklistTemplate.html'], ['picklistTemplate']);
+    const second = bundle(
+      'casesTable',
+      ['picklistTemplate.html', 'textTemplate.html'],
+      ['picklistTemplate', 'textTemplate'],
+    );
     const rulesPath = path.join(lwcDir, 'casesTable', 'picklistTemplate.rules.json');
     fs.writeFileSync(rulesPath, JSON.stringify({ outputDir: 'pageobjects' }));
 
-    expect(() => run()).toThrow(`${rulesPath} sets "outputDir": "pageobjects"`);
-    expect(utamFiles(first)).toEqual(['picklistTemplate.utam.json']);
+    const result = run();
+
+    expect(result.warnings).toEqual([
+      `${rulesPath} sets "outputDir": "pageobjects", and the generator writes the page objects of picklistTemplate.html outside __utam__, so they were left with their generated names. Remove "outputDir" from the rules file.`,
+    ]);
+    expect(result.unmatched).toEqual([]);
+    expect(utamFiles(first)).toEqual(['ordersTablePicklistTemplate.utam.json']);
+    expect(utamFiles(second)).toEqual(['casesTableTextTemplate.utam.json', 'picklistTemplate.utam.json']);
+  });
+
+  it('leaves every template a rules file with its own outputDir could pair with alone', () => {
+    const utamDir = bundle('t', ['t.html', 'pick.html', 'picker.html', 'text.html'], ['t', 'pick', 'picker', 'text']);
+    const rulesPath = path.join(lwcDir, 't', 'pickerX.rules.json');
+    fs.writeFileSync(rulesPath, JSON.stringify({ outputDir: 'elsewhere' }));
+
+    const result = run();
+
+    expect(result.warnings).toEqual([
+      `${rulesPath} sets "outputDir": "elsewhere", and the generator writes the page objects of one of pick.html, picker.html (the first it finds) outside __utam__, so all of their page objects were left with their generated names. Remove "outputDir" from the rules file.`,
+    ]);
+    expect(utamFiles(utamDir)).toEqual(['pick.utam.json', 'picker.utam.json', 't.utam.json', 'tText.utam.json']);
+  });
+
+  it('warns about page objects that already share a name, and renames the rest', () => {
+    const utamDir = bundle('component_1', ['component_1.html', 'fooTemplate.html'], ['component_1', 'fooTemplate']);
+    const nested = bundle('component_1', ['component_1.html'], ['component_1'], 'sub');
+
+    const result = run();
+
+    expect(result.collisions).toEqual([]);
+    expect(result.warnings).toEqual([
+      `${path.relative(tempDir, path.join(utamDir, 'component_1.utam.json'))}, ${path.relative(tempDir, path.join(nested, 'component_1.utam.json'))} compile to one file, component_1, so the compiler keeps only one of them. No rename caused this; rename all but one, or add an "ignore" entry for a generated one's template in the generator config.`,
+    ]);
+    expect(utamFiles(utamDir)).toEqual(['component_1.utam.json', 'component_1FooTemplate.utam.json']);
   });
 
   it('accepts a rules file whose outputDir is __utam__, and rules files without one', () => {
@@ -407,13 +527,13 @@ describe('nameSecondaryPageObjects', () => {
     expect(run().renames).toHaveLength(1);
   });
 
-  it('fails for another output folder name or extension', () => {
+  it('skips with a warning for another output folder name or extension', () => {
     fs.writeFileSync(
       path.join(tempDir, 'generator.config.json'),
       JSON.stringify({ ...SCAFFOLDED_GENERATOR_CONFIG, outputDir: 'po', outputFileExtension: '.json' }),
     );
 
-    expect(() => run()).toThrow(/outputDir: "po", outputFileExtension: ".json"/);
+    expect(run().warnings).toEqual([expect.stringMatching(/outputDir: "po", outputFileExtension: ".json"/)]);
   });
 
   it('fails, naming the file, when the generator config is not valid JSON', () => {

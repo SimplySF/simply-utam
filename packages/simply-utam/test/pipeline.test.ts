@@ -142,13 +142,15 @@ describe('executeBuildPipeline', () => {
     expect(calls.some((call) => call === 'utam' || call === 'utam.cmd')).toBe(false);
   });
 
-  it('fails the stage for a generator config that writes one output folder', async () => {
+  it('skips the stage with a warning for a generator config that writes one output folder', async () => {
     fs.writeFileSync(path.join(tempDir, 'generator.config.json'), JSON.stringify({ inputRootDir: './force-app' }));
 
     const result = await executeBuildPipeline({ projectDir: tempDir, spawnCommand });
 
-    expect(result.success).toBe(false);
-    expect(result.errors[0]).toContain('relativeOutputDir: false');
+    expect(result.success).toBe(true);
+    expect(result.pageObjectsRenamed).toBe(0);
+    expect(result.warnings).toEqual([expect.stringContaining('relativeOutputDir: false')]);
+    expect(calls.some((call) => call === 'utam' || call === 'utam.cmd')).toBe(true);
   });
 
   it('passes on the rules warnings', async () => {

@@ -26,7 +26,7 @@ export default class Names extends Command {
     'Rename page objects generated from secondary LWC templates to <component><Template>.';
 
   public static override description =
-    'The UTAM compiler names each page object after its .utam.json file and writes them all to one folder, so two bundles with a template of the same name (such as a datatable custom type template) overwrite each other. Run after utam-generate and overrides, this renames the page objects of every template not named after its bundle to <bundle><Template>; frame page objects take the same prefix. Fails, renaming nothing, when a new name would match another page object the compiler reads.';
+    'The UTAM compiler names each page object after its .utam.json file and writes them all to one folder, so two bundles with a template of the same name (such as a datatable custom type template) overwrite each other. Run after utam-generate and overrides, this renames the page objects of every template not named after its bundle to <bundle><Template>; frame page objects take the same prefix. Fails, renaming nothing, when a new name would match another page object the compiler reads, and warns about page objects that already share a name. Skips with a warning when the generator config does not write page objects into __utam__ beside each template.';
 
   public static override examples = [
     '<%= config.bin %> <%= command.id %>',
@@ -76,8 +76,11 @@ export default class Names extends Command {
       generatorConfigPath: flags['generator-config'],
       utamConfigPath: flags['utam-config'],
       dryRun: flags['dry-run'],
-      verbose: flags.verbose,
     });
+
+    for (const warning of result.warnings) {
+      this.warn(warning);
+    }
 
     if (result.skipped) {
       this.log(`${result.skipped}. Skipping.`);
@@ -99,7 +102,9 @@ export default class Names extends Command {
       this.log('[dry-run] Page object names preview:');
     }
 
-    this.log(`Renamed ${result.renames.length} secondary template page objects.`);
+    this.log(
+      `${flags['dry-run'] ? 'Would rename' : 'Renamed'} ${result.renames.length} secondary template page objects.`,
+    );
 
     if (flags.verbose) {
       for (const rename of result.renames) {

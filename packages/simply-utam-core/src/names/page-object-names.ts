@@ -16,8 +16,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { discoverProject, findLwcDirectories } from '../discovery/index.js';
+import { discoverComponentsInPackageDir, discoverProject } from '../discovery/index.js';
 import { detectIndentation } from '../overrides/index.js';
+import { globFiles } from '../path-utils.js';
 
 /** The generator layout the stage reads page objects from, as the scaffolded config sets it. */
 const EXPECTED_LAYOUT = { outputDir: '__utam__', relativeOutputDir: true, outputFileExtension: '.utam.json' };
@@ -35,6 +36,9 @@ const DEFAULT_PAGE_OBJECTS_FILE_MASK = ['**/__utam__/**/*.utam.json'];
 const RENAMED_MARKER = 'Renamed by simply-utam names from ';
 const UTAM_EXT = '.utam.json';
 
+/** Added to a renamed page object's path while it is written, so the compiler's file mask never matches it. */
+const TEMP_EXT = '.tmp';
+
 export interface NameSecondaryPageObjectsOptions {
   rootDir?: string;
   sourceDirs?: string[];
@@ -43,7 +47,6 @@ export interface NameSecondaryPageObjectsOptions {
   /** The compiler config whose `pageObjectsFileMask` sets the collision check's scope. Defaults to `utam.config.json`. */
   utamConfigPath?: string;
   dryRun?: boolean;
-  verbose?: boolean;
 }
 
 export interface PageObjectRename {
@@ -66,8 +69,14 @@ export interface PageObjectNameCollision {
 
 export interface NameSecondaryPageObjectsResult {
   renames: PageObjectRename[];
-  /** Non-empty means nothing was renamed. */
+  /** Final names a rename shares with another page object. Non-empty means nothing was renamed. */
   collisions: PageObjectNameCollision[];
+  /**
+   * What the stage could not fix: page objects that already shared a name before any rename, a
+   * generator config that writes one output folder (the stage then skips), and templates whose rules
+   * file sends their page objects outside `__utam__` (those templates are left alone).
+   */
+  warnings: string[];
   /** Page objects in a bundle's `__utam__` folder that match none of the bundle's templates. */
   unmatched: string[];
   /** Why the stage did nothing, when it skipped. */
@@ -119,21 +128,23 @@ export function secondaryPageObjectName(bundleName: string, templateName: string
 }
 
 /**
- * Fails unless the generator writes page objects into a `__utam__` folder beside each template, the
+ * Checks that the generator writes page objects into a `__utam__` folder beside each template, the
  * layout this stage (like `overrides`) reads them from. With a single output folder the generator
- * overwrites same-named templates itself, before any stage could rename them.
+ * overwrites same-named templates itself, before any stage could rename them, so there is nothing
+ * left for this stage to fix.
+ *
+ * @returns A warning when the layout is another one, otherwise `undefined`.
  */
-function assertGeneratorLayout(configPath: string, config: Record<string, unknown>): void {
+function checkGeneratorLayout(configPath: string, config: Record<string, unknown>): string | undefined {
   const effective = { ...GENERATOR_DEFAULTS, ...config };
   const wrong = (Object.keys(EXPECTED_LAYOUT) as Array<keyof typeof EXPECTED_LAYOUT>).filter((key) =>
     key === 'outputDir' ? !isUtamFolder(effective.outputDir) : effective[key] !== EXPECTED_LAYOUT[key],
   );
-  if (wrong.length > 0) {
-    const found = wrong.map((key) => `${key}: ${JSON.stringify(effective[key])}`).join(', ');
-    throw new Error(
-      `${configPath} must set "outputDir": "__utam__", "relativeOutputDir": true and "outputFileExtension": ".utam.json" for page objects to be named per component (found ${found}). With one output folder, the generator overwrites same-named templates before they can be renamed.`,
-    );
+  if (wrong.length === 0) {
+    return undefined;
   }
+  const found = wrong.map((key) => `${key}: ${JSON.stringify(effective[key])}`).join(', ');
+  return `${configPath} does not write page objects into __utam__ beside each template (found ${found}), so the generator overwrites same-named templates itself and page objects were not named per component. Set "outputDir": "__utam__", "relativeOutputDir": true and "outputFileExtension": ".utam.json".`;
 }
 
 /** Whether an `outputDir` value names the `__utam__` folder, however it is spelled (`./__utam__`, `__utam__/`). */
@@ -144,28 +155,46 @@ function isUtamFolder(outputDir: unknown): boolean {
 }
 
 /**
- * Fails when a rules file beside a template sets its own `outputDir`. The generator honours it, so
- * that template's page objects go somewhere other than `__utam__`, where this stage would never find
- * them, and the clash it exists to prevent would stay without a word.
+ * Finds the templates in `folder` whose rules file sets its own `outputDir`. The generator honours
+ * it, so that template's page objects go somewhere other than `__utam__`, where this stage never
+ * finds them. The generator gives a rules file to the first template, in the order the file system
+ * lists them, whose name (up to its last `.`) the rules file's name starts with, so every such
+ * template is counted.
+ *
+ * @returns The names of those templates, and a warning for each rules file.
  */
-function assertNoRulesOutputDir(folders: Iterable<string>): void {
-  for (const folder of folders) {
-    let files: string[];
-    try {
-      files = fs.readdirSync(folder).filter((file) => file.endsWith('.rules.json'));
-    } catch {
+function findRulesOutputDirs(folder: string, templates: Template[]): { names: Set<string>; warnings: string[] } {
+  const found = { names: new Set<string>(), warnings: [] as string[] };
+  let files: string[];
+  try {
+    files = fs.readdirSync(folder).filter((file) => file.endsWith('.rules.json'));
+  } catch {
+    return found;
+  }
+  for (const file of files.sort()) {
+    const rulesPath = path.join(folder, file);
+    const outputDir = readJsonConfig(rulesPath)?.['outputDir'];
+    if (outputDir === undefined || isUtamFolder(outputDir)) {
       continue;
     }
-    for (const file of files) {
-      const rulesPath = path.join(folder, file);
-      const outputDir = readJsonConfig(rulesPath)?.['outputDir'];
-      if (outputDir !== undefined && !isUtamFolder(outputDir)) {
-        throw new Error(
-          `${rulesPath} sets "outputDir": ${JSON.stringify(outputDir)}, so its page objects are not written to __utam__ beside the template, and cannot be named per component. Remove "outputDir" from the rules file.`,
-        );
-      }
+    const rulesName = path.parse(file).name;
+    const claimants = templates.filter((template) => rulesName.startsWith(path.parse(template.file).name));
+    if (claimants.length === 0) {
+      continue;
     }
+    for (const template of claimants) {
+      found.names.add(template.name);
+    }
+    const listed = claimants.map((template) => path.basename(template.file)).join(', ');
+    const pairs =
+      claimants.length === 1
+        ? `the generator writes the page objects of ${listed} outside __utam__, so they`
+        : `the generator writes the page objects of one of ${listed} (the first it finds) outside __utam__, so all of their page objects`;
+    found.warnings.push(
+      `${rulesPath} sets "outputDir": ${JSON.stringify(outputDir)}, and ${pairs} were left with their generated names. Remove "outputDir" from the rules file.`,
+    );
   }
+  return found;
 }
 
 /** Every `.html` file in a bundle, its subfolders included, grouped by the folder it is in. */
@@ -210,16 +239,22 @@ function matchTemplate(pageObjectName: string, templates: Template[]): Template 
   return best;
 }
 
+/** The name a page object generated from `template` gets, frame suffix (`_<frame>`) included. */
+function renamedName(bundleName: string, template: Template, pageObjectName: string): string {
+  return secondaryPageObjectName(bundleName, template.name) + pageObjectName.slice(template.name.length);
+}
+
 interface BundlePlan {
   renames: PageObjectRename[];
   unmatched: string[];
+  warnings: string[];
 }
 
 function planBundle(bundleDir: string, bundleName: string): BundlePlan {
-  const plan: BundlePlan = { renames: [], unmatched: [] };
-  const templatesByFolder = findTemplates(bundleDir);
-  assertNoRulesOutputDir(templatesByFolder.keys());
-  for (const [folder, templates] of templatesByFolder) {
+  const plan: BundlePlan = { renames: [], unmatched: [], warnings: [] };
+  for (const [folder, templates] of findTemplates(bundleDir)) {
+    const rulesOutputDirs = findRulesOutputDirs(folder, templates);
+    plan.warnings.push(...rulesOutputDirs.warnings);
     const utamDir = path.join(folder, '__utam__');
     let files: string[];
     try {
@@ -228,33 +263,35 @@ function planBundle(bundleDir: string, bundleName: string): BundlePlan {
       continue;
     }
 
-    // Files a previous run already renamed match no template by name, but are expected here.
-    const renamedPrefixes = templates
-      .filter((template) => template.name !== bundleName)
-      .map((template) => secondaryPageObjectName(bundleName, template.name));
-
     for (const file of files.sort()) {
       const pageObjectName = file.slice(0, -UTAM_EXT.length);
-      const template = matchTemplate(pageObjectName, templates);
-      if (!template) {
-        const alreadyRenamed = renamedPrefixes.some(
-          (prefix) => pageObjectName === prefix || pageObjectName.startsWith(`${prefix}_`),
-        );
-        if (!alreadyRenamed) {
-          plan.unmatched.push(path.join(utamDir, file));
+      const from = path.join(utamDir, file);
+
+      // A page object an earlier run renamed is never renamed again. Its new name can read as a frame
+      // of another template (`a_bX` as a frame of `a`, in bundle `a_b`) or as a template's own name
+      // (`aB`, from `B.html`, when the bundle also has `aB.html`). It is expected here while its
+      // template would still give it this name, and is listed as unmatched once it would not.
+      const original = renamedFrom(from);
+      if (original !== undefined) {
+        const originalTemplate = matchTemplate(original, templates);
+        if (!originalTemplate || renamedName(bundleName, originalTemplate, original) !== pageObjectName) {
+          plan.unmatched.push(from);
         }
         continue;
       }
-      if (template.name === bundleName) {
+
+      const template = matchTemplate(pageObjectName, templates);
+      if (!template) {
+        plan.unmatched.push(from);
         continue;
       }
-      const name = secondaryPageObjectName(bundleName, template.name) + pageObjectName.slice(template.name.length);
-      plan.renames.push({
-        template: template.file,
-        from: path.join(utamDir, file),
-        to: path.join(utamDir, `${name}${UTAM_EXT}`),
-        name,
-      });
+      // A page object of a template whose rules file sends its output elsewhere is one an earlier
+      // layout left here, and is left alone like the template.
+      if (template.name === bundleName || rulesOutputDirs.names.has(template.name)) {
+        continue;
+      }
+      const name = renamedName(bundleName, template, pageObjectName);
+      plan.renames.push({ template: template.file, from, to: path.join(utamDir, `${name}${UTAM_EXT}`), name });
     }
   }
   return plan;
@@ -279,63 +316,44 @@ function findBundles(rootDir: string, explicitSourceDirs?: string[]): string[] {
     sourceDirs = discovered.packageDirectories.length > 0 ? discovered.packageDirectories : ['./sfdx-source'];
   }
 
-  const bundles = new Set<string>();
-  for (const sourceDir of sourceDirs) {
-    const resolvedSource = path.isAbsolute(sourceDir) ? sourceDir : path.resolve(rootDir, sourceDir);
-    for (const lwcDir of findLwcDirectories(resolvedSource)) {
-      let entries: fs.Dirent[];
-      try {
-        entries = fs.readdirSync(lwcDir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-      for (const entry of entries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== '__tests__') {
-          bundles.add(path.join(lwcDir, entry.name));
-        }
-      }
-    }
-  }
+  const bundles = new Set(
+    sourceDirs.flatMap((sourceDir) =>
+      discoverComponentsInPackageDir(sourceDir, rootDir).map((component) => component.directory),
+    ),
+  );
   return [...bundles].sort(comparePaths);
 }
 
 /** Every page object the compiler will read, per `utam.config.json`'s root and file mask. */
-function compiledSources(rootDir: string, utamConfigPath: string): string[] {
+function compiledSources(utamConfigPath: string): string[] {
   const config = readJsonConfig(utamConfigPath) ?? {};
-  const configDir = fs.existsSync(utamConfigPath) ? path.dirname(utamConfigPath) : rootDir;
   const pageObjectsRoot = path.resolve(
-    configDir,
+    path.dirname(utamConfigPath),
     typeof config['pageObjectsRootDir'] === 'string' ? config['pageObjectsRootDir'] : '.',
   );
   const masks = Array.isArray(config['pageObjectsFileMask'])
     ? (config['pageObjectsFileMask'] as unknown[]).filter((mask): mask is string => typeof mask === 'string')
     : DEFAULT_PAGE_OBJECTS_FILE_MASK;
-
-  const files = new Set<string>();
-  for (const mask of masks) {
-    for (const file of fs.globSync(mask, {
-      cwd: pageObjectsRoot,
-      exclude: (name: string) => name === 'node_modules',
-    })) {
-      files.add(path.join(pageObjectsRoot, file));
-    }
-  }
-  return [...files];
+  return globFiles(pageObjectsRoot, masks);
 }
 
-/** Final names that more than one source would compile to, compared ignoring case. */
+/**
+ * Final names that more than one source would compile to, compared ignoring case.
+ *
+ * @returns The ones a rename takes part in, now or on an earlier run, which stop the stage, apart
+ * from those that were there before any rename, which the stage did not cause and does not fix.
+ */
 function findCollisions(
   renames: PageObjectRename[],
-  rootDir: string,
   utamConfigPath: string,
-): PageObjectNameCollision[] {
-  const renamedFrom = new Map(renames.map((rename) => [path.resolve(rename.from), rename]));
+): { caused: PageObjectNameCollision[]; existing: PageObjectNameCollision[] } {
+  const renameBySource = new Map(renames.map((rename) => [path.resolve(rename.from), rename]));
   // A target this stage wrote on an earlier run is replaced by its rename, so it is not a second
   // source. Any other file already at a target is someone's page object, and it collides.
   const replacedTargets = new Set(
     renames
       .map((rename) => path.resolve(rename.to))
-      .filter((target) => !fs.existsSync(target) || isRenamedByThisStage(target)),
+      .filter((target) => !fs.existsSync(target) || renamedFrom(target) !== undefined),
   );
   const byName = new Map<string, { name: string; sources: string[] }>();
   const add = (name: string, source: string): void => {
@@ -345,11 +363,11 @@ function findCollisions(
   };
 
   const sources = new Set([
-    ...compiledSources(rootDir, utamConfigPath).map((file) => path.resolve(file)),
-    ...renamedFrom.keys(),
+    ...compiledSources(utamConfigPath).map((file) => path.resolve(file)),
+    ...renameBySource.keys(),
   ]);
   for (const source of [...sources].sort(comparePaths)) {
-    const rename = renamedFrom.get(source);
+    const rename = renameBySource.get(source);
     if (rename) {
       add(rename.name, source);
     } else if (!replacedTargets.has(source)) {
@@ -357,7 +375,14 @@ function findCollisions(
     }
   }
 
-  return [...byName.values()].filter((entry) => entry.sources.length > 1);
+  // A page object an earlier run renamed counts as a rename too: run again without `utam-generate`,
+  // its source is gone, but the clash is still one the stage made.
+  const isRename = (source: string): boolean => renameBySource.has(source) || renamedFrom(source) !== undefined;
+  const collisions = [...byName.values()].filter((entry) => entry.sources.length > 1);
+  return {
+    caused: collisions.filter((entry) => entry.sources.some(isRename)),
+    existing: collisions.filter((entry) => !entry.sources.some(isRename)),
+  };
 }
 
 /** The description's text lines, whichever of UTAM's shapes it has (a string, or an object with `text`). */
@@ -391,19 +416,25 @@ function renameDescription(json: Record<string, unknown>, oldName: string, newNa
   }
 }
 
-/** Whether `file` is a page object this stage wrote, which a rename may replace. */
-function isRenamedByThisStage(file: string): boolean {
+/**
+ * The generated name of a page object this stage wrote, read from its {@link RENAMED_MARKER} line.
+ *
+ * @returns The name, or `undefined` when `file` is not one this stage wrote (or is not valid JSON).
+ */
+function renamedFrom(file: string): string | undefined {
+  let json: unknown;
   try {
-    const json = JSON.parse(fs.readFileSync(file, 'utf-8')) as unknown;
-    if (!json || typeof json !== 'object' || Array.isArray(json)) {
-      return false;
-    }
-    return descriptionText(json as Record<string, unknown>).some(
-      (line) => typeof line === 'string' && line.startsWith(RENAMED_MARKER),
-    );
+    json = JSON.parse(fs.readFileSync(file, 'utf-8'));
   } catch {
-    return false;
+    return undefined;
   }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) {
+    return undefined;
+  }
+  const marker = descriptionText(json as Record<string, unknown>).find(
+    (line): line is string => typeof line === 'string' && line.startsWith(RENAMED_MARKER),
+  );
+  return marker?.slice(RENAMED_MARKER.length);
 }
 
 /**
@@ -431,27 +462,70 @@ function renderRename(rename: PageObjectRename): string {
 }
 
 /**
+ * Moves each page object to its new name without losing one when a write fails partway (a full disk,
+ * or a file a virus scanner holds open on Windows).
+ *
+ * Every renamed file is rendered, then written beside its target as a temporary file, before any page
+ * object changes, so an unreadable page object or a failed write leaves the folders as they were. The
+ * temporary files are then moved into place, longest name first: one rename's target can be another's
+ * source (`B` becomes `aB` while `aB` becomes `aAB`), and a rename's target is always longer than its
+ * source, so a source's own rename is in place before another rename replaces it. Each target is
+ * removed before its temporary file moves in, so the new file takes the target's spelling: on a
+ * case-insensitive file system, moving onto `ab` would otherwise keep the name `ab` for `aB`. That is
+ * safe, as the collision check leaves only a file this stage wrote, or a source already renamed, at a
+ * target. A failure there leaves every page object under its old name, its new one, or both. Last, the
+ * sources no rename replaced are removed. That is read from the file, not the path, because on a
+ * case-insensitive file system a target can replace a source spelled differently (`aB` replaces `ab`).
+ */
+function writeRenames(renames: PageObjectRename[]): void {
+  const rendered = renames.map((rename) => ({ rename, output: renderRename(rename), temp: `${rename.to}${TEMP_EXT}` }));
+  const written = new Set<string>();
+  try {
+    for (const { output, temp } of rendered) {
+      written.add(temp);
+      fs.writeFileSync(temp, output, 'utf-8');
+    }
+    for (const { rename, temp } of rendered.toSorted((a, b) => b.rename.to.length - a.rename.to.length)) {
+      fs.rmSync(rename.to, { force: true });
+      fs.renameSync(temp, rename.to);
+      written.delete(temp);
+    }
+  } finally {
+    for (const temp of written) {
+      fs.rmSync(temp, { force: true });
+    }
+  }
+  for (const { rename } of rendered) {
+    if (renamedFrom(rename.from) === undefined) {
+      fs.rmSync(rename.from);
+    }
+  }
+}
+
+/**
  * Renames the page objects `utam-generate` wrote for an LWC bundle's secondary templates to
  * `<bundle><Template>`, so same-named templates in different bundles stop compiling to one file.
  * The primary template, the one named after the bundle, keeps its name. Frame page objects
  * (`<template>_<frame>`) take the same prefix.
  *
  * Runs after `utam-generate` and `applyUtamOverrides`, which still see the generated names. Skips
- * when there is no generator config, since the page objects are then not generated. Renames nothing
- * when a final name would collide with another page object the compiler reads.
+ * when there is no generator config, since the page objects are then not generated, and, with a
+ * warning, when the generator config does not write them into `__utam__` beside each template. Leaves
+ * a template alone, with a warning, when its rules file sends its page objects elsewhere. Renames
+ * nothing when a final name would collide with another page object the compiler reads; page objects
+ * that already shared a name before any rename only get a warning.
  *
  * @param options - Naming options.
- * @returns The renames, any collisions, and page objects that match no template.
- * @throws When a config file is not valid JSON, when the generator config or a rules file beside a
- * template does not write page objects into `__utam__` beside each template, or when a page object to
- * rename is not valid JSON. Nothing is renamed in any of these cases.
+ * @returns The renames, any collisions, warnings, and page objects that match no template.
+ * @throws When a config file or a rules file is not valid JSON, or when a page object to rename is
+ * not valid JSON or cannot be written. No page object is lost in any of these cases.
  */
 export function nameSecondaryPageObjects(
   options: NameSecondaryPageObjectsOptions = {},
 ): NameSecondaryPageObjectsResult {
   const rootDir = path.resolve(options.rootDir ?? process.cwd());
   const dryRun = Boolean(options.dryRun);
-  const result: NameSecondaryPageObjectsResult = { renames: [], collisions: [], unmatched: [], dryRun };
+  const result: NameSecondaryPageObjectsResult = { renames: [], collisions: [], warnings: [], unmatched: [], dryRun };
 
   const generatorConfigPath = path.resolve(rootDir, options.generatorConfigPath ?? 'generator.config.json');
   const generatorConfig = readJsonConfig(generatorConfigPath);
@@ -459,32 +533,35 @@ export function nameSecondaryPageObjects(
     result.skipped = `No generator config at ${generatorConfigPath}, so no generated page objects to name`;
     return result;
   }
-  assertGeneratorLayout(generatorConfigPath, generatorConfig);
+  const layoutWarning = checkGeneratorLayout(generatorConfigPath, generatorConfig);
+  if (layoutWarning) {
+    result.skipped = `${generatorConfigPath} does not write page objects into __utam__ beside each template`;
+    result.warnings.push(layoutWarning);
+    return result;
+  }
 
   for (const bundleDir of findBundles(rootDir, options.sourceDirs)) {
     const plan = planBundle(bundleDir, path.basename(bundleDir));
     result.renames.push(...plan.renames);
     result.unmatched.push(...plan.unmatched);
+    result.warnings.push(...plan.warnings);
   }
 
-  result.collisions = findCollisions(
+  const collisions = findCollisions(
     result.renames,
-    rootDir,
     path.resolve(rootDir, options.utamConfigPath ?? 'utam.config.json'),
   );
+  result.collisions = collisions.caused;
+  for (const collision of collisions.existing) {
+    const sources = collision.sources.map((source) => path.relative(rootDir, source)).join(', ');
+    result.warnings.push(
+      `${sources} compile to one file, ${collision.name}, so the compiler keeps only one of them. No rename caused this; rename all but one, or add an "ignore" entry for a generated one's template in the generator config.`,
+    );
+  }
   if (result.collisions.length > 0 || dryRun) {
     return result;
   }
 
-  // Render every file before writing any, so one unreadable page object leaves the folder as it was.
-  // Then remove every source before writing any target: one rename's target can be another's source
-  // (`B` becomes `aB` while `aB` becomes `aAB`), and removing that source afterwards would delete it.
-  const rendered = result.renames.map((rename) => ({ rename, output: renderRename(rename) }));
-  for (const { rename } of rendered) {
-    fs.rmSync(rename.from);
-  }
-  for (const { rename, output } of rendered) {
-    fs.writeFileSync(rename.to, output, 'utf-8');
-  }
+  writeRenames(result.renames);
   return result;
 }

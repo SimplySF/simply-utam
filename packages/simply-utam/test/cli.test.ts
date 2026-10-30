@@ -579,11 +579,30 @@ Given('step is defined', async () => {});
       expect(result.dryRun).toBe(true);
       expect(fs.readdirSync(utamDir).sort()).toEqual(['handWritten.utam.json', 'picklistTemplate.utam.json']);
       expect(output).toContain('[dry-run] Page object names preview:');
+      expect(output).toContain('Would rename 1 secondary template page objects.');
       expect(
         output.some(
           (line) => line.startsWith('  - Left alone, matches no template:') && line.endsWith('handWritten.utam.json'),
         ),
       ).toBe(true);
+    });
+
+    it('should warn and skip when the generator config writes one output folder', async () => {
+      fs.writeFileSync(path.join(tempDir, 'generator.config.json'), JSON.stringify({ outputDir: '__utam__' }), 'utf-8');
+      const utamDir = writeGenerated('ordersTable', 'picklistTemplate');
+      const warnings: string[] = [];
+      const command = new Names(['--project-dir', tempDir, '--source', path.join(tempDir, 'force-app')], config);
+      command.log = (): void => {};
+      command.warn = (input: string | Error): string | Error => {
+        warnings.push(String(input));
+        return input;
+      };
+
+      const result = await command.run();
+
+      expect(result.skipped).toBeDefined();
+      expect(warnings).toEqual([expect.stringContaining('relativeOutputDir: false')]);
+      expect(fs.readdirSync(utamDir)).toEqual(['picklistTemplate.utam.json']);
     });
 
     it('should fail, renaming nothing, when two page objects would get one name', async () => {

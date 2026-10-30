@@ -205,10 +205,10 @@ function executeNamesStage(
   skip: boolean,
   dryRun: boolean,
   onStage?: StageLogger,
-): { modified: number; error?: string } {
+): { modified: number; warnings: string[]; error?: string } {
   if (skip) {
     onStage?.('names', 'skip', 'Skipped with skipNames');
-    return { modified: 0 };
+    return { modified: 0, warnings: [] };
   }
 
   onStage?.('names', 'start');
@@ -222,20 +222,24 @@ function executeNamesStage(
     });
     if (res.skipped) {
       onStage?.('names', 'skip', res.skipped);
-      return { modified: 0 };
+      return { modified: 0, warnings: res.warnings };
     }
     if (res.collisions.length > 0) {
       const names = res.collisions.map((collision) => `${collision.name} (${collision.sources.join(', ')})`);
       const msg = `These page objects would compile to the same file, so nothing was renamed: ${names.join('; ')}`;
       onStage?.('names', 'error', msg);
-      return { modified: 0, error: `Page object naming failed: ${msg}` };
+      return { modified: 0, warnings: res.warnings, error: `Page object naming failed: ${msg}` };
     }
-    onStage?.('names', 'success', `Renamed ${res.renames.length} secondary template page objects`);
-    return { modified: res.renames.length };
+    onStage?.(
+      'names',
+      'success',
+      `${dryRun ? 'Would rename' : 'Renamed'} ${res.renames.length} secondary template page objects`,
+    );
+    return { modified: res.renames.length, warnings: res.warnings };
   } catch (err) {
     const msg = (err as Error).message;
     onStage?.('names', 'error', msg);
-    return { modified: 0, error: `Page object naming failed: ${msg}` };
+    return { modified: 0, warnings: [], error: `Page object naming failed: ${msg}` };
   }
 }
 
@@ -379,6 +383,7 @@ export async function executeBuildPipeline(options?: BuildPipelineOptions): Prom
     onStage,
   );
   result.pageObjectsRenamed = names.modified;
+  result.warnings.push(...names.warnings);
   if (names.error) {
     return fail(names.error);
   }

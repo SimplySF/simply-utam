@@ -132,15 +132,18 @@ The list comes from the HTML files, not from the JSON files, because a bundle na
 The stage looks for page objects where the scaffolded `generator.config.json` puts them:
 `outputDir: "__utam__"`, `relativeOutputDir: true` and `outputFileExtension: ".utam.json"`, the layout the
 `overrides` stage already assumes. It reads those three keys from the generator config (the
-`--generator-config` path `build` already takes) and fails, before renaming anything, when they differ.
-`outputDir` is compared after normalizing, so `./__utam__` and `__utam__/` pass. With
+`--generator-config` path `build` already takes) and, when they differ, skips with a warning that
+names them. `outputDir` is compared after normalizing, so `./__utam__` and `__utam__/` pass. With
 `relativeOutputDir: false` every page object goes to one folder, so the generator itself overwrites
-same-named templates before any stage runs, and renaming afterwards cannot recover them.
+same-named templates before any stage runs, and renaming afterwards cannot recover them. The stage has
+nothing to fix there, and such a project already lives with the clash, so a failure would only break a
+build that works today; the warning makes the clash visible instead.
 
 A rules file can also set `outputDir`, and the generator honours it for the template it pairs the file
-with. That template's page objects then go somewhere this stage never looks, and the clash would stay
-without a word. So the stage also fails, before renaming anything, when a `*.rules.json` beside a
-template sets an `outputDir` other than `__utam__`.
+with. That template's page objects then go somewhere this stage never looks. The stage warns, naming
+the rules file and every template it could pair with (the generator gives it to the first template,
+in file system order, whose name up to its last `.` the rules file's name starts with), leaves those
+templates' page objects alone, and renames the rest.
 
 ### Changes to `rules`
 
@@ -222,24 +225,35 @@ Generating the container for components that extend
   that carries it is the copy an earlier run renamed, and the new file replaces it. A file at the target
   without it, such as a page object someone renamed and edited by hand, is never overwritten: it counts
   as a collision (below).
-- Every renamed file is prepared before anything is written. Then every generated file is removed,
-  and only then are the new files written, because one rename's target can be another rename's source:
-  in bundle `a`, `B.html` becomes `aB` while `aB.html` becomes `aAB`. Removing the sources one by one,
-  after each write, would delete `B`'s renamed page object. After the stage a secondary template has one
-  page object, not two.
+- The line also keeps a later run from renaming its own output again. A renamed page object's name can
+  read as a frame of another template (in bundle `a_b`, `a_bX` starts with template `a`'s `a_`) or as a
+  template's own name (`aB`, from `B.html`, when the bundle also has `aB.html`). A file carrying the
+  line is left as it is, and listed as unmatched once its template would no longer give it that name.
+- Every renamed file is prepared and written beside its target as a temporary file before any page
+  object changes, so a failed write (a full disk, a file held open on Windows) leaves the folder as it
+  was. The temporary files are then moved into place, longest name first, because one rename's target
+  can be another rename's source: in bundle `a`, `B.html` becomes `aB` while `aB.html` becomes `aAB`.
+  A target is always longer than its source, so `aB`'s own rename is in place before `B`'s replaces
+  it. Last, every generated file that no rename replaced is removed. After the stage a secondary
+  template has one page object, not two.
 - The file's formatting is kept, as the `overrides` and `rewrite` stages keep it (`detectIndentation`).
 - `--dry-run` reports the renames and writes nothing.
 
 ### Collisions
 
-The stage computes every final name before it moves anything, and fails, naming every source, if two
-match ignoring case. It compares against every `.utam.json` the compiler will read, under the
+The stage computes every final name before it moves anything, and fails, naming every source, if a
+new name matches another ignoring case. It compares against every `.utam.json` the compiler will read, under the
 `pageObjectsFileMask` in `utam.config.json`, not only the renamed ones: a primary page object or a
 hand-written one (such as a test's own page object under `force-app/test/…/__utam__/`) can hold the name
 a rename would produce. Most clashes are already gone at that
 point, but the rule can produce one: component `a` with template `bC.html` and component `aB` with
 template `c.html` both become `aBC`. Case is ignored because the compiler's output folder is usually on a
 case-insensitive filesystem (macOS, Windows), the same reason the publish check ignores it.
+
+Page objects that already share a name before any rename (a hand-written `foo.utam.json` beside a
+generated `foo`, or a template in a bundle subfolder named after the bundle) only get a warning naming
+them. They already overwrite each other in projects that build today, and no rename caused it, so
+failing would block the renames for a clash the stage does not fix.
 
 ### Pipeline order
 
@@ -255,7 +269,7 @@ stage that edits JSON before the compile.
 ### Surfaces
 
 - `simply-utam-core`: `nameSecondaryPageObjects(options)` alongside `applyUtamOverrides`, with
-  the same option shape (`rootDir`, `sourceDirs`, `dryRun`, `verbose`) plus `generatorConfigPath` and
+  the same option shape (`rootDir`, `sourceDirs`, `dryRun`) plus `generatorConfigPath` and
   `utamConfigPath`. Its result lists the `renames`, any `collisions` and the `unmatched` page objects,
   and says why it `skipped`: it does nothing without a generator config, since the page objects are
   then not generated and renaming them would rename hand-written files. `secondaryPageObjectName` gives
@@ -381,7 +395,11 @@ change there.
   primary and of a secondary template; templates in a bundle subfolder; a stale renamed file from a
   previous run; a collision produced by the rule, including one that differs only in case; a custom
   description left alone; `--dry-run`; idempotence on a second run; a rename that would land on an
-  unchanged primary or hand-written page object; a generator config with `relativeOutputDir: false`.
+  unchanged primary or hand-written page object; a generator config with `relativeOutputDir: false`
+  (skipped with a warning); a rules file with its own `outputDir` (its templates left alone, with a
+  warning); page objects that share a name before any rename (a warning, renames go ahead); output of
+  an earlier run whose new name reads as a frame or a template name (not renamed again); a write or a
+  move that fails partway (no page object lost).
 - `executeBuildPipeline`: the stage runs between overrides and rewrite, stops the pipeline on a
   collision, is counted in the result, and is left out with `skipNames`.
 - `generateLwcRules`: a component with no `<component>.html` is skipped with the reason, an existing
