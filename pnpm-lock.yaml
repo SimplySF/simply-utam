@@ -113,8 +113,8 @@ importers:
         version: 3.9.10
     devDependencies:
       '@lwc/synthetic-shadow':
-        specifier: 9.4.3
-        version: 9.4.3
+        specifier: 9.5.3
+        version: 9.5.3
       '@types/jsdom':
         specifier: ^30.0.0
         version: 30.0.0
@@ -904,8 +904,8 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@lwc/synthetic-shadow@9.4.3':
-    resolution: {integrity: sha512-CkLO5KyAJcVoYeQ2+rvmsSZKh6ki5LC4ndsVo1+d27KaYSSIY9qO16xS+9umwqdL+ZaK5ym7Quz1/YZc+i/XHQ==}
+  '@lwc/synthetic-shadow@9.5.3':
+    resolution: {integrity: sha512-oqEeXGo+FpF0XUJwolrC07wQafxwUs1LJybfPG+JbgD6Oz4qkREmVOyU/8kIk9VDuuAazWbWe2JV6l2oj0mlnQ==}
     engines: {node: '>=16.6.0'}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
@@ -5714,7 +5714,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@lwc/synthetic-shadow@9.4.3': {}
+  '@lwc/synthetic-shadow@9.5.3': {}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
