@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.12",
-    "oclif": "^6.0.10",
+    "oclif": "^6.0.15",
     "shx": "^0.4.0",
     "utam": "^3.3.0",
     "vitest": "^4.1.12"
