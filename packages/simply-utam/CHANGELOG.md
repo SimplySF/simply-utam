@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [0.5.0](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.4.6...%40simplysf%2Fsimply-utam%400.5.0) (2026-11-12)
+
+### Features
+
+- **simply-utam-core:** prefix environment variables with SIMPLY_ ([#37](https://github.com/SimplySF/simply-utam/issues/37)) ([f94174f](https://github.com/SimplySF/simply-utam/commit/f94174f61c4d47d5b036455fda597cd6cabf4f97))
+
 ## [0.4.6](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.4.5...%40simplysf%2Fsimply-utam%400.4.6) (2026-11-08)
 
 ### Bug Fixes
