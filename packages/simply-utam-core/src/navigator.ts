@@ -34,7 +34,7 @@ export type FrontdoorUrlSource = {
 };
 
 export type LightningNavigatorOptions = {
-  /** Where login URLs come from. Defaults to a `TestEnvironment` for `UTAM_USERNAME`. */
+  /** Where login URLs come from. Defaults to a `TestEnvironment` for `SIMPLY_UTAM_USERNAME`. */
   environment?: FrontdoorUrlSource;
   /** The browser to drive. Defaults to WebdriverIO's global `browser`, looked up on each call. */
   browser?: NavigableBrowser;

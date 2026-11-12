@@ -66,8 +66,11 @@ export const config = {
       );
       return;
     }
-    // One DOM snapshot folder per test run, shared by every worker.
-    process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshots.snapshotRunId();
+    // One DOM snapshot folder per test run, shared by every worker. A run id already set is kept,
+    // including one under the deprecated UTAM_SNAPSHOT_RUN_ID.
+    if (!process.env.SIMPLY_UTAM_SNAPSHOT_RUN_ID && !process.env.UTAM_SNAPSHOT_RUN_ID) {
+      process.env.SIMPLY_UTAM_SNAPSHOT_RUN_ID = snapshots.snapshotRunId();
+    }
   },
   onComplete: async function () {
     if (!snapshots) return;

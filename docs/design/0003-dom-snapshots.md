@@ -260,7 +260,7 @@ is what keeps capture fast; the backstop only stops a caller from hanging.
 
 Snapshots are read by an LLM, which means their text goes to the model provider, and failure
 snapshots can end up in Allure reports. They must not copy record data by default.
-`UTAM_SNAPSHOT_MASK` (through the injectable `env`) sets the mode, and the mode is recorded in the
+`SIMPLY_UTAM_SNAPSHOT_MASK` (through the injectable `env`) sets the mode, and the mode is recorded in the
 metadata.
 
 The modes, from least kept to most:
@@ -351,7 +351,7 @@ agent needs. `structure` is the safe mode. Each rule above has a fixture test, s
 test when it's fixed. Because text is masked, `find --text` matches labels, not record values:
 search by field label, or use `full` on a dev org. A selector that tests an accessible name, such as
 `[title="Edit"]`, can't be checked against a `labels` or `structure` snapshot: `find --css` and the
-hint for UTAM's not-found error say so, and to recapture with `UTAM_SNAPSHOT_MASK=aria`.
+hint for UTAM's not-found error say so, and to recapture with `SIMPLY_UTAM_SNAPSHOT_MASK=aria`.
 
 ## 2. Snapshot format
 
@@ -429,7 +429,7 @@ fails. Its hook now captures the snapshot first, before anything else changes th
 it with `writeDomSnapshot` and attaches it to the Allure report, each in its own `try`, so neither
 failing can cost the other or the screenshot (`writeDomSnapshot` can throw on a full disk, or a
 `latest.json` another program holds open on Windows). The `onPrepare` hook sets one
-`UTAM_SNAPSHOT_RUN_ID` for every worker, and the `onComplete` hook prunes old runs once this one is
+`SIMPLY_UTAM_SNAPSHOT_RUN_ID` for every worker, and the `onComplete` hook prunes old runs once this one is
 written, so the 10 it keeps include it; a failed prune only warns. Core doesn't import Allure; the
 hook in the test project does, and `@wdio/allure-reporter` is already a dependency `init` checks for.
 Cucumber doesn't call `afterStep` for an undefined step, so there is no useless failure snapshot for
@@ -511,7 +511,7 @@ An agent runs steps 1 and 3; only step 2 needs a person.
   `--focus` defaults to `auto` here; `--mask`, `--max-nodes` and `--max-hidden-nodes` are the other
   options.
 - **Masked in the page.** The mask mode is fixed when the snippet is generated (default
-  `UTAM_SNAPSHOT_MASK`, then `labels`), because masking runs in the walker. Text that `structure`,
+  `SIMPLY_UTAM_SNAPSHOT_MASK`, then `labels`), because masking runs in the walker. Text that `structure`,
   `labels` or `aria` masks never reaches the clipboard. It warns on `full`, as capture does.
 - **The JSON goes to the clipboard**, through the console's `copy()`. Where `copy` isn't defined,
   as in an agent's browser tool or a bookmarklet, it downloads `dom-snapshot-<time>.json` through a
@@ -564,7 +564,7 @@ simply-utam snapshot
 
 `writeDomSnapshot(snapshot, options?)` writes the snapshot and returns the path:
 
-- Snapshots go to `.utam/snapshots/<runId>/<name>.json`. `runId` comes from `UTAM_SNAPSHOT_RUN_ID`
+- Snapshots go to `.utam/snapshots/<runId>/<name>.json`. `runId` comes from `SIMPLY_UTAM_SNAPSHOT_RUN_ID`
   (through the injectable `env`), which the scaffolded `onPrepare` hook sets once per test run to
   `snapshotRunId()`, the current time as `20261016T120000`, so every worker in a run uses the same
   folder. In a project without the hook, each process uses the time of its first capture. A custom
@@ -1118,7 +1118,7 @@ Listed so the current design doesn't box them out. Each one needs its own design
 | Live page object check        | In a paused test or a Chrome-route browser, loads a candidate page object with UTAM itself and reports which of its elements resolve, element by element. Would turn "reachable through" annotations into proven routes.                                                                                                    |
 | Live failure replay           | When a step fails, pauses the session and walks the failing page object's chain with UTAM to show how far it got. Builds on the live check.                                                                                                                                                                                 |
 | Comparison with a passing run | Diffs a failing snapshot against the last passing one for the same step, to show what changed after a release or layout change.                                                                                                                                                                                             |
-| More triggers                 | `UTAM_SNAPSHOT_AFTER="<step text>"` and `UTAM_SNAPSHOT=all`, through an `afterStep` hook, without editing feature files.                                                                                                                                                                                                    |
+| More triggers                 | `SIMPLY_UTAM_SNAPSHOT_AFTER="<step text>"` and `SIMPLY_UTAM_SNAPSHOT=all`, through an `afterStep` hook, without editing feature files.                                                                                                                                                                                      |
 | iframes and windows           | Capture each frame (switching into it) and each window, and link them to the `iframe` node. Needed for Setup pages and some managed packages; no evaluation session met one.                                                                                                                                                |
 | MCP server                    | The same queries and capture as tools, so agents don't need to know the CLI.                                                                                                                                                                                                                                                |
 | WebdriverIO service           | The hooks and custom command as a service package, instead of scaffolded config.                                                                                                                                                                                                                                            |

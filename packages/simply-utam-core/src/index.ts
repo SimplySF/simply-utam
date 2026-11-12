@@ -24,6 +24,7 @@
 
 export {
   TestEnvironment,
+  ALLOWED_DOMAINS_ENV,
   USERNAME_ENV,
   DEFAULT_ALLOWED_HOST_PATTERNS,
   isHostAllowed,
@@ -34,6 +35,8 @@ export {
   type EnvLike,
   type TestEnvironmentOptions,
 } from './test-environment.js';
+
+export { LEGACY_ENV, deprecatedEnvWarning, envValue, type EnvName } from './env-vars.js';
 
 export { applicationPath, lightningAppName, newRecordPath, recordPath, relatedListPath } from './lightning-paths.js';
 

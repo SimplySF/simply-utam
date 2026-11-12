@@ -15,12 +15,15 @@
  */
 
 import { Connection, Org } from '@salesforce/core';
+import { envValue, type EnvLike } from './env-vars.js';
+
+export type { EnvLike } from './env-vars.js';
 
 /** The environment variable naming the org a UTAM run authenticates to. */
-export const USERNAME_ENV = 'UTAM_USERNAME';
+export const USERNAME_ENV = 'SIMPLY_UTAM_USERNAME';
 
-/** An environment-shaped map; `process.env` by default. */
-export type EnvLike = Record<string, string | undefined>;
+/** The environment variable listing extra trusted domains, comma-separated. */
+export const ALLOWED_DOMAINS_ENV = 'SIMPLY_UTAM_ALLOWED_DOMAINS';
 
 /**
  * Default trusted Salesforce host regular expression patterns for Experience Cloud and Salesforce domains.
@@ -67,7 +70,7 @@ function matchesCustomDomain(lowerHost: string, rawDomain: string): boolean {
 export function isHostAllowed(
   hostname: string,
   instanceUrl?: string,
-  envAllowedDomains: string | undefined = process.env['UTAM_ALLOWED_DOMAINS'],
+  envAllowedDomains: string | undefined = envValue(process.env, ALLOWED_DOMAINS_ENV),
 ): boolean {
   if (!hostname || typeof hostname !== 'string') {
     return false;
@@ -142,7 +145,7 @@ export function validateAndParseSecureUrl(
 
   if (typeof hostValidator === 'function' && !hostValidator(parsedUrl.hostname)) {
     throw new Error(
-      `Disallowed host '${parsedUrl.hostname}' for Site URL. Expected a trusted Salesforce domain or UTAM_ALLOWED_DOMAINS entry.`,
+      `Disallowed host '${parsedUrl.hostname}' for Site URL. Expected a trusted Salesforce domain or ${ALLOWED_DOMAINS_ENV} entry.`,
     );
   }
 
@@ -150,12 +153,17 @@ export function validateAndParseSecureUrl(
 }
 
 export type TestEnvironmentOptions = {
-  /** Username or alias of an org already authorized with the Salesforce CLI. Wins over `UTAM_USERNAME`. */
+  /** Username or alias of an org already authorized with the Salesforce CLI. Wins over `SIMPLY_UTAM_USERNAME`. */
   username?: string;
-  /** Where `UTAM_USERNAME` is read from. Defaults to `process.env`. */
+  /**
+   * Where `SIMPLY_UTAM_USERNAME` and `SIMPLY_UTAM_ALLOWED_DOMAINS` (or their deprecated `UTAM_` names)
+   * are read from. Defaults to `process.env`.
+   */
   env?: EnvLike;
-  /** Optional custom allowed domains or wildcards overriding UTAM_ALLOWED_DOMAINS. */
+  /** Optional custom allowed domains or wildcards overriding SIMPLY_UTAM_ALLOWED_DOMAINS. */
   allowedDomains?: string;
+  /** Where a deprecated variable name's warning goes. Defaults to `console.warn`. */
+  log?: (message: string) => void;
 };
 
 /**
@@ -169,17 +177,18 @@ export class TestEnvironment {
   #resolvedOrg?: Org;
 
   /**
-   * Create a new environment for the given username, or `UTAM_USERNAME` when none is passed.
+   * Create a new environment for the given username, or `SIMPLY_UTAM_USERNAME` when none is passed.
    *
    * @param options Explicit username and environment overrides.
    */
   public constructor(options: TestEnvironmentOptions = {}) {
-    const username = options.username ?? (options.env ?? process.env)[USERNAME_ENV];
+    const env = options.env ?? process.env;
+    const username = options.username ?? envValue(env, USERNAME_ENV, options.log);
     if (!username) {
       throw new Error(`You must set a username using the ${USERNAME_ENV} env property for the test`);
     }
     this.username = username;
-    this.#allowedDomains = options.allowedDomains;
+    this.#allowedDomains = options.allowedDomains ?? envValue(env, ALLOWED_DOMAINS_ENV, options.log);
   }
 
   /**

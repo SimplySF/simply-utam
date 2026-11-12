@@ -15,7 +15,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import type { EnvLike } from '../test-environment.js';
+import { envValue, type EnvLike } from '../env-vars.js';
 import { parseDomSnapshot, type DomSnapshot, type SnapshotMask, type SnapshotTrigger } from './format.js';
 
 /** Runs the walker's source in a page and returns the JSON text it produces. */
@@ -41,7 +41,7 @@ export type CaptureDomSnapshotOptions = WalkerOptions & {
   timeoutMs?: number;
 };
 
-export const SNAPSHOT_MASK_ENV = 'UTAM_SNAPSHOT_MASK';
+export const SNAPSHOT_MASK_ENV = 'SIMPLY_UTAM_SNAPSHOT_MASK';
 
 let walkerSourceCache: string | undefined;
 
@@ -64,21 +64,21 @@ export type WalkerOptions = {
   /** Defaults to `manual`. */
   trigger?: SnapshotTrigger;
   label?: string;
-  /** Defaults to `UTAM_SNAPSHOT_MASK`, then `labels`. */
+  /** Defaults to `SIMPLY_UTAM_SNAPSHOT_MASK`, then `labels`. */
   mask?: SnapshotMask;
   maxNodes?: number;
   maxHiddenNodes?: number;
   timeBudgetMs?: number;
   /** `none`, `auto`, or a CSS selector. */
   focus?: string;
-  /** Where `UTAM_SNAPSHOT_MASK` is read from. Defaults to `process.env`. */
+  /** Where `SIMPLY_UTAM_SNAPSHOT_MASK` (or the deprecated `UTAM_SNAPSHOT_MASK`) is read from. Defaults to `process.env`. */
   env?: EnvLike;
   /** Where warnings go. Defaults to `console.warn`. */
   log?: (message: string) => void;
 };
 
 function resolveMask(options: WalkerOptions): SnapshotMask {
-  const value = options.mask ?? (options.env ?? process.env)[SNAPSHOT_MASK_ENV];
+  const value = options.mask ?? envValue(options.env ?? process.env, SNAPSHOT_MASK_ENV, options.log ?? warn);
   return value === 'structure' || value === 'aria' || value === 'full' ? value : 'labels';
 }
 

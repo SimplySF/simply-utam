@@ -113,15 +113,19 @@ sf org login web --alias my-scratch-org
 sf org create scratch --definition-file config/project-scratch-def.json --alias my-scratch-org --set-default
 ```
 
-Set the target username or alias in the `UTAM_USERNAME` environment variable:
+Set the target username or alias in the `SIMPLY_UTAM_USERNAME` environment variable:
 
 ```sh
 # macOS / Linux:
-export UTAM_USERNAME=my-scratch-org
+export SIMPLY_UTAM_USERNAME=my-scratch-org
 
 # Windows (PowerShell):
-$env:UTAM_USERNAME="my-scratch-org"
+$env:SIMPLY_UTAM_USERNAME="my-scratch-org"
 ```
+
+Every variable SimplyUTAM reads is prefixed `SIMPLY_UTAM_`. The earlier `UTAM_` names (`UTAM_USERNAME`,
+`UTAM_ALLOWED_DOMAINS`, `UTAM_SNAPSHOT_MASK`, `UTAM_SNAPSHOT_RUN_ID`) still work while the new name is
+unset, with a warning, and will be removed in a future major release.
 
 ### 5. Review the Scaffolded "Hello World" Cucumber Test
 
