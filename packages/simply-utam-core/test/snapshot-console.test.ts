@@ -106,7 +106,7 @@ describe('domSnapshotSnippet', () => {
     expect(snippet).toMatch(/^[\t\n\r\x20-\x7e]*$/);
     expect(snippet).toContain('"trigger":"manual","mask":"full","maxNodes":50,"focus":"none"');
     expect(logged).toEqual(['DOM snapshot: mask "full" keeps record data in the snapshot.']);
-    expect(domSnapshotSnippet({ env: { UTAM_SNAPSHOT_MASK: 'structure' } })).toContain('"mask":"structure"');
+    expect(domSnapshotSnippet({ env: { SIMPLY_UTAM_SNAPSHOT_MASK: 'structure' } })).toContain('"mask":"structure"');
   });
 
   it('reports truncation in its summary', () => {

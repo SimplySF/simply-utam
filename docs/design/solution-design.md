@@ -66,7 +66,7 @@ flowchart TD
         D1["WebdriverIO Runner<br/><i>(npm run test:ui / wdio.conf.mjs)</i>"]
         D2["Target Salesforce Org<br/><i>(Scratch org, sandbox, or dev org)</i>"]
         D3["Test Reports &amp; Results<br/><i>(Spec reporter, Allure reports)</i>"]
-        D1 -->|Automates browser via UTAM_USERNAME| D2
+        D1 -->|Automates browser via SIMPLY_UTAM_USERNAME| D2
         D2 -->|Generates test results| D3
     end
 
@@ -206,7 +206,7 @@ The core library contains all the business logic, file transformations, environm
 6. **`runtime` (Test Environment, Navigation & Debug Helpers)**:
    - **`TestEnvironment`**:
      - **Lazy Initialization**: Does not connect to Salesforce at module load time. Connection occurs on first access via a lazy singleton (`getTestEnvironment()`) or explicit invocation.
-     - Authenticates using `@salesforce/core` Org connections via `UTAM_USERNAME`. Supports constructor options (`{ username?: string }`) for programmatic instantiation.
+     - Authenticates using `@salesforce/core` Org connections via `SIMPLY_UTAM_USERNAME`. Supports constructor options (`{ username?: string }`) for programmatic instantiation.
      - Validates domain security against trusted Salesforce patterns:
        ```typescript
        export const DEFAULT_ALLOWED_HOST_PATTERNS = [
@@ -216,7 +216,7 @@ The core library contains all the business logic, file transformations, environm
          /\.force\.com$/i,
        ];
        ```
-       along with the org instance URL and optional `UTAM_ALLOWED_DOMAINS` wildcards.
+       along with the org instance URL and optional `SIMPLY_UTAM_ALLOWED_DOMAINS` wildcards.
      - Resolves Community / Experience Cloud Network IDs and secure site URLs.
      - Constructs Frontdoor bypass URLs (`/secur/frontdoor.jsp?sid=...` or `/services/oauth2/singleaccess`).
    - **`navigation` & Debug Helpers**:
@@ -324,17 +324,17 @@ The CLI wraps `@simplysf/simply-utam-core` into a modern developer command-line 
 
 Following [SimplySF/simply-atlassian](https://github.com/SimplySF/simply-atlassian):
 
-| Category                 | Technology / Convention                                   |
-| ------------------------ | --------------------------------------------------------- |
-| **Runtime**              | Node.js >= 22 (LTS)                                       |
-| **Module Format**        | Pure ESM (`"type": "module"`, `.mjs` config files)        |
-| **Language**             | TypeScript 5+ (`Node16` module resolution, strict mode)   |
-| **Package Manager**      | `pnpm` (v11+) with workspaces                             |
-| **Monorepo Manager**     | Lerna v10 (independent versioning)                        |
-| **Testing**              | Vitest with coverage and isolated mocks                   |
-| **Linting & Formatting** | ESLint 10+ (Flat Config), Prettier 3+                     |
-| **Git Quality Gates**    | Husky, lint-staged, Commitlint (Conventional Commits)     |
-| **CLI Framework**        | [oclif](https://oclif.io/) (`@oclif/core`)                |
+| Category                 | Technology / Convention                                 |
+| ------------------------ | ------------------------------------------------------- |
+| **Runtime**              | Node.js >= 22 (LTS)                                     |
+| **Module Format**        | Pure ESM (`"type": "module"`, `.mjs` config files)      |
+| **Language**             | TypeScript 5+ (`Node16` module resolution, strict mode) |
+| **Package Manager**      | `pnpm` (v11+) with workspaces                           |
+| **Monorepo Manager**     | Lerna v10 (independent versioning)                      |
+| **Testing**              | Vitest with coverage and isolated mocks                 |
+| **Linting & Formatting** | ESLint 10+ (Flat Config), Prettier 3+                   |
+| **Git Quality Gates**    | Husky, lint-staged, Commitlint (Conventional Commits)   |
+| **CLI Framework**        | [oclif](https://oclif.io/) (`@oclif/core`)              |
 
 ---
 
@@ -417,6 +417,7 @@ capabilities: [
 ### 7.2 `UtamWdioService` Configuration
 
 The runner coordinates browser page objects using `wdio-utam-service`:
+
 1. **Disable Implicit Timeouts:** `implicitTimeout: 0` is set to ensure that UTAM's explicit polling and wait conditions manage timeouts rather than native driver polling, avoiding browser thread hangs.
 2. **Global Platform Page Objects:** Injects Salesforce standard global components (`salesforce-pageobjects/ui-global-components.config.json`) so standard platform chrome (headers, app launcher, navigation bars, toasts) is accessible out of the box.
 
@@ -435,13 +436,15 @@ services: [
 ### 7.3 Headless Authentication Flow
 
 Instead of hardcoding user passwords or automating the platform login page with brittle UI steps, SimplyUTAM authenticates via the Salesforce CLI local credential store:
-1. `TestEnvironment` resolves the authenticated org from the `UTAM_USERNAME` environment variable.
+
+1. `TestEnvironment` resolves the authenticated org from the `SIMPLY_UTAM_USERNAME` environment variable.
 2. Constructs a single-access frontdoor URL (`/secur/frontdoor.jsp?sid=...` or `/services/oauth2/singleaccess`).
 3. The test runner navigates the browser directly to the frontdoor URL, achieving authenticated session state instantly without manual user credentials in test suites.
 
 ### 7.4 Step Implementation Lifecycle
 
 Authoring end-to-end steps follows a clean iterative lifecycle:
+
 1. **Scaffold:** Run `simply-utam steps` to detect undefined scenario steps and append typed skeleton definitions (`*.steps.mjs`).
 2. **Load Page Objects:** In the step definition, load the compiled UTAM page object:
    ```javascript
@@ -451,4 +454,4 @@ Authoring end-to-end steps follows a clean iterative lifecycle:
    ```javascript
    await home.clickNewAccount();
    ```
-4. **Run & Verify:** Execute `npm run test:ui` (with `UTAM_USERNAME` configured) to observe automated execution against your target Salesforce org.
+4. **Run & Verify:** Execute `npm run test:ui` (with `SIMPLY_UTAM_USERNAME` configured) to observe automated execution against your target Salesforce org.

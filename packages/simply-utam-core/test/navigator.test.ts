@@ -93,10 +93,11 @@ describe('LightningNavigator', () => {
     await expect(navigator.goToApplication('MyApp')).rejects.toThrow(/No browser to navigate/);
   });
 
-  it('defaults to a TestEnvironment, which needs UTAM_USERNAME', () => {
+  it('defaults to a TestEnvironment, which needs SIMPLY_UTAM_USERNAME', () => {
+    vi.stubEnv('SIMPLY_UTAM_USERNAME', '');
     vi.stubEnv('UTAM_USERNAME', '');
     try {
-      expect(() => new LightningNavigator()).toThrow(/UTAM_USERNAME/);
+      expect(() => new LightningNavigator()).toThrow(/SIMPLY_UTAM_USERNAME/);
     } finally {
       vi.unstubAllEnvs();
     }

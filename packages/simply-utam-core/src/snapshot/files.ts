@@ -16,12 +16,12 @@
 
 import * as nodeFs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { EnvLike } from '../test-environment.js';
+import { envValue, type EnvLike } from '../env-vars.js';
 import { serializeDomSnapshot, type DomSnapshot } from './format.js';
 import { discoverPageObjectPackages, readNamespaceConfig } from './page-object-packages.js';
 
 /** Set once per test run (the scaffolded `onPrepare` hook does), so every worker writes to one folder. */
-export const SNAPSHOT_RUN_ID_ENV = 'UTAM_SNAPSHOT_RUN_ID';
+export const SNAPSHOT_RUN_ID_ENV = 'SIMPLY_UTAM_SNAPSHOT_RUN_ID';
 /** Where snapshots are written, relative to the project. */
 export const SNAPSHOTS_DIR = '.utam/snapshots';
 /** The run id for captures made outside a test run, such as from the console; pruning keeps its folder. */
@@ -43,12 +43,14 @@ export type WriteDomSnapshotOptions = {
   /** The project folder. Defaults to the current directory. */
   projectDir?: string;
   /**
-   * The run folder's id, such as `MANUAL_RUN_ID`. Defaults to `UTAM_SNAPSHOT_RUN_ID`, then the time this
+   * The run folder's id, such as `MANUAL_RUN_ID`. Defaults to `SIMPLY_UTAM_SNAPSHOT_RUN_ID`, then the time this
    * process first wrote a snapshot.
    */
   runId?: string;
-  /** Where `UTAM_SNAPSHOT_RUN_ID` is read from. Defaults to `process.env`. */
+  /** Where `SIMPLY_UTAM_SNAPSHOT_RUN_ID` (or the deprecated `UTAM_SNAPSHOT_RUN_ID`) is read from. Defaults to `process.env`. */
   env?: EnvLike;
+  /** Where a deprecated variable name's warning goes. Defaults to `console.warn`. */
+  log?: (message: string) => void;
   fs?: SnapshotFileSystem;
   /** Page-object package versions to record; looked up from `projectDir` when omitted. */
   pageObjectPackages?: Record<string, string>;
@@ -73,7 +75,7 @@ function cleanPart(value: string): string {
 }
 
 /**
- * A run id for `UTAM_SNAPSHOT_RUN_ID`: the time as `20261016T120000`.
+ * A run id for `SIMPLY_UTAM_SNAPSHOT_RUN_ID`: the time as `20261016T120000`.
  *
  * @param date The time; now when omitted.
  */
@@ -139,7 +141,7 @@ function installedPageObjectPackages(projectDir: string): Record<string, string>
 /**
  * Write a snapshot to `.utam/snapshots/<run id>/<name>.json`, and a copy as
  * `.utam/snapshots/latest.json`, replaced in one step through a temporary file and a rename. The run
- * id comes from `runId`, then `UTAM_SNAPSHOT_RUN_ID`, then the time this process first wrote a snapshot.
+ * id comes from `runId`, then `SIMPLY_UTAM_SNAPSHOT_RUN_ID`, then the time this process first wrote a snapshot.
  * A name already taken gets a number; files are created exclusively, so two workers can't both take
  * one name. Records the version of each page-object package the project's namespaces map to in the
  * file's `meta.pageObjectPackages`, leaving `snapshot` unchanged; the versions are looked up once per
@@ -163,7 +165,8 @@ export async function writeDomSnapshot(snapshot: DomSnapshot, options: WriteDomS
   // Without a run id, captures share one folder per process, so pruning counts them as one run.
   const dir = path.join(
     SNAPSHOTS_DIR,
-    cleanPart(options.runId ?? env[SNAPSHOT_RUN_ID_ENV] ?? '') || (processRunId ??= snapshotRunId()),
+    cleanPart(options.runId ?? envValue(env, SNAPSHOT_RUN_ID_ENV, options.log) ?? '') ||
+      (processRunId ??= snapshotRunId()),
   );
   await fs.mkdir(path.join(projectDir, dir), { recursive: true });
 

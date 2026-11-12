@@ -909,7 +909,7 @@ describe('scaffold service', () => {
       expect(config).toContain("const api = await import('@simplysf/simply-utam');");
       expect(config).not.toContain("from '@simplysf/simply-utam'");
       // The run id comes from core, so the template and writeDomSnapshot name run folders alike.
-      expect(config).toContain('process.env.UTAM_SNAPSHOT_RUN_ID ??= snapshots.snapshotRunId();');
+      expect(config).toContain('process.env.SIMPLY_UTAM_SNAPSHOT_RUN_ID = snapshots.snapshotRunId();');
       expect(config).toContain('await snapshots.pruneDomSnapshots({ keepRuns: 10 });');
       expect(config).toContain("browser.addCommand('domSnapshot'");
       expect(config).toContain("trigger: 'failure'");

@@ -40,7 +40,7 @@ export default class SnapshotConsoleSnippet extends Command {
   public static override flags = {
     copy: Flags.boolean({ summary: 'Copy the snippet to the clipboard instead of printing it.', default: false }),
     mask: Flags.string({
-      summary: 'Mask mode, from least kept to most. Defaults to UTAM_SNAPSHOT_MASK, then labels.',
+      summary: 'Mask mode, from least kept to most. Defaults to SIMPLY_UTAM_SNAPSHOT_MASK, then labels.',
       options: ['structure', 'labels', 'aria', 'full'],
     }),
     focus: Flags.string({

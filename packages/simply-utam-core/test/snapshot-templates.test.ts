@@ -68,14 +68,34 @@ describe('scaffolded wdio.conf.mjs pruning', () => {
       snapshotRunId: vi.fn(() => '20261023T120000'),
       writeDomSnapshot: vi.fn(),
     }));
+    vi.stubEnv('SIMPLY_UTAM_SNAPSHOT_RUN_ID', undefined);
     vi.stubEnv('UTAM_SNAPSHOT_RUN_ID', undefined);
 
     const { config } = (await import(WDIO_CONFIG)) as { config: { onPrepare: Hook; onComplete: Hook } };
     await config.onPrepare();
-    expect(process.env.UTAM_SNAPSHOT_RUN_ID).toBe('20261023T120000');
+    expect(process.env.SIMPLY_UTAM_SNAPSHOT_RUN_ID).toBe('20261023T120000');
     expect(pruneDomSnapshots).not.toHaveBeenCalled();
     await config.onComplete(0);
     expect(pruneDomSnapshots).toHaveBeenCalledWith({ keepRuns: 10 });
+  });
+
+  it('keeps a run id set under the deprecated UTAM_SNAPSHOT_RUN_ID, so core reads it and warns', async () => {
+    vi.doMock('wdio-utam-service', () => ({ UtamWdioService: class {} }));
+    vi.doMock('@wdio/allure-reporter', () => ({ default: { addAttachment: vi.fn() } }));
+    vi.doMock('@simplysf/simply-utam', () => ({
+      captureDomSnapshot: vi.fn(),
+      pruneDomSnapshots: vi.fn(async () => []),
+      serializeDomSnapshot,
+      snapshotRunId: vi.fn(() => '20261023T120000'),
+      writeDomSnapshot: vi.fn(),
+    }));
+    vi.stubEnv('SIMPLY_UTAM_SNAPSHOT_RUN_ID', undefined);
+    vi.stubEnv('UTAM_SNAPSHOT_RUN_ID', 'build-42');
+
+    const { config } = (await import(WDIO_CONFIG)) as { config: { onPrepare: Hook } };
+    await config.onPrepare();
+    expect(process.env.SIMPLY_UTAM_SNAPSHOT_RUN_ID).toBeUndefined();
+    expect(process.env.UTAM_SNAPSHOT_RUN_ID).toBe('build-42');
   });
 
   it("still finishes the run when old snapshot runs can't be pruned", async () => {
@@ -90,6 +110,7 @@ describe('scaffolded wdio.conf.mjs pruning', () => {
       snapshotRunId: vi.fn(() => '20261023T120000'),
       writeDomSnapshot: vi.fn(),
     }));
+    vi.stubEnv('SIMPLY_UTAM_SNAPSHOT_RUN_ID', undefined);
     vi.stubEnv('UTAM_SNAPSHOT_RUN_ID', undefined);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -118,6 +139,7 @@ describe('scaffolded wdio.conf.mjs with a @simplysf/simply-utam that predates DO
     const takeScreenshot = vi.fn(async () => '');
     const addCommand = vi.fn();
     vi.stubGlobal('browser', { takeScreenshot, addCommand });
+    vi.stubEnv('SIMPLY_UTAM_SNAPSHOT_RUN_ID', undefined);
     vi.stubEnv('UTAM_SNAPSHOT_RUN_ID', undefined);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -133,7 +155,7 @@ describe('scaffolded wdio.conf.mjs with a @simplysf/simply-utam that predates DO
     expect(warn).toHaveBeenCalledWith(
       'The installed @simplysf/simply-utam has no DOM snapshots, so none are captured. Upgrade it in package.json to capture them.',
     );
-    expect(process.env.UTAM_SNAPSHOT_RUN_ID).toBeUndefined();
+    expect(process.env.SIMPLY_UTAM_SNAPSHOT_RUN_ID).toBeUndefined();
     expect(addCommand).not.toHaveBeenCalled();
     expect(takeScreenshot).toHaveBeenCalledOnce();
   });

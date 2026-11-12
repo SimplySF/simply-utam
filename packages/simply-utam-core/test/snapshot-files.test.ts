@@ -164,17 +164,29 @@ describe('captureDomSnapshot', () => {
     expect(snapshot?.root.id).toBe('n1');
   });
 
-  it('takes the mask from UTAM_SNAPSHOT_MASK through env, and warns when it is full', async () => {
+  it('takes the mask from SIMPLY_UTAM_SNAPSHOT_MASK through env, and warns when it is full', async () => {
     const browser = browserReturning(rawSnapshot());
     const logged: string[] = [];
-    await captureDomSnapshot({ browser, env: { UTAM_SNAPSHOT_MASK: 'full' }, log: (m) => logged.push(m) });
+    await captureDomSnapshot({ browser, env: { SIMPLY_UTAM_SNAPSHOT_MASK: 'full' }, log: (m) => logged.push(m) });
     expect(browser.scripts[0]).toContain('"mask":"full"');
     expect(logged).toEqual(['DOM snapshot: mask "full" keeps record data in the snapshot.']);
-    await captureDomSnapshot({ browser, env: { UTAM_SNAPSHOT_MASK: 'bogus' }, log: (m) => logged.push(m) });
+    await captureDomSnapshot({ browser, env: { SIMPLY_UTAM_SNAPSHOT_MASK: 'bogus' }, log: (m) => logged.push(m) });
     expect(browser.scripts[1]).toContain('"mask":"labels"');
-    await captureDomSnapshot({ browser, env: { UTAM_SNAPSHOT_MASK: 'aria' }, log: (m) => logged.push(m) });
+    await captureDomSnapshot({ browser, env: { SIMPLY_UTAM_SNAPSHOT_MASK: 'aria' }, log: (m) => logged.push(m) });
     expect(browser.scripts[2]).toContain('"mask":"aria"');
     expect(logged).toHaveLength(1);
+  });
+
+  it('falls back to the deprecated UTAM_SNAPSHOT_MASK, warning through log once', async () => {
+    const browser = browserReturning(rawSnapshot());
+    const logged: string[] = [];
+    const env = { UTAM_SNAPSHOT_MASK: 'aria' };
+    await captureDomSnapshot({ browser, env, log: (m) => logged.push(m) });
+    await captureDomSnapshot({ browser, env, log: (m) => logged.push(m) });
+    expect(browser.scripts[0]).toContain('"mask":"aria"');
+    expect(logged).toEqual([
+      expect.stringContaining('UTAM_SNAPSHOT_MASK in use: rename it to SIMPLY_UTAM_SNAPSHOT_MASK'),
+    ]);
   });
 
   it('runs through any SnapshotPage, with the backstop timeout', async () => {
@@ -206,10 +218,23 @@ describe('captureDomSnapshot', () => {
 });
 
 describe('writeDomSnapshot', () => {
-  const env = { UTAM_SNAPSHOT_RUN_ID: '20261016T120000' };
+  const env = { SIMPLY_UTAM_SNAPSHOT_RUN_ID: '20261016T120000' };
   const write = (snapshot: DomSnapshot, projectDir: string): Promise<string> =>
     writeDomSnapshot(snapshot, { projectDir, env, pageObjectPackages: {} });
   const run = (...parts: string[]): string => path.join('.utam', 'snapshots', '20261016T120000', ...parts);
+
+  it('writes to the folder the deprecated UTAM_SNAPSHOT_RUN_ID names, warning through log', async () => {
+    const dir = tempDir();
+    const log = vi.fn();
+    const file = await writeDomSnapshot(parseDomSnapshot(rawSnapshot({ trigger: 'manual', scenario: 'S' })), {
+      projectDir: dir,
+      env: { UTAM_SNAPSHOT_RUN_ID: '20261016T120000' },
+      pageObjectPackages: {},
+      log,
+    });
+    expect(file).toBe(run('S--1.json'));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('rename it there too'));
+  });
 
   it('names a failure by scenario and step, cleaned and capped', async () => {
     const dir = tempDir();
@@ -408,7 +433,7 @@ describe('writeDomSnapshot', () => {
     await expect(
       writeDomSnapshot(snapshot, { projectDir: '/p', env, fs: always, pageObjectPackages: {} }),
     ).rejects.toThrow(
-      `Can't name a snapshot in ${run()}: 1000 files named after S--x already exist. Prune the folder or set another UTAM_SNAPSHOT_RUN_ID.`,
+      `Can't name a snapshot in ${run()}: 1000 files named after S--x already exist. Prune the folder or set another SIMPLY_UTAM_SNAPSHOT_RUN_ID.`,
     );
   });
 });

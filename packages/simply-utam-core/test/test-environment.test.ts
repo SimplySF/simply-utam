@@ -76,17 +76,47 @@ describe('TestEnvironment', () => {
   });
 
   describe('configuration & authentication', () => {
-    it('reads the username from UTAM_USERNAME', () => {
-      expect(new TestEnvironment({ env: { UTAM_USERNAME: 'qa@example.com' } }).username).toBe('qa@example.com');
+    it('reads the username from SIMPLY_UTAM_USERNAME', () => {
+      expect(new TestEnvironment({ env: { SIMPLY_UTAM_USERNAME: 'qa@example.com' } }).username).toBe('qa@example.com');
     });
 
     it('prefers an explicit username over the environment', () => {
-      const environment = new TestEnvironment({ username: 'alias', env: { UTAM_USERNAME: 'qa@example.com' } });
+      const environment = new TestEnvironment({ username: 'alias', env: { SIMPLY_UTAM_USERNAME: 'qa@example.com' } });
       expect(environment.username).toBe('alias');
     });
 
+    it('falls back to the deprecated UTAM_USERNAME, and warns once', () => {
+      const env = { UTAM_USERNAME: 'qa@example.com' };
+      const log = vi.fn();
+
+      expect(new TestEnvironment({ env, log }).username).toBe('qa@example.com');
+      new TestEnvironment({ env, log });
+
+      expect(log).toHaveBeenCalledOnce();
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining('UTAM_USERNAME in use: rename it to SIMPLY_UTAM_USERNAME'),
+      );
+    });
+
+    it('reads allowed domains from its own env, under either name', async () => {
+      const { org } = fakeOrg();
+      create.mockResolvedValue(org);
+      const log = vi.fn();
+      const prefixed = new TestEnvironment({
+        username: 'qa',
+        env: { SIMPLY_UTAM_ALLOWED_DOMAINS: '*.example.org' },
+        log,
+      });
+      const legacy = new TestEnvironment({ username: 'qa', env: { UTAM_ALLOWED_DOMAINS: '*.example.org' }, log });
+
+      await expect(prefixed.isHostAllowedInternal('sub.example.org')).resolves.toBe(true);
+      await expect(legacy.isHostAllowedInternal('sub.example.org')).resolves.toBe(true);
+      expect(log).toHaveBeenCalledOnce();
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('UTAM_ALLOWED_DOMAINS in use'));
+    });
+
     it('refuses to start without a username', () => {
-      expect(() => new TestEnvironment({ env: {} })).toThrow(/UTAM_USERNAME/);
+      expect(() => new TestEnvironment({ env: {} })).toThrow(/SIMPLY_UTAM_USERNAME/);
     });
 
     it('authenticates once, however many callers race for it', async () => {

@@ -31,6 +31,7 @@ describe('@simplysf/simply-utam-core', () => {
     expect(Object.keys(api).sort()).toStrictEqual(
       [
         // org authentication & environment
+        'ALLOWED_DOMAINS_ENV',
         'DEFAULT_ALLOWED_HOST_PATTERNS',
         'TestEnvironment',
         'USERNAME_ENV',
@@ -39,6 +40,11 @@ describe('@simplysf/simply-utam-core', () => {
         'resetTestEnvironment',
         'setTestEnvironment',
         'validateAndParseSecureUrl',
+
+        // environment variable names
+        'LEGACY_ENV',
+        'deprecatedEnvWarning',
+        'envValue',
 
         // Lightning paths and navigation
         'LightningNavigator',

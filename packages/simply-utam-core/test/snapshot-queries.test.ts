@@ -209,7 +209,7 @@ describe('find --css', () => {
       "Can't check [title=…] values: they're masked in this snapshot, so a masked node may not be listed.",
     );
     expect(lines).toContain(
-      'Mask labels hides every [title] value. To check them on controls, recapture with UTAM_SNAPSHOT_MASK=aria.',
+      'Mask labels hides every [title] value. To check them on controls, recapture with SIMPLY_UTAM_SNAPSHOT_MASK=aria.',
     );
     const aria = snapshotOf([el('span', { title: '•4' })], { mask: 'aria' });
     expect(findNodes(aria, { css: "span[title='Acme']" }).lines.some((line) => line.includes('recapture'))).toBe(false);
@@ -737,10 +737,10 @@ describe('header and UTAM error', () => {
         }),
       )?.lines;
     expect(hint("button[title='Edit']", 'labels')?.at(-1)).toBe(
-      `    ${'Mask labels hides every [title] value. To check them on controls, recapture with UTAM_SNAPSHOT_MASK=aria.'}`,
+      `    ${'Mask labels hides every [title] value. To check them on controls, recapture with SIMPLY_UTAM_SNAPSHOT_MASK=aria.'}`,
     );
     expect(hint('input[placeholder="Search"][aria-label="Search"]', 'structure')?.at(-1)).toBe(
-      '    Mask structure hides every [placeholder], [aria-label] value. To check them on controls, recapture with UTAM_SNAPSHOT_MASK=aria.',
+      '    Mask structure hides every [placeholder], [aria-label] value. To check them on controls, recapture with SIMPLY_UTAM_SNAPSHOT_MASK=aria.',
     );
     expect(hint("button[title='Edit']", 'aria')).toHaveLength(3);
     expect(hint("c-x[data-id='a']", 'labels')).toHaveLength(3);

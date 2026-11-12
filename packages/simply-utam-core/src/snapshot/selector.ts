@@ -15,6 +15,7 @@
  */
 
 import { compile, type Options } from 'css-select';
+import { SNAPSHOT_MASK_ENV } from './capture.js';
 import { DomSnapshotError, type DomSnapshot } from './format.js';
 import { getNode, locate, toFound, type FoundNode, type Located } from './locate.js';
 
@@ -311,7 +312,7 @@ export function recaptureForNames(snapshot: DomSnapshot, attributes: string[]): 
   if (mask !== 'labels' && mask !== 'structure') return undefined;
   const names = attributes.filter((name) => NAME_ATTRIBUTES.includes(name));
   if (names.length === 0) return undefined;
-  return `Mask ${mask} hides every ${names.map((name) => `[${name}]`).join(', ')} value. To check them on controls, recapture with UTAM_SNAPSHOT_MASK=aria.`;
+  return `Mask ${mask} hides every ${names.map((name) => `[${name}]`).join(', ')} value. To check them on controls, recapture with ${SNAPSHOT_MASK_ENV}=aria.`;
 }
 
 /**
