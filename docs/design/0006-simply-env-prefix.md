@@ -1,6 +1,6 @@
 # 0006 — Prefixing environment variables with `SIMPLY_`
 
-**Status:** Implemented (branch `feat/simply-env-prefix`, not yet merged)
+**Status:** Implemented (PR #37)
 **Package:** `packages/simply-utam-core`, `packages/simply-utam`
 **Date:** 2026-11-12
 
