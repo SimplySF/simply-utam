@@ -103,8 +103,8 @@ importers:
         specifier: ^34.2.1
         version: 34.2.1
       '@salesforce/core':
-        specifier: ^9.4.4
-        version: 9.4.4
+        specifier: ^9.4.6
+        version: 9.4.6
       css-select:
         specifier: ^5.2.2
         version: 5.2.2
@@ -859,8 +859,20 @@ packages:
     peerDependencies:
       tslib: '2'
 
+  '@jsonjoy.com/base64@17.67.0':
+    resolution: {integrity: sha512-5SEsJGsm15aP8TQGkDfJvz9axgPwAEm98S5DxOuYe8e1EbfajcDmgeXXzccEjh+mLnjqEKrkBdjHWS5vFNwDdw==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
   '@jsonjoy.com/buffers@1.2.1':
     resolution: {integrity: sha512-12cdlDwX4RUM3QxmUbVJWqZ/mrK6dFQH4Zxq6+r1YXKXYBNgZXndx2qbCJwh3+WWkCSn67IjnlG3XYTvmvYtgA==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/buffers@17.67.0':
+    resolution: {integrity: sha512-tfExRpYxBvi32vPs9ZHaTjSP4fHAfzSmcahOfNxtvGHcyJel+aibkPlGeBB+7AoC6hL7lXIE++8okecBxx7lcw==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
@@ -871,8 +883,68 @@ packages:
     peerDependencies:
       tslib: '2'
 
+  '@jsonjoy.com/codegen@17.67.0':
+    resolution: {integrity: sha512-idnkUplROpdBOV0HMcwhsCUS5TRUi9poagdGs70A6S4ux9+/aPuKbh8+UYRTLYQHtXvAdNfQWXDqZEx5k4Dj2Q==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/fs-core@4.80.0':
+    resolution: {integrity: sha512-qMKWshnyjbyhm+NbzqGE3w5y1mckFFEMj0aDPU2/JBNh1BzIjVy9esq9lBmRnNVmhMEkxwDzLZ8Gqh5G1P5Dag==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/fs-fsa@4.80.0':
+    resolution: {integrity: sha512-ZBEKl7J6dbkRCfmrFV48Re211A/FHqniTUhsWCsaRteNSOqMgkX3qF1UreVgwB9oSPm81JLAwhIi6Lb/NH/PoA==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/fs-node-builtins@4.80.0':
+    resolution: {integrity: sha512-OIOIhqaWiwUySFMny4epIAoviXsyMaQQ63PTc3zH+5HEOvarl5hpUmZIhp2m5+OfyKAh5ylxXnQIgew1OgJDVw==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/fs-node-to-fsa@4.80.0':
+    resolution: {integrity: sha512-ljeaR5xwtX1EyRmB0wvXANUMQZ3mjKcm7z8s2N8D8SLQ04CcAGtUhHFRZQXFb9mhgFyEVMydQGQtSOFS7pcrFQ==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/fs-node-utils@4.80.0':
+    resolution: {integrity: sha512-xwHeVVi3f+Khg/Fmb8i5qoYVmQ08QznE5TWhQokUmIZjz4KBPzU+zt/+bahBI6G1ghtqajt27lWuAciIxApuzA==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/fs-node@4.80.0':
+    resolution: {integrity: sha512-yiBlUfkMMRFFGy8CD/h2zd5rPnrM6bjlF+nx2LRAxNV6hOSiuObQIUEE7m7y2VTMisjxCRtzINH94bFGySWL7g==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/fs-print@4.80.0':
+    resolution: {integrity: sha512-1ocZLJw/m/xlq0moaIHO7HV9nHRVBUvdc2zMzhsJGkFOrqfwWvexfCv5cYCPPLRhP+9p3yunoi4Ep5YhRORC9Q==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/fs-snapshot@4.80.0':
+    resolution: {integrity: sha512-3AV23Q1H228KTtJKTUE0nNq8FCtxSvtENOLrEat80wkAJCKHuqQEv8yjhpS8Bei2OEFJAnluGXp9Ri2SWBlROw==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
   '@jsonjoy.com/json-pack@1.21.0':
     resolution: {integrity: sha512-+AKG+R2cfZMShzrF2uQw34v3zbeDYUqnQ+jg7ORic3BGtfw9p/+N6RJbq/kkV8JmYZaINknaEQ2m0/f693ZPpg==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/json-pack@17.67.0':
+    resolution: {integrity: sha512-t0ejURcGaZsn1ClbJ/3kFqSOjlryd92eQY465IYrezsXmPcfHPE/av4twRSxf6WE+TkZgLY+71vCZbiIiFKA/w==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
@@ -883,8 +955,20 @@ packages:
     peerDependencies:
       tslib: '2'
 
+  '@jsonjoy.com/json-pointer@17.67.0':
+    resolution: {integrity: sha512-+iqOFInH+QZGmSuaybBUNdh7yvNrXvqR+h3wjXm0N/3JK1EyyFAeGJvqnmQL61d1ARLlk/wJdFKSL+LHJ1eaUA==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
   '@jsonjoy.com/util@1.9.0':
     resolution: {integrity: sha512-pLuQo+VPRnN8hfPqUTLTHk126wuYdXVxE6aDmjSeV4NCAgyxWbiOIeNJVtID3h1Vzpoi9m4jXezf73I6LgabgQ==}
+    engines: {node: '>=10.0'}
+    peerDependencies:
+      tslib: '2'
+
+  '@jsonjoy.com/util@17.67.0':
+    resolution: {integrity: sha512-6+8xBaz1rLSohlGh68D1pdw3AwDi9xydm8QNlAFkvnavCJYSze+pxoW2VKP8p308jtlMRLs5NTHfPlZLd4w7ew==}
     engines: {node: '>=10.0'}
     peerDependencies:
       tslib: '2'
@@ -1373,12 +1457,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@salesforce/core@9.4.4':
-    resolution: {integrity: sha512-o7J/121I756oVf9+ZHLvZ06x8d3keK+Ix3Dln3k/UQzmhkp3gk1zp7PdDBq1CR87DFbQMYtftvIccYZHbO7jmg==}
+  '@salesforce/core@9.4.6':
+    resolution: {integrity: sha512-ph6zETeGRegICHLbP5OjHqiry7RdWpCf+NihuIEsKYhqgcxkeOSEiuznlLm2F4lmo4/y61ogF5kOBAKwOK+ynQ==}
     engines: {node: '>=22.0.0'}
 
-  '@salesforce/kit@4.0.9':
-    resolution: {integrity: sha512-51uNidO4FDPnAydHSG4LnUV8CGixpUJ5e++XZh3TCR6VFUidxKIQVRrIWIebcD9yLc13DMhkqt74ofZC3Fu1Kg==}
+  '@salesforce/kit@4.0.10':
+    resolution: {integrity: sha512-LXCswafab7AYmpaEvjHmpI3Ueg4dk9c/vFfHSEenVyx/dF1ABlxmf8kpVyox6iRBBh3RvM5/LkQMtXUv7iSd7w==}
     engines: {node: '>=22.0.0'}
 
   '@salesforce/ts-types@3.2.4':
@@ -3430,9 +3514,8 @@ packages:
   mdn-data@2.35.0:
     resolution: {integrity: sha512-k+1+dEIm2z/BEfdvYzT/fIyAGeDBo/1AJNJI4ilFXJRYoxP/3Ds+GP8shAOIq8jYXY9N5nGB3Ag104NsagmLAA==}
 
-  memfs@4.38.1:
-    resolution: {integrity: sha512-exfrOkkU3m0EpbQ0iQJP93HUbkprnIBU7IUnobSNAzHkBUzsklLwENGLEm8ZwJmMuLoFEfv1pYQ54wSpkay4kQ==}
-    engines: {node: '>= 4.0.0'}
+  memfs@4.80.0:
+    resolution: {integrity: sha512-N70W2isi44XdGn7uPo9NJ4zRukcdkwSFHlnYx42SWOH/+hzqNc8P7+tVoA2up4z7faHvNi1RSNCFjxoYQ71VPQ==}
 
   meow@13.2.0:
     resolution: {integrity: sha512-pxQJQzB6djGPXh08dacEloMFopsOqGVRKFPYvPOt9XDZ1HasbgDZA74CJGreSU4G3Ak7EFJGoiH2auq+yXISgA==}
@@ -4345,8 +4428,15 @@ packages:
   tldts-core@7.4.18:
     resolution: {integrity: sha512-KI2PKvCmvQI/xD6ypPqkU0i7oxNXR/O58RLRaHR4svsgVUQ2JE/XC8BtMbG6PSehD27I8sZJRcC1ASnCy6lp3g==}
 
+  tldts-core@7.5.2:
+    resolution: {integrity: sha512-8W1topazDwhMKbm2I83IPa57Ow5VUxFgLbXv42+vSILnv8FY5OHvdEY/tS6WoWeMbxkHZQhra5cmeFHriKptSQ==}
+
   tldts@7.4.18:
     resolution: {integrity: sha512-somxA8xKAUzlAxl0TX/jMSYIbRNFIVGnI96pVGJPeMc5BsHmfVXn6mOJT6U++ELnl04eGfzpfcEuZe8WiASkXg==}
+    hasBin: true
+
+  tldts@7.5.2:
+    resolution: {integrity: sha512-p+JwEdxIWQx033pMvW9ULBbyC1Eg6JtWo2Mo0jbC8TVSjp2QrHFE+WKs8JpMGc3ECMsmBpU2RH/25NgX3k1ulg==}
     hasBin: true
 
   tmp@0.2.7:
@@ -4363,6 +4453,10 @@ packages:
 
   tough-cookie@6.0.2:
     resolution: {integrity: sha512-exgYmnmL/sJpR3upZfXG5PoatXQii55xAiXGXzY+sROLZ/Y+SLcp9PgJNI9Vz37HpQ74WvDcLT8eqm+kV3FzrA==}
+    engines: {node: '>=16'}
+
+  tough-cookie@6.1.0:
+    resolution: {integrity: sha512-FTxc8u8Kl2tz0Lat1u8ksvcy8bwHRyEMawwTWybo51JqaC6O7SvfuhAKg+Ld6VqyIe2QRJBzY9HA7y2WyFRT2w==}
     engines: {node: '>=16'}
 
   tr46@7.0.0:
@@ -4455,6 +4549,10 @@ packages:
 
   undici@8.12.3:
     resolution: {integrity: sha512-+fdndUTwBP86cVjihTp21hZHo7d6oj1c/47XPA3lL8mM0XHs+C4EkcjmgRsFnFk2f/UONGDy9ItBItmXsLOQHw==}
+    engines: {node: '>=22.19.0'}
+
+  undici@8.12.4:
+    resolution: {integrity: sha512-8Mx+uNKKER2bA4AdtedkqRbwUCIJFr2nJckXRe5yrDqzePqwLP7VNcctN8/XdmDSbF7mS+jJKIszlL+vbam1VA==}
     engines: {node: '>=22.19.0'}
 
   unicorn-magic@0.3.0:
@@ -5639,10 +5737,14 @@ snapshots:
       faye: 1.4.3
       form-data: 4.0.6
       multistream: 3.1.0
-      undici: 8.12.3
+      undici: 8.12.4
       xml2js: 0.6.2
 
   '@jsonjoy.com/base64@1.1.2(tslib@2.9.1)':
+    dependencies:
+      tslib: 2.9.1
+
+  '@jsonjoy.com/base64@17.67.0(tslib@2.9.1)':
     dependencies:
       tslib: 2.9.1
 
@@ -5650,8 +5752,73 @@ snapshots:
     dependencies:
       tslib: 2.9.1
 
+  '@jsonjoy.com/buffers@17.67.0(tslib@2.9.1)':
+    dependencies:
+      tslib: 2.9.1
+
   '@jsonjoy.com/codegen@1.0.0(tslib@2.9.1)':
     dependencies:
+      tslib: 2.9.1
+
+  '@jsonjoy.com/codegen@17.67.0(tslib@2.9.1)':
+    dependencies:
+      tslib: 2.9.1
+
+  '@jsonjoy.com/fs-core@4.80.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/fs-node-builtins': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-utils': 4.80.0(tslib@2.9.1)
+      thingies: 2.6.1(tslib@2.9.1)
+      tslib: 2.9.1
+
+  '@jsonjoy.com/fs-fsa@4.80.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/fs-core': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-builtins': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-utils': 4.80.0(tslib@2.9.1)
+      thingies: 2.6.1(tslib@2.9.1)
+      tslib: 2.9.1
+
+  '@jsonjoy.com/fs-node-builtins@4.80.0(tslib@2.9.1)':
+    dependencies:
+      tslib: 2.9.1
+
+  '@jsonjoy.com/fs-node-to-fsa@4.80.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/fs-fsa': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-builtins': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-utils': 4.80.0(tslib@2.9.1)
+      tslib: 2.9.1
+
+  '@jsonjoy.com/fs-node-utils@4.80.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/fs-node-builtins': 4.80.0(tslib@2.9.1)
+      glob-to-regex.js: 1.3.1(tslib@2.9.1)
+      tslib: 2.9.1
+
+  '@jsonjoy.com/fs-node@4.80.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/fs-core': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-builtins': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-utils': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-print': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-snapshot': 4.80.0(tslib@2.9.1)
+      glob-to-regex.js: 1.3.1(tslib@2.9.1)
+      thingies: 2.6.1(tslib@2.9.1)
+      tslib: 2.9.1
+
+  '@jsonjoy.com/fs-print@4.80.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/fs-node-utils': 4.80.0(tslib@2.9.1)
+      tree-dump: 1.1.0(tslib@2.9.1)
+      tslib: 2.9.1
+
+  '@jsonjoy.com/fs-snapshot@4.80.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/buffers': 17.67.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-utils': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/json-pack': 17.67.0(tslib@2.9.1)
+      '@jsonjoy.com/util': 17.67.0(tslib@2.9.1)
       tslib: 2.9.1
 
   '@jsonjoy.com/json-pack@1.21.0(tslib@2.9.1)':
@@ -5666,16 +5833,39 @@ snapshots:
       tree-dump: 1.1.0(tslib@2.9.1)
       tslib: 2.9.1
 
+  '@jsonjoy.com/json-pack@17.67.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/base64': 17.67.0(tslib@2.9.1)
+      '@jsonjoy.com/buffers': 17.67.0(tslib@2.9.1)
+      '@jsonjoy.com/codegen': 17.67.0(tslib@2.9.1)
+      '@jsonjoy.com/json-pointer': 17.67.0(tslib@2.9.1)
+      '@jsonjoy.com/util': 17.67.0(tslib@2.9.1)
+      hyperdyperid: 1.2.0
+      thingies: 2.6.1(tslib@2.9.1)
+      tree-dump: 1.1.0(tslib@2.9.1)
+      tslib: 2.9.1
+
   '@jsonjoy.com/json-pointer@1.0.2(tslib@2.9.1)':
     dependencies:
       '@jsonjoy.com/codegen': 1.0.0(tslib@2.9.1)
       '@jsonjoy.com/util': 1.9.0(tslib@2.9.1)
       tslib: 2.9.1
 
+  '@jsonjoy.com/json-pointer@17.67.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/util': 17.67.0(tslib@2.9.1)
+      tslib: 2.9.1
+
   '@jsonjoy.com/util@1.9.0(tslib@2.9.1)':
     dependencies:
       '@jsonjoy.com/buffers': 1.2.1(tslib@2.9.1)
       '@jsonjoy.com/codegen': 1.0.0(tslib@2.9.1)
+      tslib: 2.9.1
+
+  '@jsonjoy.com/util@17.67.0(tslib@2.9.1)':
+    dependencies:
+      '@jsonjoy.com/buffers': 17.67.0(tslib@2.9.1)
+      '@jsonjoy.com/codegen': 17.67.0(tslib@2.9.1)
       tslib: 2.9.1
 
   '@keyv/bigmap@1.3.1(keyv@5.6.0)':
@@ -6125,10 +6315,10 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.66.0':
     optional: true
 
-  '@salesforce/core@9.4.4':
+  '@salesforce/core@9.4.6':
     dependencies:
       '@jsforce/jsforce-node': 3.13.1
-      '@salesforce/kit': 4.0.9
+      '@salesforce/kit': 4.0.10
       '@salesforce/ts-types': 3.2.4
       ajv: 8.20.0
       change-case: 4.1.2
@@ -6138,7 +6328,7 @@ snapshots:
       js2xmlparser: 4.0.2
       jsonwebtoken: 9.0.3
       jszip: 3.10.1
-      memfs: 4.38.1
+      memfs: 4.80.0
       pino: 9.14.0
       pino-abstract-transport: 1.2.0
       pino-pretty: 11.3.0
@@ -6147,7 +6337,7 @@ snapshots:
       ts-retry-promise: 0.8.1
       zod: 4.6.7
 
-  '@salesforce/kit@4.0.9':
+  '@salesforce/kit@4.0.10':
     dependencies:
       '@salesforce/ts-types': 3.2.4
 
@@ -7474,7 +7664,7 @@ snapshots:
     dependencies:
       csprng: 0.1.2
       faye-websocket: 0.11.4
-      tough-cookie: 6.0.2
+      tough-cookie: 6.1.0
       tunnel-agent: 0.6.0
 
   fd-package-json@2.0.0:
@@ -8279,8 +8469,16 @@ snapshots:
 
   mdn-data@2.35.0: {}
 
-  memfs@4.38.1:
+  memfs@4.80.0:
     dependencies:
+      '@jsonjoy.com/fs-core': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-fsa': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-builtins': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-to-fsa': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-node-utils': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-print': 4.80.0(tslib@2.9.1)
+      '@jsonjoy.com/fs-snapshot': 4.80.0(tslib@2.9.1)
       '@jsonjoy.com/json-pack': 1.21.0(tslib@2.9.1)
       '@jsonjoy.com/util': 1.9.0(tslib@2.9.1)
       glob-to-regex.js: 1.3.1(tslib@2.9.1)
@@ -9340,9 +9538,15 @@ snapshots:
 
   tldts-core@7.4.18: {}
 
+  tldts-core@7.5.2: {}
+
   tldts@7.4.18:
     dependencies:
       tldts-core: 7.4.18
+
+  tldts@7.5.2:
+    dependencies:
+      tldts-core: 7.5.2
 
   tmp@0.2.7: {}
 
@@ -9358,6 +9562,10 @@ snapshots:
   tough-cookie@6.0.2:
     dependencies:
       tldts: 7.4.18
+
+  tough-cookie@6.1.0:
+    dependencies:
+      tldts: 7.5.2
 
   tr46@7.0.0:
     dependencies:
@@ -9432,6 +9640,8 @@ snapshots:
   undici@8.12.2: {}
 
   undici@8.12.3: {}
+
+  undici@8.12.4: {}
 
   unicorn-magic@0.3.0: {}
 
