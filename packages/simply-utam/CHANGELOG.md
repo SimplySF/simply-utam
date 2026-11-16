@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.5.1](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.5.0...%40simplysf%2Fsimply-utam%400.5.1) (2026-11-16)
+
+### Bug Fixes
+
+- **deps:** bump @oclif/core from 5.1.11 to 5.1.12 ([#41](https://github.com/SimplySF/simply-utam/issues/41)) ([51367ef](https://github.com/SimplySF/simply-utam/commit/51367efdf6416028e2949486d6113500704cc7e9))
+
 # [0.5.0](https://github.com/SimplySF/simply-utam/compare/%40simplysf%2Fsimply-utam%400.4.6...%40simplysf%2Fsimply-utam%400.5.0) (2026-11-12)
 
 ### Features
