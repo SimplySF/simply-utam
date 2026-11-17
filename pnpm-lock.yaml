@@ -94,8 +94,8 @@ importers:
   packages/simply-utam-core:
     dependencies:
       '@cucumber/cucumber-expressions':
-        specifier: ^20.1.0
-        version: 20.1.0
+        specifier: ^20.2.0
+        version: 20.2.0
       '@cucumber/gherkin':
         specifier: ^42.0.1
         version: 42.0.1
@@ -406,8 +406,8 @@ packages:
     resolution: {integrity: sha512-OoKoR0f76dCY666JlcbhmVTs2drYj1GUXZTYTcbUgJjh9Nv41aFfZ21bPQTERm5+L5cBDo466NltB2lplS5GBw==}
     engines: {node: '>=20.19.0'}
 
-  '@cucumber/cucumber-expressions@20.1.0':
-    resolution: {integrity: sha512-KXQJChHTyHdg6HI7fHy3zpjfoS205vV1B/aJQKB82VFgMGbdVdiaSy7sTtap/5Q787anLmZt25Tg0FqQ2n4fqw==}
+  '@cucumber/cucumber-expressions@20.2.0':
+    resolution: {integrity: sha512-qzQYovDERDTf4iFvnJwhWxU2J0Yj25cVFoxr78WJqNt+Lvt9xZWobEG9bu3rQ35HTmlbmreoCGZcTKPwskH33Q==}
 
   '@cucumber/gherkin@42.0.1':
     resolution: {integrity: sha512-Kqg0ULhWqbXp/a1c04ND4sS4KTlIL831tQ0NhZLXWdEhT6LiNsZ5LFRzy/lBy7QQpcKhroKp/i3C2WdEnRBKNg==}
@@ -5280,7 +5280,7 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.2': {}
 
-  '@cucumber/cucumber-expressions@20.1.0':
+  '@cucumber/cucumber-expressions@20.2.0':
     dependencies:
       regexp-match-indices: 1.0.2
 
