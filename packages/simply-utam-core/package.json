@@ -68,7 +68,7 @@
     "@cucumber/messages": "^34.2.1",
     "@salesforce/core": "^9.4.6",
     "css-select": "^5.2.2",
-    "prettier": "^3.9.10"
+    "prettier": "^3.10.1"
   },
   "devDependencies": {
     "@lwc/synthetic-shadow": "9.5.3",
