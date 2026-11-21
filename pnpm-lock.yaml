@@ -103,8 +103,8 @@ importers:
         specifier: ^34.2.1
         version: 34.2.1
       '@salesforce/core':
-        specifier: ^9.4.6
-        version: 9.4.6
+        specifier: ^9.5.0
+        version: 9.5.0
       css-select:
         specifier: ^5.2.2
         version: 5.2.2
@@ -1457,8 +1457,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@salesforce/core@9.4.6':
-    resolution: {integrity: sha512-ph6zETeGRegICHLbP5OjHqiry7RdWpCf+NihuIEsKYhqgcxkeOSEiuznlLm2F4lmo4/y61ogF5kOBAKwOK+ynQ==}
+  '@salesforce/core@9.5.0':
+    resolution: {integrity: sha512-18OsyaRZfnXKLNPAc0eVTsqLQh+q+YsjrjUEocWtfjl9wZNn6Owc255IhjBb0LZ+GXPKFNmlh4ufY/r2zAi1VA==}
     engines: {node: '>=22.0.0'}
 
   '@salesforce/kit@4.0.10':
@@ -2733,12 +2733,12 @@ packages:
   fastq@1.20.3:
     resolution: {integrity: sha512-XKv5nnLs6nLF71NgiKJLIZFLkPyIEuOselLG7ujZnGrRfQK8HpvY+WqKhAJUAdLomwVHErVS4LfxFlPq0/FTAw==}
 
-  faye-websocket@0.11.4:
-    resolution: {integrity: sha512-CzbClwlXAuiRQAlUyfqPgvPoNKTckTPGfwZV4ZdAhVcP2lh9KUxJg2b5GkE7XbjKQ3YJnQ9z6D9ntLAlB+tP8g==}
-    engines: {node: '>=0.8.0'}
+  faye-websocket@0.12.0:
+    resolution: {integrity: sha512-k4SrrWTHgtilT0hPMzS/kbYx9OHs+ITVv3VGqEI45SOsveVyFSES4DA4Opi2UMrba2MZhQe9yjsVz7uwVKa1qQ==}
+    engines: {node: '>=0.10.0'}
 
-  faye@1.4.3:
-    resolution: {integrity: sha512-MVbPkUDW31a8tWgdGppHrkuV8+/9eq5u5T5AnrS95HU52YJyy9sx1DYGY7xRL0u/suckuctgxRMunTXIDdxRTg==}
+  faye@1.5.1:
+    resolution: {integrity: sha512-2I62UFeZDfAgwm/GgfPlNmMTc5vG39L7fwe0U2mfRTu4nuLEd7WXtvdyi+N2a6OCu6mpcX9vLIvlu9E8GrZNKA==}
     engines: {node: '>=14'}
 
   fd-package-json@2.0.0:
@@ -4698,13 +4698,13 @@ packages:
     resolution: {integrity: sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==}
     engines: {node: '>=20'}
 
-  websocket-driver@0.7.5:
-    resolution: {integrity: sha512-ZL2+3c7kMBdIRCMz6l8jQMHyGVxj+UL+xVk74Ombiciboca8rHa15L86B19E5oh1pL9Ii/uj54gtsIrZGMo6zA==}
-    engines: {node: '>=0.8.0'}
+  websocket-driver@0.8.0:
+    resolution: {integrity: sha512-upjjWCo/1ZysdZ3rMvXXUDk9PmbYne+wSD1t78HAvIvjmR+avda0MsLWhtkn5PW8Ht34EXhhWF6OseWJ8nTGlg==}
+    engines: {node: '>=0.10.0'}
 
-  websocket-extensions@0.1.4:
-    resolution: {integrity: sha512-OqedPIGOfsDlo31UNwYbCFMSaO9m9G/0faIHj5/dZFDMFqPTcx6UwqyOy3COEaEOg/9VsGIpdqn62W5KhoKSpg==}
-    engines: {node: '>=0.8.0'}
+  websocket-extensions@0.2.0:
+    resolution: {integrity: sha512-vQaTTgDDgwlrreIJAprknlnvEtZMMxfLqoxyQYnWO8dgcz2qIzQNysCpwOekz8kqLvzrZ0dcaL9hejZ+2AszCA==}
+    engines: {node: '>=0.10.0'}
 
   whatwg-mimetype@5.0.0:
     resolution: {integrity: sha512-sXcNcHOC51uPGF0P/D4NVtrkjSU2fNsm9iog4ZvZJsL3rjoDAzXZhkm2MWt1y+PUdggKAYVoMAIYcs78wJ51Cw==}
@@ -5719,7 +5719,7 @@ snapshots:
       cross-spawn: 7.0.6
       csv-parse: 7.0.3
       csv-stringify: 6.9.0
-      faye: 1.4.3
+      faye: 1.5.1
       form-data: 4.0.6
       multistream: 3.1.0
       undici: 8.12.4
@@ -6300,7 +6300,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.66.0':
     optional: true
 
-  '@salesforce/core@9.4.6':
+  '@salesforce/core@9.5.0':
     dependencies:
       '@jsforce/jsforce-node': 3.13.1
       '@salesforce/kit': 4.0.10
@@ -6308,7 +6308,7 @@ snapshots:
       ajv: 8.20.0
       change-case: 4.1.2
       fast-levenshtein: 3.0.0
-      faye: 1.4.3
+      faye: 1.5.1
       form-data: 4.0.6
       js2xmlparser: 4.0.2
       jsonwebtoken: 9.0.3
@@ -7641,14 +7641,14 @@ snapshots:
     dependencies:
       reusify: 1.1.0
 
-  faye-websocket@0.11.4:
+  faye-websocket@0.12.0:
     dependencies:
-      websocket-driver: 0.7.5
+      websocket-driver: 0.8.0
 
-  faye@1.4.3:
+  faye@1.5.1:
     dependencies:
       csprng: 0.1.2
-      faye-websocket: 0.11.4
+      faye-websocket: 0.12.0
       tough-cookie: 6.1.0
       tunnel-agent: 0.6.0
 
@@ -9751,13 +9751,13 @@ snapshots:
 
   webidl-conversions@8.0.1: {}
 
-  websocket-driver@0.7.5:
+  websocket-driver@0.8.0:
     dependencies:
       http-parser-js: 0.5.10
       safe-buffer: 5.2.1
-      websocket-extensions: 0.1.4
+      websocket-extensions: 0.2.0
 
-  websocket-extensions@0.1.4: {}
+  websocket-extensions@0.2.0: {}
 
   whatwg-mimetype@5.0.0: {}
 
